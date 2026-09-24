@@ -1,0 +1,26 @@
+name: develop-me OpenObserve toolset
+on:
+  push:
+    branches: [develop-me]
+    paths:
+      - 'holmes/plugins/toolsets/openobserve/**'
+      - 'holmes/plugins/toolsets/__init__.py'
+      - 'tests/plugins/toolsets/openobserve/**'
+      - 'tests/toolsets/test_openobserve_toolset.py'
+      - '.github/workflows/develop-me-aiops.yml'
+  workflow_dispatch:
+jobs:
+  openobserve-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Poetry
+        run: pip install 'poetry==1.8.5'
+      - name: Install HolmesGPT dependencies
+        run: poetry install --with dev --no-interaction
+      - name: Run mocked OpenObserve tests
+        run: poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
