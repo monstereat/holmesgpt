@@ -23,4 +23,4 @@ jobs:
       - name: Install HolmesGPT dependencies
         run: poetry install --with dev --no-interaction
       - name: Run mocked OpenObserve tests
-        run: poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
+        run: poetry run pytest -q --no-cov tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
