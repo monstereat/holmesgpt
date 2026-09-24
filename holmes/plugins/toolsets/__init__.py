@@ -58,6 +58,7 @@ from holmes.plugins.toolsets.kubernetes_logs import KubernetesLogsToolset
 from holmes.plugins.toolsets.mcp.toolset_mcp import RemoteMCPToolset
 from holmes.plugins.toolsets.multi_instance import multi_instance
 from holmes.plugins.toolsets.newrelic.newrelic import NewRelicToolset
+from holmes.plugins.toolsets.openobserve.openobserve import OpenObserveToolset
 from holmes.plugins.toolsets.rabbitmq.toolset_rabbitmq import RabbitMQToolset
 from holmes.plugins.toolsets.robusta.robusta import RobustaToolset
 from holmes.plugins.toolsets.robusta_platform_mcp.robusta_platform_mcp import (
@@ -126,6 +127,7 @@ def load_python_toolsets(
         SkillsToolset(dal=dal, additional_search_paths=additional_search_paths),
         multi_instance(ServiceNowTablesToolset),
         multi_instance(VictoriaLogsToolset),
+        multi_instance(OpenObserveToolset),
         DatabaseToolset(),
         multi_instance(ElasticsearchDataToolset),
         multi_instance(ElasticsearchClusterToolset),
