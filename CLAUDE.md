@@ -97,6 +97,13 @@ poetry run mypy
 - **Prompts**: Jinja2 templates for different investigation scenarios
 - **Destinations**: Slack integration for sending results
 
+### Backend Stack Decision (HolmesGPT)
+
+- Keep this repository's investigation engine, toolsets, and existing API in Python/FastAPI. The API application is in `server.py`; extend it for Holmes product capabilities instead of replacing it with NestJS or adding a duplicate API layer.
+- Treat NestJS as outside the HolmesGPT backend. The `examples/openobserve-aiops` NestJS app is a telemetry-producing sample service, not HolmesGPT's API or an implemented incident-management service.
+- Keep Holmes investigations read-only by default and use narrowly scoped credentials. Any future remediation or other external side effect must be authorized by the service that owns that action; an Agent plan or approval state alone does not grant permission.
+- If this repository later adds a separate incident-management service, keep it independently deployable, give each incident/task record one owning service, and use authenticated service-to-service calls with task IDs and idempotency for retries. Do not claim that service exists until its implementation and tests are present.
+
 ### Key Patterns
 
 **Toolset Architecture**:

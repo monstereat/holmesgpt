@@ -1,6 +1,6 @@
-# OpenObserve + HolmesGPT AI Ops MVP
+# OpenObserve + HolmesGPT AI Ops demo
 
-The existing `holmes/plugins/toolsets/openobserve` toolset is connected to the HolmesGPT registry on the `feature/openobserve-aiops` branch. This example documents the reproducible demonstration, without requiring a production environment.
+The `holmes/plugins/toolsets/openobserve` toolset is registered in HolmesGPT and supports bounded log search and trace-ID log lookup. The local demo under this directory sends NestJS logs, browser error reports, and OpenTelemetry traces to OpenObserve, then starts a host-side webhook receiver that invokes the Holmes CLI. See [`DEMO.md`](DEMO.md) for setup and validation steps.
 
 ## Start with read-only monitoring access
 
@@ -31,9 +31,16 @@ Do not store real service credentials in Git.
 5. The investigation identifies the earliest failed operation and cites matching log records; it must not assert a root cause without evidence.
 6. A business service outside HolmesGPT holds the incident state, remediation approval, and audit record. Avoid giving the investigation tool write credentials.
 
-## Status
+## Status and boundaries
 
-The current branch implements a read-only OpenObserve logs toolset and mocked tool integration tests. Trace fetching, deploy history correlation, incident API, approval workflow and production-ready dashboards are separate milestones and are not complete yet.
+- The OpenObserve toolset is read-only and has request/parameter tests.
+- The demo browser SDK sanitizes selected credential patterns and supports configurable sampling; its default demo sampling rate is 100%.
+- The alert receiver requires a shared token, accepts only explicit trace-ID fields, bounds active investigation processes, deduplicates in-memory alerts, and prints results to stdout.
+- It accepts only numeric count fields and valid ISO trigger times as alert metadata, marks alert values untrusted in the Holmes prompt, and omits CLI stderr from task logs.
+- `incident_workflow.py` is a process-local reference model for ownership, severity, idempotency, evidence-versus-assumption findings, approval transitions, audit events, and a retrospective draft. Verified findings require HTTPS evidence links; evidence URL query credentials are redacted. The draft leaves unknown root causes, impact, and improvement items open for review. It does not execute remediation or independently prove a claim.
+- The alert receiver and incident workflow are process-local prototypes. They do not provide durable task/incident storage, service-side identity/RBAC, restart recovery, or production approval enforcement.
+- The order-service accepts normalized release events at `/internal/releases` only when signed with a runtime `RELEASE_WEBHOOK_SECRET`; it writes bounded release metadata into `app_logs`. It is a local integration point, not a connected Git/CI webhook or durable release registry.
+- Real OpenObserve credentials, stream permissions, and end-to-end alert behavior still need validation in the target environment.
 
 ## Tests
 

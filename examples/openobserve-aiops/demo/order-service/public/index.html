@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>OpenObserve AIOps Demo - 订单</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+  button { padding: 10px 18px; font-size: 15px; margin-right: 8px; cursor: pointer; }
+  #chaos { background: #eee; }
+  #chaos.on { background: #ffdddd; border-color: #cc4444; }
+  .log { margin-top: 24px; font-size: 13px; background: #f7f7f7; padding: 12px; border-radius: 6px; max-height: 300px; overflow-y: auto; }
+  .log div { padding: 2px 0; border-bottom: 1px solid #eee; word-break: break-all; }
+  .err { color: #b00020; }
+  code { background: #eee; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>订单 Demo</h1>
+<p>当前发布：<code id="release">加载中</code> ｜ 故障注入：<code id="chaos-state">加载中</code></p>
+<div>
+  <button id="create">创建订单</button>
+  <button id="chaos">切换故障注入（服务端环境变量）</button>
+</div>
+<div class="log" id="log"></div>
+
+<script>window.DEMO_TELEMETRY_SAMPLE_RATE = 1.0;</script>
+<script src="/monitoring.js?v=1"></script>
+<script>
+  // ---- demo UI ----
+  function log(msg, isErr, traceId) {
+    var el = document.getElementById("log");
+    var line = document.createElement("div");
+    if (isErr) line.className = "err";
+    line.textContent = new Date().toLocaleTimeString() + " " + msg +
+      (traceId ? "  [trace_id=" + traceId + "]" : "");
+    el.prepend(line);
+  }
+
+  fetch("/internal/demo-state")
+    .then(function (res) { return res.json(); })
+    .then(function (state) {
+      document.getElementById("release").textContent = state.release;
+      document.getElementById("chaos-state").textContent = state.chaos_mode;
+      document.getElementById("chaos").classList.toggle("on", state.chaos_mode === "on");
+    });
+
+  document.getElementById("create").onclick = function () {
+    var traceparent = HolmesMonitor.newTraceparent();
+    var traceId = HolmesMonitor.traceIdFrom(traceparent);
+    fetch("/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", traceparent: traceparent },
+      body: JSON.stringify({ sku: "SKU-001", quantity: 1, userId: "u-42" }),
+    }).then(function (r) {
+      return r.json().then(function (body) {
+        return { status: r.status, body: body };
+      });
+    }).then(function (res) {
+      if (res.status === 200) {
+        log("订单创建成功 " + res.body.order_id, false, traceId);
+      } else {
+        var safeMessage = HolmesMonitor.redact(res.body.message || "", 300);
+        log("下单失败 HTTP " + res.status + ": " + safeMessage, true, traceId);
+        HolmesTelemetry.report({ message: "order 500: " + safeMessage, trace_id: traceId, route: "/orders" });
+      }
+    }).catch(function () { /* fetch 拦截器已记录 */ });
+  };
+
+  document.getElementById("chaos").onclick = function () {
+    alert("故障注入由服务端环境变量 CHAOS_MODE 控制：\n\n" +
+      "在项目目录执行：\n" +
+      "CHAOS_MODE=on docker compose up -d --build order-service\n\n" +
+      "恢复时执行：\n" +
+      "CHAOS_MODE=off docker compose up -d --build order-service");
+  };
+</script>
+</body>
+</html>
