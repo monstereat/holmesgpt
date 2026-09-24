@@ -131,7 +131,7 @@ class OpenObserveToolset(Toolset):
             verify=cfg.verify_ssl,
             allow_redirects=False,  # Never forward a service token to a redirect target.
         )
-        if 300 <= response.status_code < 400:
+        if isinstance(response.status_code, int) and 300 <= response.status_code < 400:
             raise ValueError('OpenObserve API returned an unexpected redirect')
         response.raise_for_status()
         value = response.json()
