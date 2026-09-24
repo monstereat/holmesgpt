@@ -73,3 +73,12 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 ```
 
 **状态说明：** [x] 表示文件已提交，不等于 CI 已成功或线上接入已完成。当前工具集的 SQL 文本拦截是基础防线，正式接生产前需结合只读账户、可访问流白名单、SQL 语法验证、查询配额和部署级网络隔离进一步加固。
+
+## 2026-09-24 增量：OpenObserve 严格范围及凭据保护
+
+- [x] 新增 `allowed_streams` 配置；配置后只允许单一白名单流的简单 SELECT 查询，拒绝 JOIN、UNION、子查询、CTE 和未授权流。
+- [x] Trace 查询工具和日志流发现同样尊重白名单；日志流列表最多返回 100 条。
+- [x] 上游 HTTP 错误消息脱敏；Basic Auth 请求不跟随重定向。
+- [x] `tests/plugins/toolsets/openobserve/test_stream_scope.py` 覆盖越权流、复杂 SQL、Trace 越权和上游敏感错误响应。
+- [x] `holmes/plugins/toolsets/openobserve/SECURITY.md` 记录生产最小权限要求；最近的专用 GitHub Actions 检查已通过。
+- [ ] **生产接入仍待完成：** 服务端只读账户和流级 RBAC、真实 OpenObserve 集成、真实告警触发/审批/执行器；未配置白名单时保留开发模式，禁止将其当作生产安全保证。
