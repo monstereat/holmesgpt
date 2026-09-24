@@ -42,7 +42,7 @@ def test_find_trace_builds_bounded_query(toolset, monkeypatch):
             "stream": "frontend_logs",
             "trace_id": "A" * 32,
             "start_time": 1_700_000_000_000_000,
-            "end_time": 1_700_030_000_000_000,
+            "end_time": 1_700_000_030_000_000,
         },
         SimpleNamespace(request_context={}),
     )
