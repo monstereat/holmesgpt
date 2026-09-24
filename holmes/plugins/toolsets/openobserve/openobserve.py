@@ -271,10 +271,12 @@ class OpenObserveSearchLogs(_BaseOpenObserveTool):
         # Fail closed: the strict mode permits one simple stream, not arbitrary
         # CTEs, subqueries, UNIONs, comments, or JOINs. Rich queries require
         # a real dialect-aware parser and database-side least-privilege access.
-        if re.search(r"--|/\\*|\\*/|\\b(with|union|join|intersect|except)\\b", sql, re.I):
+        if re.search(r"--|/\*|\*/|\b(with|union|join|intersect|except)\b", sql, re.I):
             raise ValueError("Complex SQL is not permitted by the stream allowlist")
+        if len(re.findall(r"\bselect\b", sql, re.I)) != 1:
+            raise ValueError("Strict search permits exactly one SELECT")
         matches = re.findall(
-            r'\\bfrom\\s+(?:"([A-Za-z0-9_]{1,64})"|([A-Za-z0-9_]{1,64}))\\b?',
+            r'\bfrom\s+(?:"([A-Za-z0-9_]{1,64})"|([A-Za-z0-9_]{1,64}))(?=\s*(?:where\b|group\s+by\b|order\s+by\b|limit\b|$))',
             sql, re.I,
         )
         if len(matches) != 1:
