@@ -65,6 +65,7 @@
 - [ ] **完整复盘报告：** 根因、影响范围、发现与恢复时间、处理步骤、长期改进项均需真实事件数据和人工复核；当前仅有内存态草稿原型。
 - [ ] **统一追踪：** 告警 ID / 调查任务 ID / Trace ID / 发布版本双向查询。
 - [x] **本机任务查询原型：** 告警响应返回 task ID；同一 token 认证的 `GET /tasks/{task_id}` 返回状态、Trace ID 和结果，内存最多保留 1000 条/1 小时。未覆盖告警 ID、发布检索双向接口，且无持久化。
+- [x] **本地关联指纹：** 本地 `alert_id` 指纹可查询所关联 task IDs 与 Trace IDs，Webhook 重复响应复用该指纹；它不是 OpenObserve 原生告警 ID，且无发布关联和持久化。
 - [ ] **配置安全：** OpenObserve 使用最低权限的独立服务账户；日志查询限制流、时间、数量和查询耗时；对 SQL 策略做安全复核。
 
 ## 4. P2：后续扩展
@@ -125,6 +126,7 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] Webhook 仅把数值计数和合法 ISO 时间作为摘要交给 Holmes，明确告警名/元数据为不可信数据，不把 CLI stderr 写入任务日志；9 项测试通过。
 - [x] 5 分钟去重身份不受 Trace 告警的计数/触发时间变化影响；无 Trace 告警仅忽略触发时间，计数仍影响身份。
 - [x] 通过认证的进程内任务查询可按 task ID 查看调查状态与 Trace ID；完成结果有数量/时长上限，9 项测试通过。
+- [x] 通过认证的 `/alerts/{alert_id}` 可从本地告警指纹反查任务与 Trace；重复 Webhook 复用同一指纹。
 - [x] 发布事件入口校验原始请求体 HMAC-SHA256，拒绝缺少/错误签名、未知字段不入库、限制文件数和字段长度；实际演示事件按 release/commit 在 OpenObserve 命中。
 - [x] 在 loopback 绑定的本机接收器上实测 Docker 网络 Webhook 返回 HTTP 202，`/bin/echo` 完成调度并保留 Trace ID。
 - [x] 修复 `GET /monitoring.js` 静态 SDK 路由；真实浏览器产生 HTTP 500 后，本机 OpenObserve 三种数据均以同一 Trace ID 命中。

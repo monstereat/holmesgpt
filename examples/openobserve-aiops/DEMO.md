@@ -97,7 +97,8 @@ curl -X POST http://localhost:8080/internal/releases \
 且 `holmes` 命令能使用只读账户访问 `localhost:5080`。另开终端运行：
 
 ```bash
-ALERT_WEBHOOK_TOKEN='本地生成的随机值' poetry run python examples/openobserve-aiops/alert-trigger/trigger.py
+export ALERT_WEBHOOK_TOKEN='本地生成的随机值'
+poetry run python examples/openobserve-aiops/alert-trigger/trigger.py
 ```
 
 OpenObserve Webhook Destination 和接收器必须使用同一个本地随机 token；不要将其写入仓库或 `.env`。
@@ -106,6 +107,7 @@ OpenObserve Webhook Destination 和接收器必须使用同一个本地随机 to
 同一 Trace 告警 5 分钟内按告警名和 Trace ID 去重，不受触发时间或计数变化影响；无 Trace 告警按告警名和计数去重，最多并发启动 2 次调查。
 任务状态只保存在进程内，进程重启会丢失；这不是生产任务队列或事故中心。
 Webhook 响应中的 `task_id` 可用于查询调查状态和关联 Trace：
+在查询命令所在终端也设置同一个 `ALERT_WEBHOOK_TOKEN` 环境变量。
 
 ```bash
 curl -H "X-Alert-Token: $ALERT_WEBHOOK_TOKEN" \
@@ -113,6 +115,14 @@ curl -H "X-Alert-Token: $ALERT_WEBHOOK_TOKEN" \
 ```
 
 接收器最多保留 1000 条任务记录、最长 1 小时；完成结果接口也要求同一 token。该 token 不应发给浏览器或非可信调用方。
+Webhook 同时返回由告警名和 Trace/摘要计算的本地 `alert_id` 指纹；可用它反向查找关联任务和 Trace：
+
+```bash
+curl -H "X-Alert-Token: $ALERT_WEBHOOK_TOKEN" \
+  "http://localhost:8081/alerts/<alert_id>"
+```
+
+这个指纹不是 OpenObserve 的原生告警 ID，也不包含发布版本；告警与发布的完整双向查询仍待持久化事故中心接入。
 
 ## HolmesGPT 侧配置
 

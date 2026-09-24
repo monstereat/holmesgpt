@@ -155,8 +155,20 @@ def test_webhook_requires_token_and_returns_task_id(monkeypatch, capsys):
             result = json.load(response)
         assert result["accepted"] is True
         assert result["task_id"]
+        assert result["alert_id"]
         assert done.wait(2)
         assert "diagnosis with evidence" in capsys.readouterr().out
+
+        duplicate_request = Request(
+            url,
+            data=body,
+            headers={"X-Alert-Token": "demo-token", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(duplicate_request) as duplicate_response:
+            duplicate = json.load(duplicate_response)
+        assert duplicate["duplicate"] is True
+        assert duplicate["alert_id"] == result["alert_id"]
 
         task_url = f"{url}tasks/{result['task_id']}"
         with pytest.raises(HTTPError) as task_error:
@@ -167,9 +179,22 @@ def test_webhook_requires_token_and_returns_task_id(monkeypatch, capsys):
         with urlopen(task_request) as task_response:
             task = json.load(task_response)
         assert task["task_id"] == result["task_id"]
+        assert task["alert_id"] == result["alert_id"]
         assert task["status"] == "completed"
         assert task["trace_ids"] == ["c" * 32]
         assert task["result"] == "diagnosis with evidence"
+
+        alert_url = f"{url}alerts/{result['alert_id']}"
+        with pytest.raises(HTTPError) as alert_error:
+            urlopen(alert_url)
+        assert alert_error.value.code == 401
+
+        alert_request = Request(alert_url, headers={"X-Alert-Token": "demo-token"})
+        with urlopen(alert_request) as alert_response:
+            alert = json.load(alert_response)
+        assert alert["alert_id"] == result["alert_id"]
+        assert alert["task_ids"] == [result["task_id"]]
+        assert alert["trace_ids"] == ["c" * 32]
     finally:
         server.shutdown()
         server.server_close()

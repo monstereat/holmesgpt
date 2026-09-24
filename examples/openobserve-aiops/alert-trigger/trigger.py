@@ -122,7 +122,9 @@ def remember_alert(key: str) -> bool:
         return True
 
 
-def register_task(task_id: str, alert_name: str, trace_ids: list[str]) -> bool:
+def register_task(
+    task_id: str, alert_id: str, alert_name: str, trace_ids: list[str],
+) -> bool:
     now = time.monotonic()
     with recent_tasks_lock:
         expired = [
@@ -145,6 +147,7 @@ def register_task(task_id: str, alert_name: str, trace_ids: list[str]) -> bool:
 
         recent_tasks[task_id] = {
             "task_id": task_id,
+            "alert_id": alert_id,
             "alert_name": alert_name,
             "trace_ids": trace_ids.copy(),
             "status": "queued",
@@ -179,6 +182,38 @@ def get_task(task_id: str) -> dict[str, object] | None:
         return {
             key: value for key, value in task.items()
             if key != "created_monotonic"
+        }
+
+
+def get_alert(alert_id: str) -> dict[str, object] | None:
+    now = time.monotonic()
+    with recent_tasks_lock:
+        expired = [
+            task_id for task_id, task in recent_tasks.items()
+            if task["status"] in {"completed", "failed"}
+            and now - float(task["created_monotonic"]) > TASK_RETENTION_SECONDS
+        ]
+        for task_id in expired:
+            del recent_tasks[task_id]
+
+        linked = [task for task in recent_tasks.values() if task["alert_id"] == alert_id]
+        if not linked:
+            return None
+        return {
+            "alert_id": alert_id,
+            "task_ids": [task["task_id"] for task in linked],
+            "trace_ids": sorted({
+                trace_id for task in linked for trace_id in task["trace_ids"]
+            }),
+            "tasks": [
+                {
+                    "task_id": task["task_id"],
+                    "status": task["status"],
+                    "submitted_at": task["submitted_at"],
+                    "completed_at": task["completed_at"],
+                }
+                for task in linked
+            ],
         }
 
 
@@ -249,8 +284,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         key = alert_key(alert_name, trace_ids, summary)
+        alert_id = key
         if not remember_alert(key):
-            self._respond(202, {"accepted": True, "duplicate": True})
+            self._respond(202, {
+                "accepted": True, "duplicate": True, "alert_id": alert_id,
+            })
             return
         if not active_slots.acquire(blocking=False):
             with recent_alerts_lock:
@@ -260,7 +298,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         task_id = str(uuid.uuid4())
-        if not register_task(task_id, alert_name, trace_ids):
+        if not register_task(task_id, alert_id, alert_name, trace_ids):
             active_slots.release()
             with recent_alerts_lock:
                 recent_alerts.pop(key, None)
@@ -269,13 +307,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         threading.Thread(
             target=self._run_investigation,
-            args=(task_id, key, alert_name, trace_ids, summary),
+            args=(task_id, key, alert_id, alert_name, trace_ids, summary),
             daemon=True,
         ).start()
-        self._respond(202, {"accepted": True, "task_id": task_id, "trace_ids": trace_ids})
+        self._respond(202, {
+            "accepted": True,
+            "alert_id": alert_id,
+            "task_id": task_id,
+            "trace_ids": trace_ids,
+        })
 
     def _run_investigation(
-        self, task_id: str, key: str, alert_name: str,
+        self, task_id: str, key: str, alert_id: str, alert_name: str,
         trace_ids: list[str], summary: str,
     ) -> None:
         succeeded = False
@@ -289,6 +332,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             print(json.dumps({
                 "task_id": task_id,
+                "alert_id": alert_id,
                 "alert_name": alert_name,
                 "status": "completed",
                 "result": result,
@@ -300,6 +344,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             print(json.dumps({
                 "task_id": task_id,
+                "alert_id": alert_id,
                 "alert_name": alert_name,
                 "status": "failed",
                 "error": str(exc)[:500],
@@ -325,18 +370,19 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"ok")
             return
         match = re.fullmatch(r"/tasks/([0-9a-f-]{36})", self.path)
-        if match:
+        alert_match = re.fullmatch(r"/alerts/([0-9a-f]{64})", self.path)
+        if match or alert_match:
             supplied_token = self.headers.get("X-Alert-Token", "")
             if not WEBHOOK_TOKEN or not hmac.compare_digest(supplied_token, WEBHOOK_TOKEN):
                 self.send_response(401)
                 self.end_headers()
                 return
-            task = get_task(match.group(1))
-            if task is None:
+            record = get_task(match.group(1)) if match else get_alert(alert_match.group(1))
+            if record is None:
                 self.send_response(404)
                 self.end_headers()
                 return
-            self._respond(200, task)
+            self._respond(200, record)
             return
         self.send_response(404)
         self.end_headers()
