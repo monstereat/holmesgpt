@@ -4,7 +4,8 @@ from abc import ABC
 from typing import Any, ClassVar, Dict, Optional, Tuple, Type
 
 import requests  # type: ignore[import-untyped]
-from pydantic import Field
+from pydantic import Field, field_validator
+from urllib.parse import urlsplit
 from requests.auth import HTTPBasicAuth
 
 from holmes.core.tools import (
@@ -45,6 +46,7 @@ class OpenObserveConfig(ToolsetConfig):
     )
     verify_ssl: bool = Field(default=True, title="Verify SSL")
     timeout_seconds: int = Field(default=30, ge=1, le=120, title="Timeout Seconds")
+    max_window_seconds: int = Field(default=86400, ge=1, le=604800)
     max_rows: int = Field(
         default=200,
         ge=1,
@@ -52,6 +54,22 @@ class OpenObserveConfig(ToolsetConfig):
         title="Maximum Search Rows",
         description="Hard cap on rows returned by the LLM-facing search tool",
     )
+
+    @field_validator("api_url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        url = urlsplit(value)
+        if (url.scheme not in ("http", "https") or not url.hostname or
+                url.username or url.password or url.query or url.fragment):
+            raise ValueError("Use a plain HTTP(S) OpenObserve API base URL without credentials or query")
+        return value.rstrip("/")
+
+    @field_validator("organization")
+    @classmethod
+    def validate_organization(cls, value: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", value):
+            raise ValueError("Invalid OpenObserve organization identifier")
+        return value
 
 
 class OpenObserveToolset(Toolset):
@@ -69,7 +87,7 @@ class OpenObserveToolset(Toolset):
             tools=[],
             tags=[ToolsetTag.CORE],
         )
-        self.tools = [OpenObserveListStreams(self), OpenObserveSearchLogs(self)]
+        self.tools = [OpenObserveListStreams(self), OpenObserveSearchLogs(self), OpenObserveFindTrace(self)]
 
     @property
     def openobserve_config(self) -> OpenObserveConfig:
@@ -111,7 +129,10 @@ class OpenObserveToolset(Toolset):
             json=json_body,
             timeout=timeout or cfg.timeout_seconds,
             verify=cfg.verify_ssl,
+            allow_redirects=False,  # Never forward a service token to a redirect target.
         )
+        if 300 <= response.status_code < 400:
+            raise ValueError('OpenObserve API returned an unexpected redirect')
         response.raise_for_status()
         value = response.json()
         if not isinstance(value, dict):
@@ -227,6 +248,8 @@ class OpenObserveSearchLogs(_BaseOpenObserveTool):
             end_time = int(params["end_time"])
             if start_time <= 0 or end_time <= 0 or end_time <= start_time:
                 raise ValueError("end_time must be greater than start_time")
+            if end_time - start_time > self._toolset.openobserve_config.max_window_seconds * 1_000_000:
+                raise ValueError("Search time range exceeds the configured limit")
             requested_size = int(params.get("size") or 50)
             if requested_size < 1:
                 raise ValueError("size must be positive")
@@ -270,3 +293,63 @@ class OpenObserveSearchLogs(_BaseOpenObserveTool):
             )
         except Exception as exc:
             return self._error(params, "log search", exc)
+
+
+class OpenObserveFindTrace(_BaseOpenObserveTool):
+    """Investigate a trace ID in one explicitly named log stream."""
+
+    def __init__(self, toolset: OpenObserveToolset):
+        super().__init__(
+            toolset=toolset,
+            name="openobserve_find_trace",
+            description=(
+                "Find logs for an explicit trace_id in one OpenObserve log stream. "
+                "Use this to correlate frontend errors with backend requests."
+            ),
+            parameters={
+                "stream": ToolParameter(
+                    description="Exact log stream name returned by the list-streams tool",
+                    type="string",
+                    required=True,
+                ),
+                "trace_id": ToolParameter(
+                    description="W3C 32-hex-digit trace ID",
+                    type="string",
+                    required=True,
+                ),
+                "start_time": ToolParameter(
+                    description="Start time (Unix microseconds)",
+                    type="integer",
+                    required=True,
+                ),
+                "end_time": ToolParameter(
+                    description="End time (Unix microseconds)",
+                    type="integer",
+                    required=True,
+                ),
+            },
+        )
+
+    def _invoke(self, params: dict, context: ToolInvokeContext) -> StructuredToolResult:
+        try:
+            stream = str(params["stream"])
+            trace_id = str(params["trace_id"])
+            if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", stream):
+                raise ValueError("Invalid stream name")
+            if not re.fullmatch(r"[a-fA-F0-9]{32}", trace_id):
+                raise ValueError("trace_id must be 32 hexadecimal characters")
+            sql = (
+                f'SELECT * FROM "{stream}" WHERE trace_id = '
+                f"'{trace_id.lower()}' ORDER BY _timestamp DESC"
+            )
+            return OpenObserveSearchLogs(self._toolset)._invoke(
+                {
+                    "sql": sql,
+                    "start_time": params["start_time"],
+                    "end_time": params["end_time"],
+                    "size": min(self._toolset.openobserve_config.max_rows, 100),
+                },
+                context,
+            )
+        except (ValueError, KeyError, TypeError) as exc:
+            return self._error(params, "trace lookup", exc)
