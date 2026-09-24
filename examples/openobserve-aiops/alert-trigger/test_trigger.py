@@ -87,6 +87,37 @@ def test_duplicate_key_is_suppressed_until_ttl_expires(monkeypatch):
     assert trigger.remember_alert(key)
 
 
+def test_trace_alert_dedupe_ignores_volatile_time_and_count():
+    trace_id = "a" * 32
+    first = trigger.alert_key(
+        "order-500", [trace_id],
+        '{"err_count": 1, "alert_trigger_time_str": "2026-09-25T10:00:00+00:00"}',
+    )
+    repeated = trigger.alert_key(
+        "order-500", [trace_id],
+        '{"err_count": 4, "alert_trigger_time_str": "2026-09-25T10:01:00+00:00"}',
+    )
+    different_trace = trigger.alert_key("order-500", ["b" * 32], "{}")
+
+    assert repeated == first
+    assert different_trace != first
+
+
+def test_alert_without_trace_ignores_trigger_time_but_keeps_count():
+    first = trigger.alert_key(
+        "service-errors", [],
+        '{"err_count": 2, "alert_trigger_time_str": "2026-09-25T10:00:00+00:00"}',
+    )
+    repeated = trigger.alert_key(
+        "service-errors", [],
+        '{"err_count": 2, "alert_trigger_time_str": "2026-09-25T10:01:00+00:00"}',
+    )
+    higher_count = trigger.alert_key("service-errors", [], '{"err_count": 5}')
+
+    assert repeated == first
+    assert higher_count != first
+
+
 def test_webhook_requires_token_and_returns_task_id(monkeypatch, capsys):
     monkeypatch.setattr(trigger, "WEBHOOK_TOKEN", "demo-token")
     monkeypatch.setattr(trigger, "investigate", lambda *_: "diagnosis with evidence")

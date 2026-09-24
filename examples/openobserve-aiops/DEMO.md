@@ -103,7 +103,7 @@ ALERT_WEBHOOK_TOKEN='本地生成的随机值' poetry run python examples/openob
 OpenObserve Webhook Destination 和接收器必须使用同一个本地随机 token；不要将其写入仓库或 `.env`。
 接收器拒绝缺少/错误 token、
 无效 JSON 和未显式放在 `trace_id` 字段的值；摘要只保留数字计数与合法 ISO 时间，并把告警名/元数据视为不可信输入；
-同一告警 5 分钟内去重，最多并发启动 2 次调查。
+同一 Trace 告警 5 分钟内按告警名和 Trace ID 去重，不受触发时间或计数变化影响；无 Trace 告警按告警名和计数去重，最多并发启动 2 次调查。
 任务状态只保存在进程内，进程重启会丢失；这不是生产任务队列或事故中心。
 
 ## HolmesGPT 侧配置

@@ -69,7 +69,8 @@
 ## 4. P2：后续扩展
 
 - [ ] 建立不少于 20 个已知根因的可复现故障案例，测评检索覆盖率、诊断质量和误处置率。
-- [ ] Keep 告警降噪或自定义相似故障聚类；跨多个服务的共同根因分析。
+- [x] 本机接收器 5 分钟进程内去重：带 Trace 告警按告警名和 Trace ID 做幂等键，无 Trace 告警排除触发时间但保留计数差异（9 项接收器测试通过）。
+- [ ] Keep 集成或相似故障聚类；跨多个服务的共同根因分析。
 - [ ] 审批后可执行的运维动作模板库及验证失败回退策略。
 
 ## 5. 首个演示场景与验收
@@ -115,12 +116,13 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [ ] 当前触发验证用 `/bin/echo` 替代 Holmes CLI；真实 Holmes 安装、OpenObserve 只读凭据与真实调查结果未验证。
 - [ ] 调查录像、持久化事故状态机、生产审批和处置执行器仍未完成；其中数据库 schema/迁移需先获得用户授权。
 
-**最近验证（2026-09-25）：** 订单服务 `npm test`（11 passed）、`npm run build`、告警接收器 pytest（7 passed）、事故流程 pytest（12 passed）、OpenObserve Toolset 定向 pytest（56 passed，使用 `--no-cov`；不加参数时这组子集触发全仓覆盖率门槛，15.31% 未达标）、Compose 配置检查和 `git diff --check` 均通过。真实浏览器点击订单得到 HTTP 500；OpenObserve 的 `app_logs`、`frontend_errors` 和 Trace 均命中同一 Trace ID。Docker 中用 `RELEASE_VERSION=v1.0.1` 注入 HTTP 500，再发送签名发布事件；OpenObserve 查询同时命中错误记录和发布事件，且 release 版本一致；无签名请求返回 401。SQL 告警实际触发本机接收器。真实 Holmes 调查仍未运行，当前回放以 `/bin/echo` 替代 Holmes CLI。
+**最近验证（2026-09-25）：** 订单服务 `npm test`（11 passed）、`npm run build`、告警接收器 pytest（9 passed）、事故流程 pytest（12 passed）、OpenObserve Toolset 定向 pytest（56 passed，使用 `--no-cov`；不加参数时这组子集触发全仓覆盖率门槛，15.31% 未达标）、Compose 配置检查和 `git diff --check` 均通过。真实浏览器点击订单得到 HTTP 500；OpenObserve 的 `app_logs`、`frontend_errors` 和 Trace 均命中同一 Trace ID。Docker 中用 `RELEASE_VERSION=v1.0.1` 注入 HTTP 500，再发送签名发布事件；OpenObserve 查询同时命中错误记录和发布事件，且 release 版本一致；无签名请求返回 401。SQL 告警实际触发本机接收器。真实 Holmes 调查仍未运行，当前回放以 `/bin/echo` 替代 Holmes CLI。
 
 ## 2026-09-25 增量：事故原型和告警输入边界
 
 - [x] 事故内存原型记录 owner、severity、idempotency key、重复告警事件、审批决策、证据/假设分类及恢复时间；证据 URL 会剔除片段并脱敏常见凭据查询参数；复盘草稿明确区分已验证内容与待补字段；12 项流程测试通过。
-- [x] Webhook 仅把数值计数和合法 ISO 时间作为摘要交给 Holmes，明确告警名/元数据为不可信数据，不把 CLI stderr 写入任务日志；7 项测试通过。
+- [x] Webhook 仅把数值计数和合法 ISO 时间作为摘要交给 Holmes，明确告警名/元数据为不可信数据，不把 CLI stderr 写入任务日志；9 项测试通过。
+- [x] 5 分钟去重身份不受 Trace 告警的计数/触发时间变化影响；无 Trace 告警仅忽略触发时间，计数仍影响身份。
 - [x] 发布事件入口校验原始请求体 HMAC-SHA256，拒绝缺少/错误签名、未知字段不入库、限制文件数和字段长度；实际演示事件按 release/commit 在 OpenObserve 命中。
 - [x] 在 loopback 绑定的本机接收器上实测 Docker 网络 Webhook 返回 HTTP 202，`/bin/echo` 完成调度并保留 Trace ID。
 - [x] 修复 `GET /monitoring.js` 静态 SDK 路由；真实浏览器产生 HTTP 500 后，本机 OpenObserve 三种数据均以同一 Trace ID 命中。

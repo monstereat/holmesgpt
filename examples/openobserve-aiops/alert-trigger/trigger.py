@@ -89,7 +89,18 @@ def parse_alert_payload(body: str) -> tuple[str, list[str], str]:
 
 
 def alert_key(alert_name: str, trace_ids: list[str], summary: str) -> str:
-    material = json.dumps([alert_name, trace_ids, summary], separators=(",", ":"))
+    try:
+        summary_values = json.loads(summary)
+    except json.JSONDecodeError:
+        summary_values = {}
+    if not isinstance(summary_values, dict):
+        summary_values = {}
+    stable_values = {
+        key: value for key, value in summary_values.items()
+        if key != "alert_trigger_time_str"
+    }
+    identity = [alert_name, trace_ids] if trace_ids else [alert_name, stable_values]
+    material = json.dumps(identity, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
