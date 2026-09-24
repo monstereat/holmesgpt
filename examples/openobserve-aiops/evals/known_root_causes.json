@@ -1,0 +1,222 @@
+[
+  {
+    "id": "order-inventory-negative-stock",
+    "alert": "OrderCreateFailure",
+    "service": "order-service",
+    "symptom": "POST /orders returns HTTP 500 after inventory reservation.",
+    "evidence": ["Trace 6b2d4f8a1c3e5d7f: inventory.reserve returned 409 INSUFFICIENT_STOCK; order.persist was not called.", "Release v1.0.1 changed inventory reservation from a pre-check to an atomic reserve call."],
+    "root_cause": "The order service maps an expected inventory reservation conflict to an unhandled server error.",
+    "expected_findings": ["Inventory reservation returned 409", "Order persistence was not reached", "The error mapping changed in v1.0.1"],
+    "unsupported_claims": ["An order was persisted", "Inventory data is corrupted", "All customers are affected"],
+    "safe_next_step": "Review the conflict-to-HTTP mapping and confirm the intended client response before changing production behavior."
+  },
+  {
+    "id": "order-database-pool-exhaustion",
+    "alert": "OrderApiLatencyP99",
+    "service": "order-service",
+    "symptom": "POST /orders latency rises and requests return HTTP 500.",
+    "evidence": ["Trace 7c3e5a9b2d4f6a8c: db.acquire waited 5000 ms and timed out.", "Database reports 20 active connections, equal to configured pool maximum; no database errors are recorded."],
+    "root_cause": "The application's database connection pool is exhausted and acquisition times out.",
+    "expected_findings": ["Connection acquisition timed out", "Pool is at its configured maximum", "Evidence does not show database unavailability"],
+    "unsupported_claims": ["The database is down", "A database server failure occurred", "Data was lost"],
+    "safe_next_step": "Inspect connection checkout duration and release paths, then evaluate pool sizing against database limits."
+  },
+  {
+    "id": "order-database-deploy-mismatch",
+    "alert": "OrderApiErrorRate",
+    "service": "order-service",
+    "symptom": "Newly deployed instances return HTTP 500 on order writes.",
+    "evidence": ["Trace 8d4f6a0c3e5b7d9f: INSERT failed with column 'delivery_window' does not exist.", "Release v1.2.0 added delivery_window to the ORM model; database migration event is absent in the release window."],
+    "root_cause": "Application code was deployed before the schema change that adds delivery_window.",
+    "expected_findings": ["The database rejected a missing column", "Application release expects delivery_window", "No migration event was found in the observed window"],
+    "unsupported_claims": ["The migration definitely failed", "Existing rows were altered", "Every database is affected"],
+    "safe_next_step": "Verify migration status and deployment ordering with the database owner before applying a schema change."
+  },
+  {
+    "id": "order-upstream-payment-timeout",
+    "alert": "OrderApiErrorRate",
+    "service": "order-service",
+    "symptom": "Checkout requests fail after approximately three seconds.",
+    "evidence": ["Trace 9e5b7d1f4a6c8e0b: payment.authorize ended with upstream timeout after 3000 ms.", "The same trace shows inventory.reserve completed in 42 ms and order.persist was not reached."],
+    "root_cause": "The payment authorization dependency timed out before order persistence.",
+    "expected_findings": ["Payment authorization timed out", "Inventory reservation succeeded", "Order persistence was not reached"],
+    "unsupported_claims": ["Payment was captured", "The payment provider is globally down", "The order exists"],
+    "safe_next_step": "Check the payment provider's status and retry policy; verify idempotency before retrying authorization."
+  },
+  {
+    "id": "order-dns-resolution-failure",
+    "alert": "OrderApiErrorRate",
+    "service": "order-service",
+    "symptom": "Requests fail before connecting to the payment dependency.",
+    "evidence": ["Trace a06c8e2b5d7f9a1c: payment client raised EAI_AGAIN for payments.internal.", "No TCP connection or TLS handshake span exists for that dependency."],
+    "root_cause": "The runtime could not resolve the payment dependency hostname.",
+    "expected_findings": ["DNS resolution returned EAI_AGAIN", "Failure happened before connection establishment"],
+    "unsupported_claims": ["The payment API returned an HTTP error", "TLS certificates are invalid", "The dependency is intentionally offline"],
+    "safe_next_step": "Check resolver health and service discovery for the affected runtime before restarting workloads."
+  },
+  {
+    "id": "order-tls-certificate-expired",
+    "alert": "OrderApiErrorRate",
+    "service": "order-service",
+    "symptom": "Outbound payment requests fail during TLS setup.",
+    "evidence": ["Trace b17d9f3c6e8a0b2d: TLS handshake failed with certificate has expired.", "DNS resolution and TCP connection to payments.internal succeeded."],
+    "root_cause": "The certificate presented by the payment endpoint was expired at connection time.",
+    "expected_findings": ["TLS handshake reported an expired certificate", "DNS and TCP connection succeeded"],
+    "unsupported_claims": ["The application trust store is corrupt", "Credentials were rejected", "The certificate belongs to a specific owner"],
+    "safe_next_step": "Verify the presented certificate chain and coordinate renewal with its owner."
+  },
+  {
+    "id": "order-redis-cache-outage",
+    "alert": "OrderApiErrorRate",
+    "service": "order-service",
+    "symptom": "Order reads fail while the primary database remains responsive.",
+    "evidence": ["Trace c28e0a4d7f9b1c3e: cache.get failed with ECONNREFUSED at redis.internal:6379.", "The health query to the primary database completed successfully in 18 ms."],
+    "root_cause": "The order service cannot connect to its Redis cache endpoint.",
+    "expected_findings": ["Redis connection was refused", "Database health query succeeded", "The evidence isolates the observed failure to cache access"],
+    "unsupported_claims": ["Redis data was lost", "The primary database is unhealthy", "All cache clients are down"],
+    "safe_next_step": "Check Redis service health, endpoint routing, and recent configuration changes."
+  },
+  {
+    "id": "order-queue-consumer-crashloop",
+    "alert": "OrderFulfillmentBacklog",
+    "service": "fulfillment-worker",
+    "symptom": "Queued fulfillment jobs increase while completion rate drops to zero.",
+    "evidence": ["Worker log: process exited with code 1 after deserialization error for message schema version 4.", "Queue depth increased from 12 to 87 in ten minutes; no successful completion event appears in that interval."],
+    "root_cause": "The worker cannot deserialize the newly observed message schema and exits.",
+    "expected_findings": ["Schema version 4 deserialization failed", "Worker exited with code 1", "Queue backlog grew during the interval"],
+    "unsupported_claims": ["Messages were deleted", "All queued jobs are permanently unrecoverable", "A producer deployment caused it without release evidence"],
+    "safe_next_step": "Compare producer and consumer schema compatibility; preserve queued messages while investigating."
+  },
+  {
+    "id": "order-queue-publish-rejected",
+    "alert": "OrderEventPublishFailure",
+    "service": "order-service",
+    "symptom": "Order creation fails after database commit when publishing an event.",
+    "evidence": ["Trace d39f1b5e8a0c2d4f: order.persist succeeded; event.publish returned 403 ACCESS_REFUSED.", "Broker response identifies exchange orders.v2 and the authenticated principal lacks write permission."],
+    "root_cause": "The broker denied the application's publish request because the principal lacks write permission on orders.v2.",
+    "expected_findings": ["Order persistence succeeded", "Publish was denied with 403", "Broker identifies a missing write permission"],
+    "unsupported_claims": ["The order transaction rolled back", "The broker is unavailable", "The user should receive a retry without checking duplicate handling"],
+    "safe_next_step": "Have the broker owner review the principal's least-privilege binding and reconcile the committed order before retrying."
+  },
+  {
+    "id": "order-rate-limit-provider",
+    "alert": "PaymentAuthorizationFailure",
+    "service": "order-service",
+    "symptom": "Payment authorization calls receive a burst of upstream 429 responses.",
+    "evidence": ["Trace e4a02c6f9b1d3e5a: payment.authorize returned HTTP 429 with Retry-After: 30.", "Requests were sent at 45 per second; configured client limit is 50 per second."],
+    "root_cause": "The upstream payment provider rate-limited requests under its own quota policy.",
+    "expected_findings": ["Provider returned HTTP 429 and Retry-After 30", "The trace does not identify an application-side 50-per-second limit breach"],
+    "unsupported_claims": ["The provider quota is exactly 40 requests per second", "Payments were declined by card issuers", "Retrying immediately is safe"],
+    "safe_next_step": "Honor Retry-After and confirm the provider quota and idempotent retry behavior."
+  },
+  {
+    "id": "order-secret-rotation-stale-client",
+    "alert": "PaymentAuthorizationFailure",
+    "service": "order-service",
+    "symptom": "Payment requests begin returning HTTP 401 after credential rotation.",
+    "evidence": ["Trace f5b13d7a0c2e4f6b: payment.authorize returned 401 INVALID_API_KEY.", "Secret rotation event completed at 10:02 UTC; failing process reports credential version v17, while the secret store reports current version v18."],
+    "root_cause": "The running process is using a stale payment credential after the secret store rotated to v18.",
+    "expected_findings": ["Provider rejected the credential", "Runtime uses v17 while store current version is v18", "Rotation preceded the failure"],
+    "unsupported_claims": ["The new credential is invalid", "The secret value was exposed", "All service instances use v17"],
+    "safe_next_step": "Verify secret refresh behavior and rollout status without printing credential values."
+  },
+  {
+    "id": "order-disk-full-log-volume",
+    "alert": "OrderServiceWriteFailure",
+    "service": "order-service",
+    "symptom": "Requests fail when the service writes temporary export files.",
+    "evidence": ["Trace 06c24e8b1d3f5a7c: write /tmp/order-export.tmp returned ENOSPC.", "Container filesystem usage is 100%; persistent database storage reports 61% usage."],
+    "root_cause": "The container's writable filesystem is full, preventing temporary file creation.",
+    "expected_findings": ["Temporary file write returned ENOSPC", "Container filesystem is full", "Database storage is not full in the supplied evidence"],
+    "unsupported_claims": ["Database disk is full", "Order records were corrupted", "Deleting arbitrary files is safe"],
+    "safe_next_step": "Identify safe temporary-file cleanup or capacity remediation with the service owner; do not delete unknown files."
+  },
+  {
+    "id": "order-memory-oom-kill",
+    "alert": "OrderServiceRestartRate",
+    "service": "order-service",
+    "symptom": "The service restarts during large order report generation.",
+    "evidence": ["Runtime event: container terminated with reason OOMKilled, exit code 137.", "Memory usage reached the 512Mi container limit during report.render; CPU remained below its limit."],
+    "root_cause": "Report generation reached the container memory limit and the runtime killed the process.",
+    "expected_findings": ["Container was OOMKilled with exit code 137", "Memory reached 512Mi during report.render", "CPU limit was not reached in the supplied sample"],
+    "unsupported_claims": ["A memory leak is proven", "The node ran out of memory", "Increasing the limit alone will fix the root cause"],
+    "safe_next_step": "Profile report memory use and compare workload size with configured resource limits."
+  },
+  {
+    "id": "order-cpu-throttling",
+    "alert": "OrderApiLatencyP99",
+    "service": "order-service",
+    "symptom": "Request latency rises while the service remains available.",
+    "evidence": ["Trace 17d35f9a2c4e6b8d: request spent 2.4 s in local JSON serialization; database span took 21 ms.", "Container CPU throttling increased to 72% of periods; CPU limit is 500m."],
+    "root_cause": "CPU throttling is consistent with the prolonged local serialization span under the configured CPU limit.",
+    "expected_findings": ["Long time is in local serialization, not the database span", "CPU throttling is elevated", "Evidence supports correlation, not a proven code-level cause"],
+    "unsupported_claims": ["The database caused the latency", "A specific serialization bug is proven", "All requests are affected"],
+    "safe_next_step": "Profile serialization CPU cost and compare representative payload sizes before changing limits or code."
+  },
+  {
+    "id": "order-feature-flag-null-config",
+    "alert": "OrderApiErrorRate",
+    "service": "order-service",
+    "symptom": "Only requests taking the new discount path return HTTP 500.",
+    "evidence": ["Trace 28e46a0b3d5f7c9a: discount.calculate raised TypeError because discount.rules was null.", "Feature flag new-discount-flow is enabled for 10% of requests; control-path traces succeed."],
+    "root_cause": "The enabled discount path receives a null rules configuration and raises a TypeError.",
+    "expected_findings": ["Null discount.rules caused the observed TypeError", "Failure is associated with the new-discount-flow path", "Control traces succeeded in the supplied sample"],
+    "unsupported_claims": ["The feature flag rollout caused every failure", "Discounts were charged incorrectly", "The configuration is null for all tenants"],
+    "safe_next_step": "Validate the flag-scoped configuration and inspect the affected cohort before changing flag exposure."
+  },
+  {
+    "id": "order-middleware-header-case",
+    "alert": "OrderApiAuthFailure",
+    "service": "order-service",
+    "symptom": "Authenticated requests lose tenant context behind the new gateway.",
+    "evidence": ["Trace 39f57b1c4e6a8d0f: gateway forwarded X-Tenant-ID; middleware read x-tenant-id from a case-sensitive custom map and returned missing tenant.", "Direct requests bypassing the gateway include the lowercase key and succeed."],
+    "root_cause": "Middleware tenant-header lookup is case-sensitive while the gateway forwards a differently cased header name.",
+    "expected_findings": ["The forwarded header casing differs from the lookup key", "The middleware reports missing tenant", "Direct lowercase-header requests succeed in the sample"],
+    "unsupported_claims": ["The identity provider rejected the user", "Tenant data leaked across requests", "The gateway dropped the header"],
+    "safe_next_step": "Review case-insensitive header handling and add a regression test for gateway-forwarded requests."
+  },
+  {
+    "id": "order-cache-stampede",
+    "alert": "OrderApiLatencyP99",
+    "service": "order-service",
+    "symptom": "Product lookup load and latency spike after a cache key expires.",
+    "evidence": ["Trace 4a06c82d5f7b9e1a: 184 concurrent requests for product:SKU-42 all missed cache within 100 ms.", "Database query count for that key rose from 1 to 184; individual queries completed in 180-210 ms."],
+    "root_cause": "Concurrent cache misses for the same expired key caused a burst of duplicate database reads.",
+    "expected_findings": ["184 requests missed the same key concurrently", "Database reads increased to 184 for that key", "The supplied evidence shows elevated load, not database failure"],
+    "unsupported_claims": ["The cache cluster is down", "Database records are inconsistent", "A lock implementation is already deployed"],
+    "safe_next_step": "Assess request coalescing or stale-while-revalidate options and validate cache consistency requirements."
+  },
+  {
+    "id": "order-clock-skew-signature",
+    "alert": "PaymentAuthorizationFailure",
+    "service": "order-service",
+    "symptom": "Signed payment requests are rejected although the key identifier is accepted.",
+    "evidence": ["Trace 5b17d93e6a8c0f2d: provider returned 401 SIGNATURE_EXPIRED.", "Runtime clock is 94 seconds ahead of the time source; provider allows 30 seconds of clock skew."],
+    "root_cause": "Runtime clock skew exceeds the provider's signature validity tolerance.",
+    "expected_findings": ["Provider rejected an expired signature", "Runtime skew is 94 seconds", "Provider tolerance is 30 seconds"],
+    "unsupported_claims": ["The signing key is wrong", "The provider outage is global", "A signature was forged"],
+    "safe_next_step": "Check time synchronization on affected runtimes and verify timestamps without exposing signature material."
+  },
+  {
+    "id": "order-retry-non-idempotent-side-effect",
+    "alert": "PaymentDuplicateAuthorization",
+    "service": "order-service",
+    "symptom": "Some payment attempts have duplicate authorization records after transient timeouts.",
+    "evidence": ["Trace 6c28e04f7a9b1d3e: first authorization timed out waiting for response; retry used a new idempotency key.", "Provider query shows two authorization IDs for the same order reference, both currently authorized."],
+    "root_cause": "The retry generated a new idempotency key after an ambiguous timeout, allowing a second authorization.",
+    "expected_findings": ["Initial result was ambiguous due to timeout", "Retry used a different idempotency key", "Provider returned two authorized records for the order reference"],
+    "unsupported_claims": ["Either authorization has been captured", "A refund was issued", "The provider created records without a client retry"],
+    "safe_next_step": "Stop automatic retries for this case and reconcile both authorization IDs with the payment owner."
+  },
+  {
+    "id": "order-release-regression",
+    "alert": "OrderApiErrorRate",
+    "service": "order-service",
+    "symptom": "HTTP 500 rate rises immediately after release v2.4.1.",
+    "evidence": ["Release event v2.4.1 at 14:02 UTC changed src/orders/mapper.ts.", "Trace 7d39f15b0a2c4e6f at 14:04 UTC: mapper.readAddress raised Cannot read properties of undefined; v2.4.0 traces use the previous mapper successfully."],
+    "root_cause": "The changed address mapper in v2.4.1 is associated with the observed undefined-value exception.",
+    "expected_findings": ["The exception occurs in mapper.readAddress", "The release changed the mapper shortly before the error", "The trace supports a release correlation"],
+    "unsupported_claims": ["The release is conclusively the only cause", "All v2.4.1 requests fail", "A rollback is approved"],
+    "safe_next_step": "Compare the changed mapper behavior with failing input and route any rollback through the release approval process."
+  }
+]
