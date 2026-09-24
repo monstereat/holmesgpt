@@ -24,7 +24,7 @@ import subprocess
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 LISTEN_PORT = int(os.environ.get("TRIGGER_PORT", "8081"))
@@ -36,9 +36,13 @@ MAX_TRACES = 3
 MAX_BODY_BYTES = 64_000
 MAX_ACTIVE_INVESTIGATIONS = 2
 DEDUP_SECONDS = 300
+MAX_RETAINED_TASKS = 1000
+TASK_RETENTION_SECONDS = 3600
 active_slots = threading.BoundedSemaphore(MAX_ACTIVE_INVESTIGATIONS)
 recent_alerts: dict[str, float] = {}
 recent_alerts_lock = threading.Lock()
+recent_tasks: dict[str, dict[str, object]] = {}
+recent_tasks_lock = threading.Lock()
 
 
 def parse_alert_payload(body: str) -> tuple[str, list[str], str]:
@@ -116,6 +120,66 @@ def remember_alert(key: str) -> bool:
             return False
         recent_alerts[key] = now
         return True
+
+
+def register_task(task_id: str, alert_name: str, trace_ids: list[str]) -> bool:
+    now = time.monotonic()
+    with recent_tasks_lock:
+        expired = [
+            key for key, task in recent_tasks.items()
+            if task["status"] in {"completed", "failed"}
+            and now - float(task["created_monotonic"]) > TASK_RETENTION_SECONDS
+        ]
+        for key in expired:
+            del recent_tasks[key]
+
+        if len(recent_tasks) >= MAX_RETAINED_TASKS:
+            completed = [
+                (key, float(task["created_monotonic"]))
+                for key, task in recent_tasks.items()
+                if task["status"] in {"completed", "failed"}
+            ]
+            if not completed:
+                return False
+            del recent_tasks[min(completed, key=lambda item: item[1])[0]]
+
+        recent_tasks[task_id] = {
+            "task_id": task_id,
+            "alert_name": alert_name,
+            "trace_ids": trace_ids.copy(),
+            "status": "queued",
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+            "completed_at": None,
+            "result": None,
+            "error": None,
+            "created_monotonic": now,
+        }
+        return True
+
+
+def update_task(task_id: str, **changes: object) -> None:
+    with recent_tasks_lock:
+        task = recent_tasks.get(task_id)
+        if task is not None:
+            task.update(changes)
+
+
+def get_task(task_id: str) -> dict[str, object] | None:
+    now = time.monotonic()
+    with recent_tasks_lock:
+        task = recent_tasks.get(task_id)
+        if task is None:
+            return None
+        if (
+            task["status"] in {"completed", "failed"}
+            and now - float(task["created_monotonic"]) > TASK_RETENTION_SECONDS
+        ):
+            del recent_tasks[task_id]
+            return None
+        return {
+            key: value for key, value in task.items()
+            if key != "created_monotonic"
+        }
 
 
 def investigate(alert_name: str, trace_ids: list[str], raw_summary: str) -> str:
@@ -196,6 +260,13 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         task_id = str(uuid.uuid4())
+        if not register_task(task_id, alert_name, trace_ids):
+            active_slots.release()
+            with recent_alerts_lock:
+                recent_alerts.pop(key, None)
+            self.send_response(429)
+            self.end_headers()
+            return
         threading.Thread(
             target=self._run_investigation,
             args=(task_id, key, alert_name, trace_ids, summary),
@@ -208,9 +279,14 @@ class Handler(BaseHTTPRequestHandler):
         trace_ids: list[str], summary: str,
     ) -> None:
         succeeded = False
+        update_task(task_id, status="running")
         try:
             result = investigate(alert_name, trace_ids, summary)
             succeeded = True
+            update_task(
+                task_id, status="completed", result=result,
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            )
             print(json.dumps({
                 "task_id": task_id,
                 "alert_name": alert_name,
@@ -218,6 +294,10 @@ class Handler(BaseHTTPRequestHandler):
                 "result": result,
             }, ensure_ascii=True), flush=True)
         except Exception as exc:  # noqa: BLE001
+            update_task(
+                task_id, status="failed", error=str(exc)[:500],
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            )
             print(json.dumps({
                 "task_id": task_id,
                 "alert_name": alert_name,
@@ -243,6 +323,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"ok")
+            return
+        match = re.fullmatch(r"/tasks/([0-9a-f-]{36})", self.path)
+        if match:
+            supplied_token = self.headers.get("X-Alert-Token", "")
+            if not WEBHOOK_TOKEN or not hmac.compare_digest(supplied_token, WEBHOOK_TOKEN):
+                self.send_response(401)
+                self.end_headers()
+                return
+            task = get_task(match.group(1))
+            if task is None:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self._respond(200, task)
             return
         self.send_response(404)
         self.end_headers()

@@ -122,6 +122,7 @@ def test_webhook_requires_token_and_returns_task_id(monkeypatch, capsys):
     monkeypatch.setattr(trigger, "WEBHOOK_TOKEN", "demo-token")
     monkeypatch.setattr(trigger, "investigate", lambda *_: "diagnosis with evidence")
     trigger.recent_alerts.clear()
+    trigger.recent_tasks.clear()
     done = threading.Event()
     original_run = trigger.Handler._run_investigation
 
@@ -156,6 +157,19 @@ def test_webhook_requires_token_and_returns_task_id(monkeypatch, capsys):
         assert result["task_id"]
         assert done.wait(2)
         assert "diagnosis with evidence" in capsys.readouterr().out
+
+        task_url = f"{url}tasks/{result['task_id']}"
+        with pytest.raises(HTTPError) as task_error:
+            urlopen(task_url)
+        assert task_error.value.code == 401
+
+        task_request = Request(task_url, headers={"X-Alert-Token": "demo-token"})
+        with urlopen(task_request) as task_response:
+            task = json.load(task_response)
+        assert task["task_id"] == result["task_id"]
+        assert task["status"] == "completed"
+        assert task["trace_ids"] == ["c" * 32]
+        assert task["result"] == "diagnosis with evidence"
     finally:
         server.shutdown()
         server.server_close()
