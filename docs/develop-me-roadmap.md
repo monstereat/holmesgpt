@@ -59,10 +59,10 @@
 - [ ] **持久化事故中心：** PostgreSQL 持久化、服务端身份/RBAC、重启恢复、并发幂等与审计查询（schema/migration 需先获得授权）。
 - [x] **内存 RCA 数据模型：** 已验证结论必须带 HTTPS 证据链接，未验证结论明确标为 assumption；原型只记录声明，不自动验证其真实性。
 - [ ] **真实 RCA 集成：** Holmes 输出逐项绑定 OpenObserve 日志/Trace、发布或 Runbook 来源；证据不足的结论保留为假设并可人工纠错。
-- [x] **复盘草稿原型：** 从已记录时间线和有证据结论生成复盘草稿；没有证据的根因、影响范围、恢复时间和长期改进项明确留空待人工补充（12 项流程测试通过）。
+- [x] **复盘草稿原型：** 从已记录时间线和有证据结论生成复盘；人工可补充影响范围和长期改进项，所需字段齐全时标记 `ready_for_review`；不自动签发复盘（13 项流程测试通过）。
 - [x] **内存审批原型：** Agent 只能提交白名单建议，审批经外部授权回调验证；原型不执行运维命令。
 - [ ] **生产受控处置：** 独立执行器须重新校验用户身份、授权、动作白名单、幂等键、取消和审计；高风险生产回滚需有验证失败回退。
-- [ ] **完整复盘报告：** 根因、影响范围、发现与恢复时间、处理步骤、长期改进项均需真实事件数据和人工复核；当前仅有内存态草稿原型。
+- [ ] **完整复盘报告：** 当前是内存原型，根因需真实 Holmes 证据，且仍需人工复核、持久化和正式签发。
 - [ ] **统一追踪：** 告警 ID / 调查任务 ID / Trace ID / 发布版本双向查询。
 - [x] **本机任务查询原型：** 告警响应返回 task ID；同一 token 认证的 `GET /tasks/{task_id}` 返回状态、Trace ID 和结果，内存最多保留 1000 条/1 小时。未覆盖告警 ID、发布检索双向接口，且无持久化。
 - [x] **本地关联指纹：** 本地 `alert_id` 指纹可查询所关联 task IDs 与 Trace IDs，Webhook 重复响应复用该指纹；它不是 OpenObserve 原生告警 ID，且无发布关联和持久化。
@@ -118,11 +118,11 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [ ] 当前触发验证用 `/bin/echo` 替代 Holmes CLI；真实 Holmes 安装、OpenObserve 只读凭据与真实调查结果未验证。
 - [ ] 调查录像、持久化事故状态机、生产审批和处置执行器仍未完成；其中数据库 schema/迁移需先获得用户授权。
 
-**最近验证（2026-09-25）：** 订单服务 `npm test`（11 passed）、`npm run build`、告警接收器 pytest（9 passed）、事故流程 pytest（12 passed）、OpenObserve Toolset 定向 pytest（56 passed，使用 `--no-cov`；不加参数时这组子集触发全仓覆盖率门槛，15.31% 未达标）、Compose 配置检查和 `git diff --check` 均通过。真实浏览器点击订单得到 HTTP 500；OpenObserve 的 `app_logs`、`frontend_errors` 和 Trace 均命中同一 Trace ID。Docker 中用 `RELEASE_VERSION=v1.0.1` 注入 HTTP 500，再发送签名发布事件；OpenObserve 查询同时命中错误记录和发布事件，且 release 版本一致；无签名请求返回 401。SQL 告警实际触发本机接收器。真实 Holmes 调查仍未运行，当前回放以 `/bin/echo` 替代 Holmes CLI。
+**最近验证（2026-09-25）：** 订单服务 `npm test`（11 passed）、`npm run build`、告警接收器 pytest（9 passed）、事故流程 pytest（13 passed）、OpenObserve Toolset 定向 pytest（56 passed，使用 `--no-cov`；不加参数时这组子集触发全仓覆盖率门槛，15.31% 未达标）、Compose 配置检查和 `git diff --check` 均通过。真实浏览器点击订单得到 HTTP 500；OpenObserve 的 `app_logs`、`frontend_errors` 和 Trace 均命中同一 Trace ID。Docker 中用 `RELEASE_VERSION=v1.0.1` 注入 HTTP 500，再发送签名发布事件；OpenObserve 查询同时命中错误记录和发布事件，且 release 版本一致；无签名请求返回 401。SQL 告警实际触发本机接收器。真实 Holmes 调查仍未运行，当前回放以 `/bin/echo` 替代 Holmes CLI。
 
 ## 2026-09-25 增量：事故原型和告警输入边界
 
-- [x] 事故内存原型记录 owner、severity、idempotency key、重复告警事件、审批决策、证据/假设分类及恢复时间；证据 URL 会剔除片段并脱敏常见凭据查询参数；复盘草稿明确区分已验证内容与待补字段；12 项流程测试通过。
+- [x] 事故内存原型记录 owner、severity、idempotency key、重复告警事件、审批决策、证据/假设分类及恢复时间；证据 URL 会剔除片段并脱敏常见凭据查询参数；复盘可录入影响范围和改进项，字段齐备时进入待复核；13 项流程测试通过。
 - [x] Webhook 仅把数值计数和合法 ISO 时间作为摘要交给 Holmes，明确告警名/元数据为不可信数据，不把 CLI stderr 写入任务日志；9 项测试通过。
 - [x] 5 分钟去重身份不受 Trace 告警的计数/触发时间变化影响；无 Trace 告警仅忽略触发时间，计数仍影响身份。
 - [x] 通过认证的进程内任务查询可按 task ID 查看调查状态与 Trace ID；完成结果有数量/时长上限，9 项测试通过。

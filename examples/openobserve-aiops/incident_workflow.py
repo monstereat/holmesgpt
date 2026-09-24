@@ -41,6 +41,9 @@ class Incident:
     approved_by: str | None = None
     created_at: str = field(default_factory=timestamp)
     resolved_at: str | None = None
+    impact_scope: str | None = None
+    long_term_improvements: list[str] = field(default_factory=list)
+    improvements_reviewed: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -197,6 +200,31 @@ class Incident:
             "verified_recovery" if successful else "verification_failed",
         )
 
+    def record_impact_scope(self, actor: str, scope: str) -> None:
+        if not isinstance(scope, str) or not scope.strip() or len(scope) > 1000:
+            raise ValueError("Impact scope must contain 1 to 1000 characters")
+        self.impact_scope = scope.strip()
+        self.events.append({
+            "time": timestamp(), "actor": actor, "from": self.status,
+            "to": self.status, "reason": "impact_scope_recorded",
+        })
+
+    def record_long_term_improvements(
+        self, actor: str, items: list[str],
+    ) -> None:
+        if not isinstance(items, list) or len(items) > 20 or any(
+            not isinstance(item, str) or not item.strip() or len(item) > 500
+            for item in items
+        ):
+            raise ValueError("Provide up to 20 improvement items of 1 to 500 characters")
+        self.long_term_improvements = list(dict.fromkeys(item.strip() for item in items))
+        self.improvements_reviewed = True
+        self.events.append({
+            "time": timestamp(), "actor": actor, "from": self.status,
+            "to": self.status, "reason": "improvements_reviewed",
+            "item_count": len(self.long_term_improvements),
+        })
+
     def redacted_report(self) -> dict:
         """Return state and sanitized evidence links, never raw logs."""
         return {
@@ -208,6 +236,9 @@ class Incident:
             "status": self.status,
             "created_at": self.created_at,
             "resolved_at": self.resolved_at,
+            "impact_scope": self.impact_scope,
+            "long_term_improvements": self.long_term_improvements.copy(),
+            "improvements_reviewed": self.improvements_reviewed,
             "evidence_links": self.evidence_links.copy(),
             "findings": [finding.copy() for finding in self.findings],
             "proposed_action": self.proposed_action,
@@ -241,26 +272,27 @@ class Incident:
             open_questions.append("Recovery time is not confirmed")
         if not process_steps:
             open_questions.append("Incident handling steps need review")
-        open_questions.extend((
-            "Impact scope needs operator input",
-            "Long-term improvement items need operator input",
-        ))
+        if self.impact_scope is None:
+            open_questions.append("Impact scope needs operator input")
+        if not self.improvements_reviewed:
+            open_questions.append("Long-term improvement items need operator input")
 
         return {
             "incident_id": self.incident_id,
             "service": self.service,
-            "status": "draft",
+            "status": "ready_for_review" if not open_questions else "draft",
             "root_cause": verified_findings[0]["claim"] if verified_findings else None,
             "root_cause_evidence": [
                 link for finding in verified_findings
                 for link in finding["evidence_links"]
             ],
-            "impact_scope": None,
+            "impact_scope": self.impact_scope,
             "detected_at": self.created_at,
             "recovered_at": self.resolved_at,
             "time_to_recovery_seconds": recovery_seconds,
             "handling_steps": process_steps,
-            "long_term_improvements": [],
+            "long_term_improvements": self.long_term_improvements.copy(),
+            "improvements_reviewed": self.improvements_reviewed,
             "open_questions": open_questions,
         }
 

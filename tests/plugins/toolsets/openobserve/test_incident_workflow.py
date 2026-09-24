@@ -225,3 +225,32 @@ def test_retrospective_draft_uses_only_verified_root_cause_and_recorded_timeline
         "verified_recovery",
     ]
     assert "Impact scope needs operator input" in report["open_questions"]
+
+    incident.record_impact_scope(
+        "oncall-lead", "Order creation failed for requests routed to inventory lookup."
+    )
+    incident.record_long_term_improvements(
+        "oncall-lead", ["Add inventory dependency health checks", "Add release canary gate"]
+    )
+    completed = incident.retrospective_draft()
+    assert completed["status"] == "ready_for_review"
+    assert completed["impact_scope"].startswith("Order creation failed")
+    assert completed["long_term_improvements"] == [
+        "Add inventory dependency health checks", "Add release canary gate",
+    ]
+    assert completed["open_questions"] == []
+
+
+def test_retrospective_context_is_bounded_and_improvement_review_can_be_empty(incident):
+    with pytest.raises(ValueError, match="Impact scope"):
+        incident.record_impact_scope("oncall-lead", " ")
+    with pytest.raises(ValueError, match="improvement items"):
+        incident.record_long_term_improvements(
+            "oncall-lead", ["valid", "x" * 501],
+        )
+
+    incident.record_impact_scope("oncall-lead", "No customer impact observed.")
+    incident.record_long_term_improvements("oncall-lead", [])
+
+    assert incident.improvements_reviewed is True
+    assert incident.long_term_improvements == []
