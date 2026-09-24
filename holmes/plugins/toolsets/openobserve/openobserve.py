@@ -141,6 +141,10 @@ class OpenObserveToolset(Toolset):
 
 
 class _BaseOpenObserveTool(Tool, ABC):
+    def get_parameterized_one_liner(self, params: Dict[str, Any]) -> str:
+        """Human-readable progress line required by the base Tool interface."""
+        return f"OpenObserve: {self.name}"
+
     def __init__(self, toolset: OpenObserveToolset, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._toolset = toolset
