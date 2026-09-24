@@ -1,7 +1,7 @@
 import json
 import re
 from abc import ABC
-from typing import Any, ClassVar, Dict, Optional, Tuple, Type
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type
 
 import requests  # type: ignore[import-untyped]
 from pydantic import Field, field_validator
@@ -47,6 +47,7 @@ class OpenObserveConfig(ToolsetConfig):
     verify_ssl: bool = Field(default=True, title="Verify SSL")
     timeout_seconds: int = Field(default=30, ge=1, le=120, title="Timeout Seconds")
     max_window_seconds: int = Field(default=86400, ge=1, le=604800)
+    allowed_streams: List[str] = Field(default_factory=list, description="Required for production: exact names of permitted log streams")
     max_rows: int = Field(
         default=200,
         ge=1,
@@ -63,6 +64,15 @@ class OpenObserveConfig(ToolsetConfig):
                 url.username or url.password or url.query or url.fragment):
             raise ValueError("Use a plain HTTP(S) OpenObserve API base URL without credentials or query")
         return value.rstrip("/")
+
+    @field_validator("allowed_streams")
+    @classmethod
+    def validate_stream_allowlist(cls, streams: List[str]) -> List[str]:
+        if len(streams) > 100 or any(
+            not re.fullmatch(r"[A-Za-z0-9_]{1,64}", name) for name in streams
+        ):
+            raise ValueError("Up to 100 simple OpenObserve stream names are allowed")
+        return streams
 
     @field_validator("organization")
     @classmethod
@@ -151,9 +161,13 @@ class _BaseOpenObserveTool(Tool, ABC):
 
     def _error(self, params: dict, operation: str, exc: Exception) -> StructuredToolResult:
         if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
-            detail = f"HTTP {exc.response.status_code}: {exc.response.text[:1000]}"
+            # OpenObserve may echo authorization headers or SQL literals in
+            # error bodies. Preserve status without forwarding the raw body.
+            detail = f"HTTP {exc.response.status_code} (upstream response redacted)"
         else:
             detail = str(exc)
+            if isinstance(exc, requests.exceptions.RequestException):
+                detail = type(exc).__name__ + " (upstream details redacted)"
         return StructuredToolResult(
             status=StructuredToolResultStatus.ERROR,
             error=f"OpenObserve {operation} failed. {detail}",
@@ -181,9 +195,14 @@ class OpenObserveListStreams(_BaseOpenObserveTool):
                 params={"fetchSchema": "true", "type": "logs"},
             )
             streams = []
+            allowed = set(self._toolset.openobserve_config.allowed_streams)
             for item in data.get("list", []):
                 if not isinstance(item, dict):
                     continue
+                if allowed and item.get("name") not in allowed:
+                    continue
+                if len(streams) >= 100:
+                    break
                 streams.append(
                     {
                         "name": item.get("name"),
@@ -245,9 +264,29 @@ class OpenObserveSearchLogs(_BaseOpenObserveTool):
             raise ValueError("Mutating or administrative SQL is not allowed")
         return candidate
 
+    @staticmethod
+    def validate_stream_scope(sql: str, allowlist: List[str]) -> None:
+        if not allowlist:
+            return  # Development-only. Production must configure allowed_streams.
+        # Fail closed: the strict mode permits one simple stream, not arbitrary
+        # CTEs, subqueries, UNIONs, comments, or JOINs. Rich queries require
+        # a real dialect-aware parser and database-side least-privilege access.
+        if re.search(r"--|/\\*|\\*/|\\b(with|union|join|intersect|except)\\b", sql, re.I):
+            raise ValueError("Complex SQL is not permitted by the stream allowlist")
+        matches = re.findall(
+            r'\\bfrom\\s+(?:"([A-Za-z0-9_]{1,64})"|([A-Za-z0-9_]{1,64}))\\b?',
+            sql, re.I,
+        )
+        if len(matches) != 1:
+            raise ValueError("Strict search must query exactly one named stream")
+        stream = matches[0][0] or matches[0][1]
+        if stream not in allowlist:
+            raise ValueError("Log stream is not in the configured allowlist")
+
     def _invoke(self, params: dict, context: ToolInvokeContext) -> StructuredToolResult:
         try:
             sql = self.validate_sql(str(params["sql"]))
+            self.validate_stream_scope(sql, self._toolset.openobserve_config.allowed_streams)
             start_time = int(params["start_time"])
             end_time = int(params["end_time"])
             if start_time <= 0 or end_time <= 0 or end_time <= start_time:
@@ -342,6 +381,9 @@ class OpenObserveFindTrace(_BaseOpenObserveTool):
                 raise ValueError("Invalid stream name")
             if not re.fullmatch(r"[a-fA-F0-9]{32}", trace_id):
                 raise ValueError("trace_id must be 32 hexadecimal characters")
+            allowed = self._toolset.openobserve_config.allowed_streams
+            if allowed and stream not in allowed:
+                raise ValueError("Log stream is not in the configured allowlist")
             sql = (
                 f'SELECT * FROM "{stream}" WHERE trace_id = '
                 f"'{trace_id.lower()}' ORDER BY _timestamp DESC"
