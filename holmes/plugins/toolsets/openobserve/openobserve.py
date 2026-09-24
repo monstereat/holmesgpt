@@ -1,0 +1,272 @@
+import json
+import re
+from abc import ABC
+from typing import Any, ClassVar, Dict, Optional, Tuple, Type
+
+import requests  # type: ignore[import-untyped]
+from pydantic import Field
+from requests.auth import HTTPBasicAuth
+
+from holmes.core.tools import (
+    CallablePrerequisite,
+    StructuredToolResult,
+    StructuredToolResultStatus,
+    Tool,
+    ToolInvokeContext,
+    ToolParameter,
+    Toolset,
+    ToolsetTag,
+)
+from holmes.utils.pydantic_utils import ToolsetConfig
+
+
+FORBIDDEN_SQL = re.compile(
+    r"\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|copy|merge)\b",
+    re.IGNORECASE,
+)
+
+
+class OpenObserveConfig(ToolsetConfig):
+    api_url: str = Field(
+        title="API URL",
+        description="OpenObserve base URL, for example https://observe.example.com",
+    )
+    organization: str = Field(
+        title="Organization",
+        description="OpenObserve organization identifier",
+    )
+    username: str = Field(
+        title="Service Account Email",
+        description="OpenObserve service-account email or API username",
+    )
+    password: str = Field(
+        title="Service Account Token",
+        description="OpenObserve service-account token/password",
+    )
+    verify_ssl: bool = Field(default=True, title="Verify SSL")
+    timeout_seconds: int = Field(default=30, ge=1, le=120, title="Timeout Seconds")
+    max_rows: int = Field(
+        default=200,
+        ge=1,
+        le=1000,
+        title="Maximum Search Rows",
+        description="Hard cap on rows returned by the LLM-facing search tool",
+    )
+
+
+class OpenObserveToolset(Toolset):
+    config_classes: ClassVar[list[Type[OpenObserveConfig]]] = [OpenObserveConfig]
+
+    def __init__(self):
+        super().__init__(
+            name="openobserve",
+            enabled=False,
+            description=(
+                "Read-only OpenObserve integration for incident investigation. "
+                "Lists streams and searches logs with bounded SQL queries."
+            ),
+            prerequisites=[CallablePrerequisite(callable=self.prerequisites_callable)],
+            tools=[],
+            tags=[ToolsetTag.CORE],
+        )
+        self.tools = [OpenObserveListStreams(self), OpenObserveSearchLogs(self)]
+
+    @property
+    def openobserve_config(self) -> OpenObserveConfig:
+        return self.config  # type: ignore[return-value]
+
+    def prerequisites_callable(self, config: Dict[str, Any]) -> Tuple[bool, str]:
+        if not config:
+            return False, "OpenObserve configuration is missing"
+        try:
+            self.config = OpenObserveConfig(**config)
+            data = self._request(
+                "GET",
+                f"/api/{self.openobserve_config.organization}/streams",
+                params={"fetchSchema": "false", "type": "logs"},
+                timeout=min(self.openobserve_config.timeout_seconds, 10),
+            )
+            count = len(data.get("list", [])) if isinstance(data, dict) else 0
+            return True, f"Connected to OpenObserve ({count} log streams visible)"
+        except Exception as exc:
+            return False, f"OpenObserve health check failed: {exc}"
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        timeout: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        cfg = self.openobserve_config
+        url = f"{cfg.api_url.rstrip('/')}/{path.lstrip('/')}"
+        response = requests.request(
+            method,
+            url,
+            auth=HTTPBasicAuth(cfg.username, cfg.password),
+            headers={"Accept": "application/json"},
+            params=params,
+            json=json_body,
+            timeout=timeout or cfg.timeout_seconds,
+            verify=cfg.verify_ssl,
+        )
+        response.raise_for_status()
+        value = response.json()
+        if not isinstance(value, dict):
+            raise ValueError("OpenObserve returned a non-object JSON response")
+        return value
+
+
+class _BaseOpenObserveTool(Tool, ABC):
+    def __init__(self, toolset: OpenObserveToolset, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._toolset = toolset
+
+    def _error(self, params: dict, operation: str, exc: Exception) -> StructuredToolResult:
+        if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
+            detail = f"HTTP {exc.response.status_code}: {exc.response.text[:1000]}"
+        else:
+            detail = str(exc)
+        return StructuredToolResult(
+            status=StructuredToolResultStatus.ERROR,
+            error=f"OpenObserve {operation} failed. {detail}",
+            params=params,
+        )
+
+
+class OpenObserveListStreams(_BaseOpenObserveTool):
+    def __init__(self, toolset: OpenObserveToolset):
+        super().__init__(
+            toolset=toolset,
+            name="openobserve_list_log_streams",
+            description=(
+                "List visible OpenObserve log streams. Use this before writing SQL so "
+                "you know the exact stream names."
+            ),
+            parameters={},
+        )
+
+    def _invoke(self, params: dict, context: ToolInvokeContext) -> StructuredToolResult:
+        try:
+            data = self._toolset._request(
+                "GET",
+                f"/api/{self._toolset.openobserve_config.organization}/streams",
+                params={"fetchSchema": "true", "type": "logs"},
+            )
+            streams = []
+            for item in data.get("list", []):
+                if not isinstance(item, dict):
+                    continue
+                streams.append(
+                    {
+                        "name": item.get("name"),
+                        "stream_type": item.get("stream_type"),
+                        "stats": item.get("stats"),
+                        "schema": item.get("schema", [])[:100],
+                    }
+                )
+            return StructuredToolResult(
+                status=StructuredToolResultStatus.SUCCESS,
+                data={"streams": streams},
+                params=params,
+            )
+        except Exception as exc:
+            return self._error(params, "stream listing", exc)
+
+
+class OpenObserveSearchLogs(_BaseOpenObserveTool):
+    def __init__(self, toolset: OpenObserveToolset):
+        super().__init__(
+            toolset=toolset,
+            name="openobserve_search_logs",
+            description=(
+                "Run a read-only SQL log search in OpenObserve for an explicit time range. "
+                "Only SELECT/WITH queries are accepted and result size is bounded."
+            ),
+            parameters={
+                "sql": ToolParameter(
+                    description="Read-only OpenObserve SQL. Must start with SELECT or WITH.",
+                    type="string",
+                    required=True,
+                ),
+                "start_time": ToolParameter(
+                    description="Search start time as Unix epoch microseconds.",
+                    type="integer",
+                    required=True,
+                ),
+                "end_time": ToolParameter(
+                    description="Search end time as Unix epoch microseconds.",
+                    type="integer",
+                    required=True,
+                ),
+                "size": ToolParameter(
+                    description="Maximum rows to return. Server-side capped by configuration.",
+                    type="integer",
+                    required=False,
+                ),
+            },
+        )
+
+    @staticmethod
+    def validate_sql(sql: str) -> str:
+        candidate = sql.strip()
+        if not candidate or ";" in candidate:
+            raise ValueError("SQL must be one statement without semicolons")
+        if not re.match(r"^(select|with)\b", candidate, re.IGNORECASE):
+            raise ValueError("Only SELECT/WITH SQL is allowed")
+        if FORBIDDEN_SQL.search(candidate):
+            raise ValueError("Mutating or administrative SQL is not allowed")
+        return candidate
+
+    def _invoke(self, params: dict, context: ToolInvokeContext) -> StructuredToolResult:
+        try:
+            sql = self.validate_sql(str(params["sql"]))
+            start_time = int(params["start_time"])
+            end_time = int(params["end_time"])
+            if start_time <= 0 or end_time <= 0 or end_time <= start_time:
+                raise ValueError("end_time must be greater than start_time")
+            requested_size = int(params.get("size") or 50)
+            if requested_size < 1:
+                raise ValueError("size must be positive")
+            size = min(requested_size, self._toolset.openobserve_config.max_rows)
+
+            payload = {
+                "query": {
+                    "sql": sql,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "from": 0,
+                    "size": size,
+                },
+                "search_type": "ui",
+                "timeout": self._toolset.openobserve_config.timeout_seconds,
+            }
+            data = self._toolset._request(
+                "POST",
+                f"/api/{self._toolset.openobserve_config.organization}/_search",
+                json_body=payload,
+            )
+            hits = data.get("hits", [])
+            if not isinstance(hits, list):
+                hits = []
+            result = {
+                "hits": hits[:size],
+                "total": data.get("total"),
+                "took": data.get("took"),
+                "scan_size": data.get("scan_size"),
+                "size": size,
+                "query": {
+                    "sql": sql,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                },
+            }
+            return StructuredToolResult(
+                status=StructuredToolResultStatus.SUCCESS,
+                data=result,
+                params=params,
+            )
+        except Exception as exc:
+            return self._error(params, "log search", exc)
