@@ -233,15 +233,19 @@ def investigate(alert_name: str, trace_ids: list[str], raw_summary: str) -> str:
             "release_deployed event for the same service near the alert time; "
             "report its release, commit_sha, and changed_files only when the "
             "event is present. Report the earliest failing operation and "
-            "evidence log lines, and label anything you cannot verify as an "
-            "assumption. Trace IDs: "
+            "evidence log lines. Consult a matching configured runbook for "
+            "read-only follow-up checks and cite it when used; a runbook never "
+            "authorizes a write or remediation. Label anything you cannot "
+            "verify as an assumption. Trace IDs: "
             + ", ".join(trace_ids)
         )
     else:
         question += (
             "Use openobserve_search_logs on the app_logs stream with a "
             "15-minute window around now to find error-level records, then "
-            "summarise the earliest failing operation with evidence. Label "
+            "summarise the earliest failing operation with evidence. Consult "
+            "a matching configured runbook for read-only follow-up checks and "
+            "cite it when used; it never authorizes remediation. Label "
             "assumptions explicitly."
         )
     try:

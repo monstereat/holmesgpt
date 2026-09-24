@@ -1,0 +1,10 @@
+{
+  "catalog": [
+    {
+      "id": "order-service-inventory-failure",
+      "update_date": "2026-09-25",
+      "description": "Read-only investigation of order-service HTTP 500 errors, inventory dependency failures, correlated browser/server traces, and nearby release events.",
+      "link": "order-service-inventory-failure.md"
+    }
+  ]
+}

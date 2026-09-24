@@ -139,7 +139,11 @@ toolsets:
       password: "{{ env.OPENOBSERVE_SERVICE_TOKEN }}"
       allowed_streams: ["app_logs", "frontend_errors"]
       max_rows: 100
+custom_runbook_catalogs:
+  - "/absolute/path/to/holmesgpt/examples/openobserve-aiops/runbooks/catalog.json"
 ```
+
+仓库提供只读订单故障调查手册 `examples/openobserve-aiops/runbooks/order-service-inventory-failure.md`；将上面的路径替换为本机仓库绝对路径。Runbook 只指导检索和证据整理，不包含可执行处置授权。
 
 `alert-trigger` 会以如下形式调用：`holmes ask "<告警上下文 + trace_id 调查指令>"`。
 
@@ -172,6 +176,7 @@ OPENOBSERVE_URL=http://localhost:5080 node dist/main.js
 
 - [x] demo 服务、极简 SDK、告警触发器、docker-compose 提交
 - [x] 本机 OpenObserve 验证（订单日志、前端错误、Trace 同一 trace_id；SQL 告警触发并传递 Trace ID）
+- [x] 增加 Holmes 自定义 Runbook Catalog 示例，覆盖同 Trace 日志、发布事件只读关联和证据/假设标注；真实 Holmes 加载和调查结果仍待验证
 - [x] 本地浏览器实际运行 SDK，HTTP 500 后订单日志、前端错误和 Trace 命中同一 trace_id
 - [x] 本地规范化发布 webhook 原型：HMAC-SHA256 校验，限量字段写入 `app_logs`，调查提示要求在告警时间附近查找发布事件；CI 平台真实接入仍待配置
 - [ ] 生产 OpenObserve 凭据/流权限验证

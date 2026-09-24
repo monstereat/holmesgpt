@@ -40,6 +40,7 @@ Do not store real service credentials in Git.
 - `incident_workflow.py` is a process-local reference model for ownership, severity, idempotency, evidence-versus-assumption findings, approval transitions, audit events, and a retrospective draft. Verified findings require HTTPS evidence links; evidence URL query credentials are redacted. Operators can fill in impact and improvement items; the report reaches `ready_for_review` only when required fields are present. It does not execute remediation or independently prove a claim.
 - The alert receiver and incident workflow are process-local prototypes. The receiver offers authenticated lookups linking a synthetic alert fingerprint, task IDs, and Trace IDs, but has no durable task/incident storage, restart recovery, or production approval enforcement.
 - The order-service accepts normalized release events at `/internal/releases` only when signed with a runtime `RELEASE_WEBHOOK_SECRET`; it writes bounded release metadata into `app_logs`. It is a local integration point, not a connected Git/CI webhook or durable release registry.
+- `runbooks/catalog.json` and `runbooks/order-service-inventory-failure.md` provide an optional Holmes custom runbook for read-only trace, release, and evidence correlation. Configure its absolute path with `custom_runbook_catalogs`; actual Holmes loading still requires a configured CLI and model credentials.
 - Real OpenObserve credentials, stream permissions, and end-to-end alert behavior still need validation in the target environment.
 
 ## Tests
