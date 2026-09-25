@@ -227,6 +227,12 @@ services:
         condition: service_healthy
       holmes-api:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "from worker import celery_app; import sys; sys.exit(0 if celery_app.control.ping(timeout=3) else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   incident-test:
     profiles: ["test"]

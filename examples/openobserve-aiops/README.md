@@ -58,7 +58,7 @@ curl -fsS http://127.0.0.1:8081/readyz
 curl -fsS http://127.0.0.1:8080/
 ```
 
-The incident API `/healthz` is liveness; `/readyz` checks PostgreSQL connectivity. Holmes `/healthz` is liveness; `/readyz` reflects model readiness and can fail when no model is configured. OpenObserve's image has no shell-based health probe, so its endpoint is checked from the host.
+The incident API `/healthz` is liveness; `/readyz` checks PostgreSQL connectivity. The incident worker health check requires a Celery ping response through Redis. Holmes `/healthz` is liveness; `/readyz` reflects model readiness and can fail when no model is configured. OpenObserve's image has no shell-based health probe, so its endpoint is checked from the host.
 
 ## Alert routing and end-to-end walkthrough
 
