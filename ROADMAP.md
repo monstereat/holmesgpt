@@ -26,7 +26,7 @@
 - T009：新增本机迁移 `0003_incident_retrospectives` 和按事故持久化的复盘 API/工作台表单；approver/admin 可保存影响、根因、恢复措施、行动项并标记审核，viewer/operator 只能读取。审核保存写入 audit timeline；隔离测试 42 passed，运行中的本机测试数据库已应用迁移，HTTP 登录/读取/越权写入 smoke check 通过，前端脚本语法检查通过。
 - 生产准备：新增平台无关的 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](examples/openobserve-aiops/PRODUCTION-READINESS.md)，列出平台/身份/密钥/网络/数据服务等待确认输入、部署配置安全门槛、staging 验收和 go/no-go 证据。尚无可执行的生产 manifest，正式部署与生产操作仍不在当前授权范围。
 - 2026-09-25 生产准备审计：仓库 Helm chart 只部署 Holmes API，不包含 AIOps 示例的 incident API、worker、workbench、PostgreSQL、Redis、OpenObserve 及策略代理；示例只有本机 Docker Compose。当前开发机没有配置 Kubernetes context。工作台仍通过 `AIOPS_TEST_USERS_JSON` 注入本地测试身份；生产身份联邦尚未实现。生产平台和部署范围待用户确认。
-- 生产准备增量：把 incident API 启动期 schema migration 拆成 `migration_runner.py` / `migrate.py` 一次性迁移命令；本机 Compose 的 `incident-migrate` 必须成功退出后 API 和 worker 才启动。隔离 Compose 测试 **46 passed，1 warning**；本机 migration 容器退出码 0，数据库登记 0001–0003，incident API 与 Holmes healthz 正常。生产仍需目标平台 migration Job/release gate 和独立低权限 migration 身份。
+- 生产准备增量：把 incident API 启动期 schema migration 拆成 `migration_runner.py` / `migrate.py` 一次性迁移命令；本机 Compose 的 `incident-migrate` 必须成功退出后 API 和 worker 才启动。测试身份仅在显式 `AIOPS_ENV=local` 时可注入，其他环境误配置会拒绝启动。强制重建当前测试镜像后的隔离 Compose 测试 **51 passed，1 warning**；本机 migration 容器退出码 0，数据库登记 0001–0003，incident API healthz 正常。生产仍需目标平台 migration Job/release gate、独立低权限 migration 身份和正式身份联邦。
 - 事故 worker 通过持久任务调用 DeepSeek 的端到端验证已完成；这证明任务链路和证据持久化可用，但不会替代诊断质量人工评分。
 - T006 增量：live runner 检查 DeepSeek 凭据、Holmes 本机 URL 与健康状态，再向本机 OpenObserve 写入唯一 run/trace ID 的合成语料并逐例调用 Holmes。真实 20 案运行已完成；发布上下文以结构化事件写入，Runbook 来源随请求传入。报告计分保持 `not_scored`，并分别核验病例证据与发布事件匹配。
 - Runbook 增量：Holmes 的自定义技能目录现包含订单库存、数据库迁移不匹配和发布回归三份只读 Skill；评测用例引用相应 Skill。定向测试扫描通过，运行中的 Holmes 容器从实际挂载目录加载到 3 个 Skill。

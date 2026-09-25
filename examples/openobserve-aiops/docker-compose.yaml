@@ -175,6 +175,7 @@ services:
       context: ./alert-trigger
       target: runtime
     environment:
+      AIOPS_ENV: local
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:?Export ALERT_WEBHOOK_TOKEN before starting the local demo}
       DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
       REDIS_URL: redis://redis:6379/0

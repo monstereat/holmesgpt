@@ -107,6 +107,13 @@ def _database_url() -> str:
     return value
 
 
+def _test_users_configuration() -> str:
+    raw_users = os.getenv("AIOPS_TEST_USERS_JSON", "")
+    if raw_users and os.getenv("AIOPS_ENV") != "local":
+        raise RuntimeError("AIOPS_TEST_USERS_JSON is only permitted when AIOPS_ENV=local")
+    return raw_users
+
+
 def _load_principal(authorization: str | None) -> Principal:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -148,9 +155,9 @@ def _order_action_client() -> OrderActionClient:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    raw_users = _test_users_configuration()
     database_url = os.getenv("DATABASE_URL", "")
     if database_url:
-        raw_users = os.getenv("AIOPS_TEST_USERS_JSON", "")
         if raw_users:
             _seed_test_users(database_url, raw_users)
         dispatcher = start_outbox_dispatcher()
