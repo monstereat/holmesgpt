@@ -1,0 +1,28 @@
+# Resume claims: HolmesGPT/OpenObserve AIOps
+
+Use the wording below only for the work and evidence currently present in this repository. The system has been exercised as a local Docker test environment; it has **not** been deployed to a production environment.
+
+## Resume-ready project entry
+
+**HolmesGPT/OpenObserve AIOps incident response platform (local test release)**
+
+- Built a Python/FastAPI incident API and Celery worker around HolmesGPT, with PostgreSQL-backed incidents, idempotent alert intake, transactional outbox delivery, bounded retries, and restart recovery.
+- Implemented an incident workbench with API-enforced viewer/operator/approver/admin permissions, separate approval and execution roles, audited state transitions, and an owner-side allowlisted action API with idempotency, postcondition checks, and rollback.
+- Integrated Holmes investigations with DeepSeek and OpenObserve through a read-only query proxy that restricts routes, streams, query windows, result sizes, and timeouts; retained redacted tool evidence with each investigation.
+- Added provider-neutral OIDC/PKCE identity foundations, persisted login transactions, session revocation, account disablement, and an authenticated low-cardinality Prometheus endpoint for queue state, pending age, and retries.
+- Validated the local Docker stack with **78 incident-service tests passing** and a live 20-case synthetic retrieval run: 20/20 exact case-evidence matches and 3/3 release-event matches. The report also recorded nine successful searches without exact run/case predicates; root-cause diagnosis scoring remains `not_scored`.
+
+## Interview framing
+
+Describe this as a locally deployed, end-to-end AIOps prototype with production-oriented controls. Explain the split: Python owns Holmes investigation and incident processing; the NestJS order service is only a telemetry-producing/action-owner sample. The local Compose environment is a test deployment, not a production release.
+
+## Claims not yet supported
+
+Do not claim production launch, multi-tenant isolation, high availability, measured SLO/RPO/RTO, a diagnosis accuracy percentage, or automatic production remediation. Production platform and identity provider are not selected; target-specific database roles, network policy, scrape alerts, backups/restores, load/capacity exercises, independent human scoring, and production go/no-go evidence remain open.
+
+## Evidence
+
+- [Production readiness gates](PRODUCTION-READINESS.md)
+- [Project progress and validation record](../../docs/develop-me-roadmap.md)
+- Latest local incident-service result: 78 passed, 1 upstream deprecation warning (2026-09-26).
+- Latest live synthetic report: `/tmp/holmes-aiops-live-report-isolated-v1.3.json` (local ephemeral artifact, not committed).
