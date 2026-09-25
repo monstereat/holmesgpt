@@ -701,6 +701,8 @@ class AgenticProgressRenderer:
 
             for name, desc, toolset, elapsed, output_len, is_error in self._tool_history:
                 tools_text.append("  → ", style="dim")
+                if is_error:
+                    tools_text.append("(error) ", style="dim red")
                 # Build suffix first so we know how much space the label gets
                 suffix = ""
                 if toolset:
@@ -709,8 +711,6 @@ class AgenticProgressRenderer:
                     suffix += f" {elapsed:.1f}s"
                 if output_len > 0:
                     suffix += f" {_format_size(output_len)}"
-                if is_error:
-                    suffix += " (error)"
                 max_label = label_budget - len(suffix)
                 label = desc if desc else name
                 if max_label > 6 and len(label) > max_label:
@@ -722,8 +722,6 @@ class AgenticProgressRenderer:
                     tools_text.append(f" {elapsed:.1f}s", style="dim")
                 if output_len > 0:
                     tools_text.append(f" {_format_size(output_len)}", style="dim cyan")
-                if is_error:
-                    tools_text.append(" (error)", style="dim red")
                 tools_text.append("\n")
 
             frame = _SPINNER_FRAMES[int(now * 8) % len(_SPINNER_FRAMES)]

@@ -236,3 +236,9 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 缩短超大工具结果落盘后的错误摘要模板，避免长临时路径加较长命令示例挤占预览预算；定向工具上下文限制测试 **11 passed**。
 - [x] 全仓非 LLM 回归重跑为 **3858 passed、160 skipped、2 failed**，比前次少一项失败。
 - [ ] 全仓仍有 SSRF 测试 HTTP 502 与交互渲染测试未显示 `(error)` 两项失败，不能记作全仓通过。
+
+## 2026-09-25 增量：窄栏交互错误标记与全仓回归
+
+- [x] 双栏 TUI 将 `(error)` 标记移至工具标签之前，窄栏宽度下不会被右侧裁剪；`tests/test_interactive.py` **67 passed**。
+- [x] 全仓非 LLM 回归 **3859 passed、160 skipped、1 failed**；此前记录的交互错误标记失败已消失。
+- [ ] 唯一剩余全仓失败是 `test_pinned_adapter_connects_to_validated_ip` 请求返回 HTTP 502。
