@@ -1,49 +1,46 @@
 # OpenObserve + HolmesGPT AI Ops demo
 
-The `holmes/plugins/toolsets/openobserve` toolset is registered in HolmesGPT and supports bounded log search and trace-ID log lookup. The local demo under this directory runs OpenObserve, the NestJS order service, and the alert webhook receiver in one Docker Compose project. The receiver defaults to `/bin/echo` as a scheduling stub; it does not run a real Holmes CLI investigation. See [`DEMO.md`](DEMO.md) for setup and validation steps.
+This demo keeps HolmesGPT's existing Python/FastAPI investigation API and OpenObserve toolset. A separate Python incident service owns webhook intake, PostgreSQL incident/task state, the outbox and local user authorization. Redis/Celery transports investigation work. The NestJS order service remains a telemetry-producing demo and the only owner of its isolated test action.
 
-## Start with read-only monitoring access
+The incident worker calls Holmes through the existing non-streaming `POST /api/chat` API. Holmes makes read-only OpenObserve queries using a dedicated service account. The incident API treats the alert name and metadata as untrusted values, and model prose alone is never stored as verified evidence.
 
-Set up a dedicated OpenObserve service account with access to only the streams used for incident investigation. Add this to your HolmesGPT configuration:
+## Read-only OpenObserve configuration
 
-```yaml
-toolsets:
-  openobserve:
-    enabled: true
-    config:
-      api_url: "http://openobserve:5080"
-      organization: "default"
-      username: "holmes@example.test"
-      password: "{{ env.OPENOBSERVE_SERVICE_TOKEN }}"
-      verify_ssl: true
-      max_rows: 100
-      timeout_seconds: 15
-```
+Use a dedicated OpenObserve service account with read-only permissions for `app_logs` and `frontend_errors`. Copy [`holmes-config/config.yaml.example`](holmes-config/config.yaml.example) into the local Holmes configuration directory mounted by Compose, then provide the runtime model and OpenObserve credentials through the local environment. The example sets the server-side `allowed_streams` list as an additional query boundary.
 
-Do not store real service credentials in Git.
+Do not commit real credentials or place the model key in the incident service. `HOLMES_API_KEY` authenticates the incident service to Holmes; `MODEL_API_KEY` and `OPENOBSERVE_SERVICE_TOKEN` are consumed only by Holmes.
 
-## Demonstrate a failed order service deployment
+The OpenObserve toolset is read-only at the application layer. Server-side OpenObserve RBAC is the authoritative access boundary. Keep application logs free of credentials and sensitive PII before ingestion.
 
-1. A sample NestJS `POST /orders` route records a trace ID and emits an error after a simulated bad deployment.
-2. OpenTelemetry exports application logs and traces; OpenObserve stores them.
-3. The operator raises an incident containing `service.name=order-service` and the failing trace ID.
-4. HolmesGPT discovers log streams and retrieves bounded, time-scoped evidence through `openobserve_list_log_streams` and `openobserve_search_logs`.
-5. The investigation identifies the earliest failed operation and cites matching log records; it must not assert a root cause without evidence.
-6. A business service outside HolmesGPT holds the incident state, remediation approval, and audit record. Avoid giving the investigation tool write credentials.
+## Investigation flow
+
+1. The demo order service emits an error log and trace when its local chaos mode is enabled.
+2. An authenticated OpenObserve webhook creates one incident, investigation task and outbox record in a single PostgreSQL transaction.
+3. The dispatcher places the task on Redis/Celery. Database task state prevents duplicate messages from claiming the same active or completed work; outbox reconciliation recovers lost messages and expired worker leases.
+4. The worker sends a bounded, non-streaming request to Holmes `/api/chat`. Holmes queries only the configured read-only OpenObserve streams.
+5. The worker stores bounded successful tool results as evidence. Tool errors, missing calls and unavailable data remain explicit; unverified model statements do not become verified facts.
+
+Holmes `/api/chat` does not accept an idempotency key. A timeout followed by retry can repeat the model call and its cost, while the incident service still keeps one task record and one final result.
 
 ## Status and boundaries
 
-- The OpenObserve toolset is read-only and has request/parameter tests.
-- The demo browser SDK sanitizes selected credential patterns and supports configurable sampling; its default demo sampling rate is 100%.
-- The alert receiver requires a shared token, accepts only explicit trace-ID fields, bounds active investigation processes, deduplicates in-memory alerts, and prints results to stdout.
-- It accepts only numeric count fields and valid ISO trigger times as alert metadata, marks alert values untrusted in the Holmes prompt, and omits CLI stderr from task logs.
-- `incident_workflow.py` is a process-local reference model for ownership, severity, idempotency, evidence-versus-assumption findings, approval transitions, audit events, and a retrospective draft. Verified findings require HTTPS evidence links; evidence URL query credentials are redacted. Operators can fill in impact and improvement items; the report reaches `ready_for_review` only when required fields are present. It does not execute remediation or independently prove a claim.
-- The alert receiver and incident workflow are process-local prototypes. The receiver offers authenticated lookups linking a synthetic alert fingerprint, task IDs, and Trace IDs, but has no durable task/incident storage, restart recovery, or production approval enforcement.
-- The order-service accepts normalized release events at `/internal/releases` only when signed with a runtime `RELEASE_WEBHOOK_SECRET`; it writes bounded release metadata into `app_logs`. It is a local integration point, not a connected Git/CI webhook or durable release registry.
-- `skills/order-service-inventory-failure/SKILL.md` is a Holmes custom Skill for read-only trace, release, and evidence correlation. Configure its directory with `custom_skill_paths`. The pre-Skills `runbooks/catalog.json` is retained only as a migration reference and is not consumed by this Holmes version; real CLI investigation still requires model credentials and OpenObserve access.
-- Real OpenObserve credentials, stream permissions, and end-to-end alert behavior still need validation in the target environment.
+- The order-service has a token-protected `set-chaos-mode` action used only by the local demo; it has no Docker socket or host write access.
+- PostgreSQL stores incident, task, test user, approval, audit and outbox records. The test-only user and role implementation is not a production identity provider.
+- Release events written to `app_logs` are local fixtures, not a live Git/CI integration or release registry.
+- The Holmes skill at [`skills/order-service-inventory-failure/SKILL.md`](skills/order-service-inventory-failure/SKILL.md) guides bounded read-only trace, log and release correlation. It never authorizes remediation.
+- Compose service wiring, workbench, approval/action workflow and recovery walkthrough are completed in later roadmap tasks. A running Compose stack, live model investigation, production identity provider, production deployment and production remediation are not claimed here.
+- Live Holmes acceptance requires the local operator to provide a model key, a Holmes API key, and a dedicated OpenObserve read-only account with stream permissions. Without these, the live investigation acceptance criterion remains blocked.
 
 ## Tests
+
+The incident service has an isolated Docker `test` target. To exercise PostgreSQL integration cases, set `AIOPS_TEST_DATABASE_URL` to a disposable local test database only; tests reject non-local database hosts.
+
+```bash
+docker build --target test -t aiops-incident:test alert-trigger
+docker run --rm aiops-incident:test python -m pytest -q tests
+```
+
+The OpenObserve toolset tests remain part of the root Holmes test suite:
 
 ```bash
 poetry install --with dev

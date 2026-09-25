@@ -1,0 +1,19 @@
+model: "{{ env.HOLMES_MODEL }}"
+api_key: "{{ env.MODEL_API_KEY }}"
+custom_skill_paths:
+  - /etc/holmes/skills
+toolsets:
+  openobserve:
+    enabled: true
+    config:
+      api_url: "http://openobserve:5080"
+      organization: "default"
+      username: "{{ env.OPENOBSERVE_SERVICE_USER }}"
+      password: "{{ env.OPENOBSERVE_SERVICE_TOKEN }}"
+      verify_ssl: true
+      timeout_seconds: 30
+      max_window_seconds: 3600
+      max_rows: 100
+      allowed_streams:
+        - app_logs
+        - frontend_errors

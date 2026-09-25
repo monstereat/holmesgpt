@@ -10,6 +10,7 @@ from typing import Any
 import psycopg
 from celery import Celery
 
+from holmes_client import HolmesClient
 from tasks import (
     ClaimedTask,
     PermanentTaskError,
@@ -116,9 +117,22 @@ def start_outbox_dispatcher() -> OutboxDispatcher:
     return OutboxDispatcher(os.environ["DATABASE_URL"]).start()
 
 
-def run_investigation(_task: ClaimedTask) -> dict[str, Any]:
-    """T003 replaces this fail-closed placeholder with the Holmes API client."""
-    raise PermanentTaskError("investigation_not_configured")
+def run_investigation(task: ClaimedTask) -> dict[str, Any]:
+    base_url = os.getenv("HOLMES_API_URL", "")
+    api_key = os.getenv("HOLMES_API_KEY", "")
+    if not base_url or not api_key:
+        raise PermanentTaskError("holmes_configuration_missing")
+    client = HolmesClient(
+        base_url=base_url,
+        api_key=api_key,
+        timeout_seconds=int(os.getenv("HOLMES_TIMEOUT_SECONDS", "900")),
+    )
+    return client.investigate({
+        "task_id": task.task_id,
+        "alert_name": task.alert_name,
+        "trace_ids": task.trace_ids,
+        "summary": task.summary,
+    })
 
 
 @celery_app.task(name="holmes_aiops.investigate")

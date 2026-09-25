@@ -11,7 +11,7 @@ Diagnose an order-service HTTP 500 using read-only OpenObserve evidence. This sk
 
 ## Workflow
 
-1. Find the exact `trace_id` in `app_logs` with `openobserve_find_trace` and a bounded window around the alert time. If no trace ID is available, search `app_logs` for `service = 'order-service'` and `level = 'error'` with an explicit short time range.
+1. Find the exact `trace_id` in `app_logs` with `openobserve_find_trace` and a bounded window around the alert time. If no trace ID is available, search `app_logs` for `service = 'order-service'` and `level = 'error'` with an explicit short time range. Only the `app_logs` and `frontend_errors` streams are in scope.
 2. Correlate the same trace ID in `frontend_errors`. Identify the earliest failing server operation from returned records; do not infer a backend cause from a browser error alone.
 3. Search `app_logs` for `event_type = 'release_deployed'` and `service = 'order-service'` around the incident time. Report `release`, `commit_sha`, and `changed_files` only when a matching event is returned. A nearby timestamp alone does not prove causation.
 4. Compare the first error time, release time, and trace evidence. State whether the evidence supports a release correlation, contradicts it, or is insufficient.

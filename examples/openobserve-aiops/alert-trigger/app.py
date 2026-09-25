@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from models import IncidentInput
 from store import create_incident
 from trigger import MAX_BODY_BYTES, normalize_alert
+from worker import start_outbox_dispatcher
 
 MIGRATIONS_PATH = Path(__file__).parent / "migrations"
 
@@ -38,8 +39,6 @@ async def lifespan(_app: FastAPI):
     database_url = os.getenv("DATABASE_URL", "")
     if database_url:
         apply_migrations(database_url)
-        from worker import start_outbox_dispatcher
-
         dispatcher = start_outbox_dispatcher()
         try:
             yield

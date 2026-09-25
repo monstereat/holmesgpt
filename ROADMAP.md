@@ -18,7 +18,8 @@
 - `specs/001-resume-aiops/` 的 Spec 已获用户确认并通过独立审查；Plan/Tasks 已按用户要求直接批准。数据库迁移获授权仅作用于本机 Docker 测试库。
 - T001：事故/任务/审批/审计/outbox PostgreSQL schema、稳定指纹与事务写入、带资源范围的测试角色授权、口令哈希与签名会话已完成；一次性本机 PostgreSQL 集成测试验证迁移、重复事件去重及 outbox 失败回滚。
 - T002：Webhook 认证和边界校验后事务创建事故/任务/outbox；Celery worker 有原子 claim、租约、退避重试和失败终态，dispatcher 周期重投队列中丢失的任务并回收过期租约；`trigger.py` 不再调用 Holmes CLI 或 `/bin/echo`。隔离 PostgreSQL 全套测试 21 passed；无数据库时 3 passed、4 个数据库集成项安全跳过。Compose 数据卷和 Redis 联调待 T007。
-- 当前任务：T003，Holmes/OpenObserve 只读调查客户端。需要模型与 OpenObserve 只读凭据的 live 验收仍待 T007；没有凭据不得标为通过。
+- T003：Holmes 非流式 `/api/chat` 客户端、状态码与工具结果校验、限定流范围的证据映射和敏感值脱敏已完成；14 项契约测试通过。该结果来自模拟响应，未代表 live Holmes/OpenObserve 验收。
+- 当前任务：T004，本机事故工作台。Compose live 调查仍待 T007，需模型和 OpenObserve 只读凭据；缺少凭据时 AC-04 保持 blocked。
 
 ## 待办
 
