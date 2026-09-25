@@ -145,6 +145,13 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 
 **最近验证（2026-09-25）：** `/tmp/poetry185/bin/poetry run pytest -q --no-cov examples/openobserve-aiops/evals/test_known_root_causes.py`（1 passed）、JSON 解析和 `git diff --check` 通过。首次不带 `--no-cov` 的单文件运行触发全仓覆盖率门槛（14.72%，门槛 46%），不是该语料断言失败；定向复跑通过。
 
+## 2026-09-25 增量：统一本地演示服务编排
+
+- [x] 告警接收器从独立容器并入 `holmesgpt-aiops-goal` Compose 项目，与 OpenObserve 和订单服务同组；端口仅绑定 loopback，鉴权 token 由运行环境提供。
+- [ ] Compose 接收器仍默认使用 `/bin/echo` 演示调度；真实 Holmes CLI、只读配置与 OpenObserve 访问仍需单独接入和验证。
+
+**最近验证（2026-09-25）：** 告警接收器定向 pytest（9 passed）、Compose 配置解析、接收器镜像构建通过；`docker compose up -d --build` 后同一项目标签下有 `openobserve`、`order-service`、`alert-trigger` 三个容器。订单页、OpenObserve `/healthz`、接收器 `/healthz` 均返回 HTTP 200；签名鉴权的本机演示 Webhook 返回 HTTP 202，任务查询到 `completed`。该任务仍由 `/bin/echo` 替身完成，不代表 Holmes 调查通过。
+
 ## 2026-09-25 增量：事故原型和告警输入边界
 
 - [x] 事故内存原型记录 owner、severity、idempotency key、重复告警事件、审批决策、证据/假设分类及恢复时间；证据 URL 会剔除片段并脱敏常见凭据查询参数；复盘可录入影响范围和改进项，字段齐备时进入待复核；13 项流程测试通过。

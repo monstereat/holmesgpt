@@ -1,6 +1,6 @@
 # OpenObserve + HolmesGPT AI Ops demo
 
-The `holmes/plugins/toolsets/openobserve` toolset is registered in HolmesGPT and supports bounded log search and trace-ID log lookup. The local demo under this directory sends NestJS logs, browser error reports, and OpenTelemetry traces to OpenObserve, then starts a host-side webhook receiver that invokes the Holmes CLI. See [`DEMO.md`](DEMO.md) for setup and validation steps.
+The `holmes/plugins/toolsets/openobserve` toolset is registered in HolmesGPT and supports bounded log search and trace-ID log lookup. The local demo under this directory runs OpenObserve, the NestJS order service, and the alert webhook receiver in one Docker Compose project. The receiver defaults to `/bin/echo` as a scheduling stub; it does not run a real Holmes CLI investigation. See [`DEMO.md`](DEMO.md) for setup and validation steps.
 
 ## Start with read-only monitoring access
 

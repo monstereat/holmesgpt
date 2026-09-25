@@ -1,6 +1,6 @@
 # OpenObserve AIOps Demo：订单 HTTP 500 调查闭环
 
-启动 OpenObserve 和 NestJS 订单服务，在主机上单独运行告警接收器。
+启动 OpenObserve、NestJS 订单服务和告警接收器。三个容器属于同一个 Docker Compose 项目。
 演示链路为：浏览器异常及 Trace ID → 后端 Trace/日志 → OpenObserve 告警 →
 调查接收器。当前本地已验证数据采集和告警传递；真实 HolmesGPT 调查仍待验证。
 
@@ -11,6 +11,7 @@ cd examples/openobserve-aiops
 
 # OpenObserve root 密码只放在当前 shell 环境，不写入仓库或 .env
 export ZO_ROOT_USER_PASSWORD="$(openssl rand -hex 24)"
+export ALERT_WEBHOOK_TOKEN="$(openssl rand -hex 32)"
 
 # 启动 OpenObserve 和订单服务（控制台: http://localhost:5080；用户名默认 demo@example.test）
 docker compose up -d --build
@@ -91,17 +92,14 @@ curl -X POST http://localhost:8080/internal/releases \
    - 频率 1 分钟；当查询结果行数大于 0 时触发；目的地选择刚创建的 Webhook。
 4. 创建一个包含 `app_logs` 错误数量时间线的仪表盘，用 1 分钟时间桶查看故障注入结果。
 
-## 在主机运行告警接收器
+## 告警接收器容器
 
-确保本机 HolmesGPT 已安装，`~/.holmes/config.yaml` 已配置下方 OpenObserve 工具集，
-且 `holmes` 命令能使用只读账户访问 `localhost:5080`。另开终端运行：
+告警接收器随 Compose 一起启动，端口只绑定到 `127.0.0.1:8081`。Compose 使用
+`ALERT_WEBHOOK_TOKEN` 环境变量鉴权；本地 OpenObserve Webhook Destination 的
+`X-Alert-Token` 必须设置为同一个值。不要把真实 token 写入仓库或 `.env`。
 
-```bash
-export ALERT_WEBHOOK_TOKEN='本地生成的随机值'
-poetry run python examples/openobserve-aiops/alert-trigger/trigger.py
-```
-
-OpenObserve Webhook Destination 和接收器必须使用同一个本地随机 token；不要将其写入仓库或 `.env`。
+容器内默认 `HOLMES_BIN=/bin/echo`，用于验证 Webhook 接收和任务调度；它不代表真实 Holmes 调查。
+接入真实 Holmes 前，需要在接收器运行环境安装/配置 Holmes CLI，并向 OpenObserve 查询授予只读权限。
 接收器拒绝缺少/错误 token、
 无效 JSON 和未显式放在 `trace_id` 字段的值；摘要只保留数字计数与合法 ISO 时间，并把告警名/元数据视为不可信输入；
 同一 Trace 告警 5 分钟内按告警名和 Trace ID 去重，不受触发时间或计数变化影响；无 Trace 告警按告警名和计数去重，最多并发启动 2 次调查。
@@ -145,7 +143,7 @@ custom_skill_paths:
 
 仓库提供 Holmes Skill `examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md`；将上面的路径替换为本机仓库绝对路径。它只指导检索和证据整理，不包含可执行处置授权。旧的 `runbooks/catalog.json` 仅作为迁移参考，不配置给当前 Holmes。
 
-`alert-trigger` 会以如下形式调用：`holmes ask "<告警上下文 + trace_id 调查指令>"`。
+配置真实 Holmes CLI 后，`alert-trigger` 会以如下形式调用：`holmes ask "<告警上下文 + trace_id 调查指令>"`。当前 Compose 默认使用 `/bin/echo`，只验证任务调度。
 
 ## 数据流与字段规范
 
@@ -162,6 +160,7 @@ custom_skill_paths:
 - 浏览器 SDK 会过滤凭据样式字段、邮箱和 URL 查询参数，并支持采样；Demo 采样率为 100%。
   生产使用前仍需按组织的数据治理规范审查脱敏规则并配置采样率。
 - 当前告警接收器是内存态 Demo，不保存完整任务状态，也不具备生产级队列、事故审批或处置能力。
+- Compose 将 OpenObserve、订单服务和告警接收器作为 `holmesgpt-aiops-goal` 项目的三个服务统一管理；接收器容器重启后内存任务状态会丢失。
 
 ## 本地构建（不用 Docker）
 
