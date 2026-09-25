@@ -1,0 +1,98 @@
+{
+  "schema_version": 2,
+  "change_id": "001-resume-aiops",
+  "mode": "roadmap",
+  "status": "spec_draft",
+  "current_task": null,
+  "waiting_for": null,
+  "artifacts": {
+    "spec": "specs/001-resume-aiops/spec.md",
+    "plan": "specs/001-resume-aiops/plan.md",
+    "tasks": "specs/001-resume-aiops/tasks.md",
+    "verify": "specs/001-resume-aiops/verify.md"
+  },
+  "controls": {
+    "commit_strategy": "task",
+    "branch": null,
+    "independent_review": "spec"
+  },
+  "approvals": {
+    "spec": null,
+    "plan": null,
+    "acceptance": null
+  },
+  "acceptance_criteria": {
+    "AC-01": {
+      "description": "告警被认证、校验并稳定去重，未授权和无效告警不启动调查。"
+    },
+    "AC-02": {
+      "description": "事故与任务在 PostgreSQL 中持久化，API/worker 重启后可恢复。"
+    },
+    "AC-03": {
+      "description": "调查任务有界重试、明确终态、幂等投递且不泄露凭据。"
+    },
+    "AC-04": {
+      "description": "真实 Holmes 对 OpenObserve 做只读调查，并为确定结论保留可核验证据。"
+    },
+    "AC-05": {
+      "description": "本地事故工作台展示任务状态、Trace、结论和证据，不提供隐式处置写操作。"
+    },
+    "AC-06": {
+      "description": "本地启动、确定性测试和根因回放可重复，mock/live 结果分开报告。"
+    }
+  },
+  "tasks": {},
+  "checks": [],
+  "events": [
+    {
+      "at": "2026-09-25T02:36:03Z",
+      "action": "init",
+      "status": "initialized",
+      "note": "State created."
+    },
+    {
+      "at": "2026-09-25T02:36:03Z",
+      "action": "set_draft",
+      "status": "spec_draft",
+      "note": "简历级 AIOps 项目范围待用户确认；目前仅准备路线图和 Spec。"
+    },
+    {
+      "at": "2026-09-25T02:36:03Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-01."
+    },
+    {
+      "at": "2026-09-25T02:36:03Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-02."
+    },
+    {
+      "at": "2026-09-25T02:36:03Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-03."
+    },
+    {
+      "at": "2026-09-25T02:36:03Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-04."
+    },
+    {
+      "at": "2026-09-25T02:36:03Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-05."
+    },
+    {
+      "at": "2026-09-25T02:36:03Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-06."
+    }
+  ],
+  "created_at": "2026-09-25T02:36:03Z",
+  "updated_at": "2026-09-25T02:36:03Z"
+}
