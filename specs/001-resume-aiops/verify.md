@@ -29,6 +29,7 @@
 - DeepSeek 切换验证：Compose 配置检查和 Holmes 镜像重建通过；安全检查渲染配置确认模型为 `deepseek/deepseek-flash` 且 API Key 未设置；仓库容器中的 LiteLLM 元数据确认其支持 function calling。没有发出模型请求，live RCA 仍未验证。
 - OpenObserve 策略代理：11 项 unittest 通过；Compose 配置及容器重建成功；代理健康、Holmes/incident API/order-service 健康。Holmes 容器内查询 `openobserve` 主机 DNS 失败（预期隔离）；真实 Holmes OpenObserve Toolset 经代理成功列出 2 个 allowlist 流并执行 5 分钟时间窗搜索，返回实际日志行。OpenObserve host `/healthz` 返回 HTTP 200，浏览器 UI 根路径返回 HTTP 308 重定向。
 - 持久复盘：隔离 Compose 测试 profile **42 passed, 1 warning**，覆盖迁移、复盘保存/读取、角色拒绝、审核和审计事件。Docker 测试库已记录 `0003_incident_retrospectives`；本机工作台 HTTP smoke 登录 operator 后读取现存事故复盘成功，operator 写入返回 403；`node --check examples/openobserve-aiops/alert-trigger/public/incidents.js` 与 `/incidents.js` HTTP 资源检查通过。
+- 20 例评测语料：去重键和发布/Runbook 关联验证 **3 passed**；mock 报告重新生成 20 条，明确保持 `not_scored`，未运行 live 模型请求。
 
 ## 后续解阻条件
 

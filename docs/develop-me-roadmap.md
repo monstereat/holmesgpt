@@ -193,6 +193,12 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 隔离 Compose 测试 42 passed；当前本机数据库已应用 migration；本机 HTTP smoke 验证登录、复盘读取、operator 写入拒绝和工作台脚本已通过。
 - [ ] 浏览器人工走查仍待完成；真实 Holmes 证据驱动的 RCA/复盘仍待 DeepSeek API Key。
 
+## 2026-09-25 增量：20 例评测语料完整性
+
+- [x] 评测 JSON 加入重复键拒绝校验，防止 JSON parser 静默覆盖同名字段；20 例语料、fixture 到发布/Runbook 的引用测试 **3 passed**。
+- [x] 重新生成 20 例 mock 报告并检查每例诊断为空、总评为 `not_scored`；明确 mock 结果不代表 Holmes 诊断能力。
+- [ ] Live 20 例需要有效 `DEEPSEEK_API_KEY`；现有 fixture Trace ID 不保证在真实遥测中有匹配，运行结果仍需按实际证据判断。
+
 ## 2026-09-25 增量：事故原型和告警输入边界
 
 - [x] 事故内存原型记录 owner、severity、idempotency key、重复告警事件、审批决策、证据/假设分类及恢复时间；证据 URL 会剔除片段并脱敏常见凭据查询参数；复盘可录入影响范围和改进项，字段齐备时进入待复核；13 项流程测试通过。

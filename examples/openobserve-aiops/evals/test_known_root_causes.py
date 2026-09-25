@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 
 CORPUS_PATH = Path(__file__).with_name("known_root_causes.json")
 EXAMPLE_PATH = CORPUS_PATH.parents[1]
@@ -17,8 +19,20 @@ REQUIRED_FIELDS = {
 }
 
 
+def load_json_without_duplicate_keys(path):
+    def object_from_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=object_from_pairs)
+
+
 def test_known_root_cause_corpus_has_twenty_actionable_cases():
-    cases = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
+    cases = load_json_without_duplicate_keys(CORPUS_PATH)
 
     assert len(cases) == 20
     assert len({case["id"] for case in cases}) == len(cases)
@@ -32,8 +46,16 @@ def test_known_root_cause_corpus_has_twenty_actionable_cases():
             assert all(isinstance(item, str) and item.strip() for item in case[field]), (case["id"], field)
 
 
+def test_json_loader_rejects_duplicate_object_keys(tmp_path):
+    fixture = tmp_path / "duplicate.json"
+    fixture.write_text('{"case": 1, "case": 2}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        load_json_without_duplicate_keys(fixture)
+
+
 def test_evaluation_release_and_runbook_contexts_are_grounded_in_fixture_evidence():
-    cases = {case["id"]: case for case in json.loads(CORPUS_PATH.read_text(encoding="utf-8"))}
+    cases = {case["id"]: case for case in load_json_without_duplicate_keys(CORPUS_PATH)}
     contexts = json.loads((EXAMPLE_PATH / "runbooks" / "evaluation-contexts.json").read_text(encoding="utf-8"))
 
     assert contexts["source"] == "examples/openobserve-aiops/evals/known_root_causes.json"

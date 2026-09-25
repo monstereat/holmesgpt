@@ -20,7 +20,7 @@
 - T003：Holmes 非流式 `/api/chat` 客户端、状态码与工具结果校验、限定流范围的证据映射和敏感值脱敏已完成；14 项契约测试通过。该结果来自模拟响应，未代表 live Holmes/OpenObserve 验收。
 - T004：工作台提供本地登录、服务端角色/资源校验、事故/任务/Trace/证据/审批/审计详情和受限任务重试。一次性本机 PostgreSQL 集成测试 2 passed。
 - T005：工作台可申请/批准/拒绝/取消及执行测试动作；operator 与 approver 分权，执行前复验审批和固定白名单，调用 order-service owner 接口并核对实际状态，失败时恢复原状态并审计。一次性本机 PostgreSQL 集成测试 4 passed；`node --check` 和 Compose 配置校验通过。
-- T006：评测 runner 可生成 20 例 mock/live 结构化报告；mock 不生成模型诊断且标记 `not_scored`，live 请求需显式 `--confirm-live`，病例来源与实时 OpenObserve 证据分别标记。三条 synthetic 发布上下文准确引用病例证据并关联 Runbook。Docker 内部单测 4 passed，离线 mock 报告生成 20 例通过，病例/runbook 关联测试通过；未运行 live 请求。
+- T006：评测 runner 可生成 20 例 mock/live 结构化报告；mock 不生成模型诊断且标记 `not_scored`，live 请求需显式 `--confirm-live`，病例来源与实时 OpenObserve 证据分别标记。三条 synthetic 发布上下文准确引用病例证据并关联 Runbook。离线报告已重新生成 20 例，保持 `not_scored`；语料和上下文测试 3 passed，JSON loader 拒绝重复字段；未运行 live 请求。
 - T007：Holmes、事故 API/worker、PostgreSQL、Redis、OpenObserve 和 order-service 已在一个 Compose project 运行；42 项隔离测试通过。已实测告警→持久化任务、权限分离审批、demo 动作执行/回滚、API/worker/Redis/PostgreSQL 重启恢复及独立数据库备份/恢复。Holmes 默认已改为 `deepseek/deepseek-flash`，LiteLLM 识别该模型且支持工具调用，Compose 重建及配置校验通过；尚未提供 API Key，真实告警仍以 `holmes_unavailable` 安全失败。OpenObserve OSS 无服务端 RBAC，AC-04/live 整体验收未通过。
 - T008：加入固定上游、独立 Basic Auth、仅 streams/search 两条路由、SQLGlot ClickHouse AST、流 allowlist、单小时查询窗、超时/行数/请求和响应大小上限；Holmes 未加入 OpenObserve 或 telemetry 网络。11 项代理策略单测通过。Holmes 容器无法解析 OpenObserve 服务名，通过代理可见 2 条 allowlist 流并实际查询到日志。本机 OpenObserve UI 仍只绑定 loopback。
 - T009：新增本机迁移 `0003_incident_retrospectives` 和按事故持久化的复盘 API/工作台表单；approver/admin 可保存影响、根因、恢复措施、行动项并标记审核，viewer/operator 只能读取。审核保存写入 audit timeline；隔离测试 42 passed，运行中的本机测试数据库已应用迁移，HTTP 登录/读取/越权写入 smoke check 通过，前端脚本语法检查通过。
@@ -44,6 +44,7 @@
 - `docker compose ... config --quiet`、本机栈构建/启动和服务健康检查通过；Holmes `/healthz`、事故 API `/healthz`、OpenObserve `/healthz` 与订单服务返回 HTTP 200。
 - 隔离 Compose 测试 profile：42 passed，1 warning。
 - 复盘增量：隔离 Compose 测试 profile 42 passed，前端 `node --check` 通过；本机 API 登录后可读取现存事故复盘，operator 写入返回 403；测试数据库记录迁移版本 `0003_incident_retrospectives`。
+- 评测语料增量：20 例 mock 报告重生成，检查确认 `not_scored`、20 条病例且无模型诊断；语料/发布-Runbook fixture 校验 **3 passed**，重复 JSON 字段检测测试通过。
 - 订单 HTTP webhook 创建持久 incident/task；operator 自审批返回 403，approver 批准后执行状态 ON，再经批准恢复 OFF；最后实测状态为 OFF。
 - API、worker、Redis、PostgreSQL 重启后服务恢复，已创建 incident 仍在，最新调查任务安全失败码为 `holmes_unavailable`。
 - `pg_dump`/`pg_restore` 恢复到单独 `aiops_restore_test` 数据库成功；恢复库含 1 条 incident，未覆盖活动库或移除数据卷。
