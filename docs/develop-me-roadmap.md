@@ -230,3 +230,9 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 根因评分仍保持 `not_scored`，直到采用可辩护的评审规则；mock 结果不声称模型准确率。
 - [x] 评测报告定向测试 **11 passed**；重生成的 20 例 mock 报告通过 Draft 2020-12 JSON Schema 校验。
 - [ ] DeepSeek live 调查和 20 例 live 评测仍需本机配置有效 `DEEPSEEK_API_KEY` 并显式确认外部模型调用。
+
+## 2026-09-25 增量：超大工具结果错误摘要长度
+
+- [x] 缩短超大工具结果落盘后的错误摘要模板，避免长临时路径加较长命令示例挤占预览预算；定向工具上下文限制测试 **11 passed**。
+- [x] 全仓非 LLM 回归重跑为 **3858 passed、160 skipped、2 failed**，比前次少一项失败。
+- [ ] 全仓仍有 SSRF 测试 HTTP 502 与交互渲染测试未显示 `(error)` 两项失败，不能记作全仓通过。

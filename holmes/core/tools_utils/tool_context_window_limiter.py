@@ -97,9 +97,7 @@ def spill_oversized_tool_result(
         boilerplate = (
             f"{size_info}\n"
             f"Saved to: {file_path}\n"
-            f"Use `cat {file_path}` to read it (pre-approved, no user approval needed). "
-            f"You can pipe the output into any command to filter, for example: "
-            f"`cat {file_path} | jq '.field'`, `cat {file_path} | grep -oP 'pattern'`, etc.\n"
+            f"Use `cat <path>` to read it; use `jq` or `grep` to filter it.\n"
         )
         if image_paths:
             boilerplate += (

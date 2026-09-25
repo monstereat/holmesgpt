@@ -21,7 +21,7 @@
 ## 验证结果
 
 - `docker compose ... --profile test run --build --rm incident-test`：**46 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
-- 全仓 `PATH=/tmp/poetry185/bin:$PATH make test-without-llm`：**3857 passed, 160 skipped, 3 failed, 119 warnings**。失败项是工具超大结果预览长度断言（输出 1386 字符，阈值 1200）、外网 SSRF 测试返回 HTTP 502，以及交互渲染测试缺少 `(error)` 标记。AIOps 定向测试 **39 passed**；本项目 Compose 测试仍为 **46 passed, 1 warning**。因此全仓套件未全绿。
+- 全仓非 LLM 回归修复后重跑：**3858 passed, 160 skipped, 2 failed, 118 warnings**。超大工具结果错误摘要的预览长度问题已修复且其定向测试 11 passed；仍有 SSRF 测试返回 HTTP 502及交互渲染测试缺少 `(error)` 标记。AIOps 定向测试 **39 passed**；本项目 Compose 测试为 **46 passed, 1 warning**，全仓套件仍未全绿。
 - Compose 栈构建、配置校验和服务恢复成功。最近检查：OpenObserve `/healthz`、Holmes `/healthz`、incident API `/healthz`、订单服务根路径均返回 HTTP 200。
 - 本机告警/事故工作流：已创建 1 条 incident；无 Holmes 凭据的任务安全终止，错误码 `holmes_unavailable`。
 - 本机权限与动作工作流：operator 自审批返回 403；approver 批准后执行并核验 order-service 状态 ON，再完成批准恢复并核验状态 OFF。
