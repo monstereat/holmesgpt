@@ -16,7 +16,8 @@
 ## 当前进行中
 
 - `specs/001-resume-aiops/` 的 Spec 已获用户确认并通过独立审查；Plan/Tasks 已按用户要求直接批准。数据库迁移获授权仅作用于本机 Docker 测试库。
-- 当前任务：T001，本地事故域、测试角色和 PostgreSQL schema。用户已明确授权仅对本机 Docker 测试数据库新增并应用迁移。
+- T001 实现已完成，正在执行范围门禁：新增事故/任务/审批/审计/outbox PostgreSQL schema、稳定指纹与事务写入、带资源范围的测试角色授权、口令哈希与签名会话。隔离镜像测试为 9 passed、2 个需 PostgreSQL 的集成项跳过；另在一次性本机 PostgreSQL 容器应用迁移，7 项 store 测试通过，覆盖幂等去重与 outbox 失败回滚。Compose PostgreSQL 服务在 T002/T007 接入后再对本机项目测试卷应用迁移。
+- 下一任务：T002，持久 webhook、outbox、worker 和重试恢复。
 
 ## 待办
 

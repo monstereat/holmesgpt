@@ -1,5 +1,19 @@
-FROM python:3.12-alpine
+FROM python:3.12-slim AS base
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 WORKDIR /app
-COPY trigger.py .
+RUN groupadd --system app && useradd --system --gid app --home-dir /app app
+COPY requirements.txt requirements-test.txt ./
+
+FROM base AS runtime
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+USER app
 EXPOSE 8081
-CMD ["python", "-u", "trigger.py"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8081"]
+
+FROM base AS test
+RUN pip install --no-cache-dir -r requirements-test.txt
+COPY . .
+USER app
+CMD ["python", "-m", "pytest", "-q"]
