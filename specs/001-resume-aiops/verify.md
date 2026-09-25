@@ -30,6 +30,7 @@
 - DeepSeek 切换验证：Compose 配置检查和 Holmes 镜像重建通过；安全检查渲染配置确认模型为 `deepseek/deepseek-flash` 且 API Key 未设置；仓库容器中的 LiteLLM 元数据确认其支持 function calling。没有发出模型请求，live RCA 仍未验证。
 - 浏览器端到端手工验收：operator/approver 分别登录；operator 申请 `set-chaos-mode:on`，approver 批准，operator 执行并观察 owner 验证 OFF→ON；再经审批执行 OFF 恢复并验证 ON→OFF。operator 无复盘写入/审核按钮，approver 保存并审核含真实限制说明的合成复盘；审计时间线显示审批、动作核验和 `retrospective.reviewed`。合成事故的 Holmes 任务以 `holmes_unavailable` 到达重试上限，证明任务失败路径可见但不能替代 live RCA。
 - 正式环境准备：`examples/openobserve-aiops/PRODUCTION-READINESS.md` 列出服务职责、待确认部署输入、生产配置门槛、staging 分阶段验收和 go/no-go 证据。它是准备文档，不是可执行生产 manifest；未执行生产部署。
+- 最新 mock 重放重新生成 20 条报告，并在项目 Poetry Python 3.12 环境通过 Draft 2020-12 Schema 校验；全部案例 `diagnosis: null`、`scoring: not_scored`。它验证了产物结构和可重复生成，不代表 Holmes 诊断质量。
 - OpenObserve 策略代理：11 项 unittest 通过；Compose 配置及容器重建成功；代理健康、Holmes/incident API/order-service 健康。Holmes 容器内查询 `openobserve` 主机 DNS 失败（预期隔离）；真实 Holmes OpenObserve Toolset 经代理成功列出 2 个 allowlist 流并执行 5 分钟时间窗搜索，返回实际日志行。OpenObserve host `/healthz` 返回 HTTP 200，浏览器 UI 根路径返回 HTTP 308 重定向。
 - 持久复盘：隔离 Compose 测试 profile **42 passed, 1 warning**，覆盖迁移、复盘保存/读取、角色拒绝、审核和审计事件。Docker 测试库已记录 `0003_incident_retrospectives`；本机工作台 HTTP smoke 登录 operator 后读取现存事故复盘成功，operator 写入返回 403；`node --check examples/openobserve-aiops/alert-trigger/public/incidents.js` 与 `/incidents.js` HTTP 资源检查通过。
 - 20 例评测语料：去重键和发布/Runbook 关联验证 **3 passed**；mock 报告重新生成 20 条，明确保持 `not_scored`，未运行 live 模型请求。

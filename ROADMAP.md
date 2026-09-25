@@ -51,6 +51,7 @@
 - 评测报告 schema 升至 1.2：参考预期、参考不支持结论和参考安全建议使用 `reference_*` 字段；未从自由文本分析提取的 assumptions 为 `null`，不再用空数组暗示“没有假设”。评测定向测试 **11 passed**，20 例 mock 报告通过 Draft 2020-12 Schema 校验；重建 Compose 测试镜像后隔离测试 **46 passed，1 warning**。这仍不提供诊断评分，`not_scored` 保持。
 - Holmes 实际挂载的 `/etc/holmes/skills` 由容器内技能加载器识别到 3 个项目 Skill（库存故障、数据库 schema/migration 不匹配、发布回归）；无模型调用。
 - 全仓非 LLM 回归最新重跑：**3861 passed、160 skipped、0 failed、119 warnings**。Internet Toolset 现在不继承环境代理或 `.netrc`，保持对已验证 IP 的直连；环境代理绕过测试覆盖后，原 SSRF pinning 失败消失。AIOps 定向测试 **39 passed**，Compose 隔离测试 **46 passed，1 warning**。真实 DeepSeek 调查与 live 评测仍待 API Key。
+- 本轮重新生成 20 例 mock 报告并用项目 Poetry Python 3.12 的 Draft 2020-12 validator 校验通过；20 例均无模型诊断且 `not_scored`。系统 Python 缺 `jsonschema`，因此使用项目环境完成校验；这不构成 live 诊断质量结果。
 - 复盘增量：隔离 Compose 测试 profile 42 passed，前端 `node --check` 通过；本机 API 登录后可读取现存事故复盘，operator 写入返回 403；测试数据库记录迁移版本 `0003_incident_retrospectives`。
 - 评测语料增量：20 例 mock 报告重生成，检查确认 `not_scored`、20 条病例且无模型诊断；语料/发布-Runbook fixture 校验 **3 passed**，重复 JSON 字段检测测试通过。
 - 订单 HTTP webhook 创建持久 incident/task；operator 自审批返回 403，approver 批准后执行状态 ON，再经批准恢复 OFF；最后实测状态为 OFF。
