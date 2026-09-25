@@ -42,6 +42,7 @@ After startup:
 - Order-service demo: [http://localhost:8080](http://localhost:8080)
 - Holmes incident workbench: [http://localhost:8081](http://localhost:8081) (login with `operator` or `approver`)
 - OpenObserve: [http://localhost:5080](http://localhost:5080)
+- Incident API liveness: `http://localhost:8081/healthz`; readiness: `http://localhost:8081/readyz`
 - Holmes API liveness: `http://localhost:5050/healthz`; readiness: `http://localhost:5050/readyz`
 
 The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action; Compose explicitly enables it with `AIOPS_DEMO_ACTIONS_ENABLED=true`. The action is disabled by default in every other environment, including for already approved requests. The separate `approver` can approve or reject it and edit/review incident retrospectives. The requester cannot approve their own request. Both accounts are local demo identities, not a production identity provider.
@@ -53,10 +54,11 @@ docker compose ps
 curl -fsS http://127.0.0.1:5080/healthz
 curl -fsS http://127.0.0.1:5050/healthz
 curl -fsS http://127.0.0.1:8081/healthz
+curl -fsS http://127.0.0.1:8081/readyz
 curl -fsS http://127.0.0.1:8080/
 ```
 
-OpenObserve's image has no shell-based health probe, so its endpoint is checked from the host. Holmes `/healthz` is liveness; `/readyz` reflects model readiness and can fail when no model is configured.
+The incident API `/healthz` is liveness; `/readyz` checks PostgreSQL connectivity. Holmes `/healthz` is liveness; `/readyz` reflects model readiness and can fail when no model is configured. OpenObserve's image has no shell-based health probe, so its endpoint is checked from the host.
 
 ## Alert routing and end-to-end walkthrough
 

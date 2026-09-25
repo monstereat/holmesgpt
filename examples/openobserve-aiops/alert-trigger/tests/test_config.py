@@ -1,7 +1,11 @@
+from unittest.mock import MagicMock
+
+import psycopg
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
-from app import _require_demo_actions_enabled, _test_users_configuration
+from app import _require_demo_actions_enabled, _test_users_configuration, app, readyz
 
 
 def test_test_user_seeding_requires_local_environment(monkeypatch):
@@ -28,3 +32,26 @@ def test_demo_remediation_is_disabled_by_default(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         _require_demo_actions_enabled()
     assert exc.value.status_code == 503
+
+
+def test_incident_api_readiness_fails_without_database(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200
+        assert client.get("/readyz").status_code == 503
+
+
+def test_incident_api_readiness_reports_database_connectivity(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    connection = MagicMock()
+    monkeypatch.setattr("app.psycopg.connect", lambda *args, **kwargs: connection)
+    assert readyz() == {"status": "ready"}
+
+    def unavailable(*args, **kwargs):
+        raise psycopg.OperationalError("database offline")
+
+    monkeypatch.setattr("app.psycopg.connect", unavailable)
+    with pytest.raises(HTTPException) as exc:
+        readyz()
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "Incident database is unavailable"

@@ -182,6 +182,19 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/readyz")
+def readyz() -> dict[str, str]:
+    database_url = os.getenv("DATABASE_URL", "")
+    if not database_url:
+        raise HTTPException(status_code=503, detail="Incident database is not configured")
+    try:
+        with psycopg.connect(database_url, connect_timeout=3) as conn:
+            conn.execute("SELECT 1")
+    except psycopg.Error:
+        raise HTTPException(status_code=503, detail="Incident database is unavailable") from None
+    return {"status": "ready"}
+
+
 @app.get("/", include_in_schema=False)
 def workbench() -> FileResponse:
     return FileResponse(PUBLIC_PATH / "incidents.html")
