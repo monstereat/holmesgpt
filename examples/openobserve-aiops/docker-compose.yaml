@@ -8,6 +8,9 @@ services:
       ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?Export ZO_ROOT_USER_PASSWORD before starting the local demo}
       ZO_DATA_DIR: /data
       ZO_HTTP_PORT: "5080"
+      # Local synthetic evaluation cases span more than the default five-hour ingest window.
+      # Keep this override confined to the test-only Docker demo.
+      ZO_INGEST_ALLOWED_UPTO: "24"
       # Required only for this local demo's private Docker-network webhook.
       # Never enable this setting in production.
       ZO_SKIP_SSRF_CHECKS: "true"

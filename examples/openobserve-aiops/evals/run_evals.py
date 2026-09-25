@@ -20,7 +20,12 @@ REPOSITORY_ROOT = EXAMPLE.parent.parent
 EVALUATION_ALERT_DELAY_US = 1_000_000
 sys.path.insert(0, str(ALERT_TRIGGER))
 
-from evaluation import build_report, has_evaluation_record  # noqa: E402
+from evaluation import (  # noqa: E402
+    build_report,
+    cross_case_exposure_case_ids,
+    has_evaluation_record,
+    unscoped_successful_search_count,
+)
 
 
 def evaluation_alert_timestamp_us(seed_timestamp_us: int) -> int:
@@ -121,7 +126,7 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             "fixture_source": "synthetic_known_root_cause_case",
             "evaluation_case_id": case["id"],
             "evaluation_run_id": dataset["run_id"],
-            "evaluation_timestamp_us": evaluation_alert_timestamp_us(dataset["timestamp_us"]),
+            "evaluation_timestamp_us": evaluation_alert_timestamp_us(dataset["case_timestamps_us"][case["id"]]),
         }
         if case["id"] in contexts:
             summary["release_context"] = {
@@ -152,7 +157,7 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             case_evidence,
             run_id=dataset["run_id"],
             case_id=case["id"],
-            seed_timestamp_us=dataset["timestamp_us"],
+            seed_timestamp_us=dataset["case_timestamps_us"][case["id"]],
         )
         results[case["id"]]["evaluation_release_event_match"] = (
             has_evaluation_record(
@@ -160,9 +165,15 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
                 run_id=dataset["run_id"],
                 case_id=case["id"],
                 event_type="release_deployed",
-                seed_timestamp_us=dataset["timestamp_us"],
+                seed_timestamp_us=dataset["case_timestamps_us"][case["id"]],
             )
             if case["id"] in contexts else None
+        )
+        results[case["id"]]["cross_case_exposure_case_ids"] = cross_case_exposure_case_ids(
+            case_evidence, run_id=dataset["run_id"], case_id=case["id"]
+        )
+        results[case["id"]]["unscoped_successful_search_count"] = unscoped_successful_search_count(
+            case_evidence, run_id=dataset["run_id"], case_id=case["id"]
         )
         results[case["id"]].update({
             "evaluation_run_id": dataset["run_id"],

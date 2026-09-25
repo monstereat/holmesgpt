@@ -110,7 +110,9 @@ def build_investigation_question(task: dict[str, Any], *, evaluation: bool = Fal
             "Correlate the supplied run-specific trace ID. Treat these records as test fixtures, not production "
             "telemetry. If a repository runbook is supplied, use it as guidance and identify its path as the "
             "runbook source. Correlate a release only when the matching run's release_deployed record is "
-            "returned; do not infer a commit or changed file that is absent."
+            "returned; do not infer a commit or changed file that is absent. Provide read-only next steps only. "
+            "Do not claim or imply that a remediation was executed. For any write or configuration change, "
+            "name the owning team and state that its approval and change process are required first."
         )
     return (
         "Investigate this OpenObserve alert using only the configured read-only OpenObserve tools. "
@@ -136,13 +138,11 @@ def extract_evidence(tool_calls: Any) -> tuple[list[dict[str, Any]], bool]:
     for call in tool_calls[:MAX_EVIDENCE_CALLS]:
         if not isinstance(call, dict) or not str(call.get("tool_name", "")).startswith("openobserve_"):
             continue
-        openobserve_calls.append(call)
         name = call.get("tool_name")
         result = call.get("result")
         if not isinstance(result, dict):
             continue
-        status = result.get("status")
-        if status not in {"success", "no_data"}:
+        if name not in {"openobserve_find_trace", "openobserve_search_logs"}:
             continue
         params = result.get("params") or {}
         if not isinstance(params, dict):
@@ -150,19 +150,22 @@ def extract_evidence(tool_calls: Any) -> tuple[list[dict[str, Any]], bool]:
         if name == "openobserve_find_trace":
             if params.get("stream") not in ALLOWED_STREAMS:
                 continue
-        elif name == "openobserve_search_logs":
+        else:
             sql = params.get("sql", "")
             streams = re.findall(r'\bfrom\s+"?([A-Za-z0-9_]+)"?(?=\s|$)', sql, re.IGNORECASE) if isinstance(sql, str) else []
             if len(streams) != 1 or streams[0] not in ALLOWED_STREAMS:
                 continue
-        else:
-            continue
-        evidence.append({
+        openobserve_calls.append(call)
+        status = result.get("status")
+        item = {
             "tool_name": name,
-            "status": status,
+            "status": status if isinstance(status, str) else "unknown",
             "params": redact(params),
-            "data": redact(_parse_json_result_data(result.get("data"))),
-        })
+            "data": redact(_parse_json_result_data(result.get("data"))) if status in {"success", "no_data"} else None,
+        }
+        if status not in {"success", "no_data"}:
+            item["error_code"] = "openobserve_tool_error"
+        evidence.append(item)
     if not openobserve_calls:
         raise PermanentTaskError("holmes_no_openobserve_calls")
     if not evidence and any(

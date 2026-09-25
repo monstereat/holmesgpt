@@ -1,6 +1,15 @@
 import pytest
 
-from evaluation import CLUSTER_BY_CASE, CLUSTER_TAXONOMY, build_case_report, build_report, has_evaluation_record, trace_ids
+from evaluation import (
+    CLUSTER_BY_CASE,
+    CLUSTER_TAXONOMY,
+    build_case_report,
+    build_report,
+    cross_case_exposure_case_ids,
+    has_evaluation_record,
+    trace_ids,
+    unscoped_successful_search_count,
+)
 
 
 def cases():
@@ -31,7 +40,7 @@ def test_corpus_has_a_curated_cluster_for_every_case_and_extracts_trace_ids():
 
 def test_mock_report_preserves_fixture_provenance_without_claiming_model_results():
     report = build_report(cases(), mode="mock")
-    assert report["schema_version"] == "1.2.0"
+    assert report["schema_version"] == "1.3.0"
     assert report["case_source"] == "synthetic_fixture"
     assert report["evaluation_run_id"] is None
     assert report["seeded_record_count"] is None
@@ -42,6 +51,10 @@ def test_mock_report_preserves_fixture_provenance_without_claiming_model_results
         "matching_case_evidence": 0,
         "release_event_cases": 0,
         "matching_release_events": 0,
+        "cases_with_cross_case_exposure": 0,
+        "cross_case_exposure_case_count": 0,
+        "cases_with_unscoped_successful_searches": 0,
+        "unscoped_successful_search_count": 0,
     }
     assert report["retrieval_coverage"] == {"case_evidence_matches": 0, "release_event_matches": 0}
     assert all(case["diagnosis"] is None for case in report["cases"])
@@ -80,6 +93,7 @@ def test_live_report_separates_live_retrieval_from_synthetic_case_source():
     assert report["reference_safe_next_step"] == case["safe_next_step"]
     assert report["scoring"] == "not_scored"
     assert report["evaluation_evidence_match"] is True
+    assert report["cross_case_exposure_case_ids"] == []
 
 
 def test_report_counts_exact_case_and_release_retrieval_matches():
@@ -104,6 +118,37 @@ def test_report_counts_exact_case_and_release_retrieval_matches():
     assert report["counts"]["matching_case_evidence"] == 1
     assert report["counts"]["release_event_cases"] == 1
     assert report["counts"]["matching_release_events"] == 1
+
+
+def test_cross_case_exposure_reports_only_other_cases_from_the_current_run():
+    evidence = [{
+        "tool_name": "openobserve_search_logs",
+        "status": "success",
+        "data": {"hits": [
+            {"evaluation_run_id": "run-1", "evaluation_case_id": "case-1"},
+            {"evaluation_run_id": "run-1", "evaluation_case_id": "case-2"},
+            {"evaluation_run_id": "run-old", "evaluation_case_id": "case-3"},
+        ]},
+    }]
+
+    assert cross_case_exposure_case_ids(evidence, run_id="run-1", case_id="case-1") == ["case-2"]
+
+
+def test_unscoped_successful_search_count_flags_or_and_missing_case_filters():
+    evidence = [
+        {
+            "tool_name": "openobserve_search_logs",
+            "status": "success",
+            "params": {"sql": "SELECT message FROM app_logs WHERE evaluation_run_id = 'run-1' AND evaluation_case_id = 'case-1'"},
+        },
+        {
+            "tool_name": "openobserve_search_logs",
+            "status": "success",
+            "params": {"sql": "SELECT message FROM app_logs WHERE evaluation_run_id = 'run-1' OR trace_id = 'abc'"},
+        },
+    ]
+
+    assert unscoped_successful_search_count(evidence, run_id="run-1", case_id="case-1") == 1
 
 
 def test_has_evaluation_record_requires_matching_run_and_case_and_optional_event_type():

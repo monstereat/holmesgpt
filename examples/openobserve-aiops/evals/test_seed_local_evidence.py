@@ -20,7 +20,7 @@ CASE = {
 
 
 def test_build_records_scopes_case_evidence_to_unique_synthetic_trace():
-    records, trace_ids = build_records([CASE], "a" * 32, 1_800_000_000_000_000)
+    records, trace_ids, timestamps_us, counts = build_records([CASE], "a" * 32, 1_800_000_000_000_000)
 
     trace_id = trace_ids[CASE["id"]]
     assert re.fullmatch(r"[0-9a-f]{32}", trace_id)
@@ -30,6 +30,8 @@ def test_build_records_scopes_case_evidence_to_unique_synthetic_trace():
     assert all(record["evaluation_case_id"] == CASE["id"] for record in records)
     assert all(record["evaluation_source"] == "synthetic_fixture" for record in records)
     assert trace_id in records[0]["message"]
+    assert timestamps_us == {CASE["id"]: 1_800_000_000_000_000}
+    assert counts == {CASE["id"]: 2}
 
 
 def test_release_case_seeds_an_explicit_synthetic_release_event():
@@ -38,7 +40,7 @@ def test_release_case_seeds_an_explicit_synthetic_release_event():
     case = next(item for item in cases if item["id"] == "order-release-regression")
     context = load_evaluation_contexts()[case["id"]]
 
-    records, trace_ids = build_records([case], "b" * 32, 1_800_000_000_000_000, {case["id"]: context})
+    records, trace_ids, timestamps_us, counts = build_records([case], "b" * 32, 1_800_000_000_000_000, {case["id"]: context})
     release = next(record for record in records if record["event_type"] == "release_deployed")
 
     assert release["evaluation_source"] == "synthetic_fixture"
@@ -54,6 +56,17 @@ def test_release_case_seeds_an_explicit_synthetic_release_event():
         if record["event_type"] != "release_deployed"
     )
     assert any(trace_ids[case["id"]] in record["message"] for record in records)
+    assert timestamps_us[case["id"]] == 1_800_000_000_000_000
+    assert counts[case["id"]] == len(records)
+
+
+def test_case_timestamps_are_farther_apart_than_proxy_query_window():
+    cases = [dict(CASE, id=f"case-{index}") for index in range(3)]
+    _, _, timestamps_us, _ = build_records(cases, "c" * 32, 1_800_000_000_000_000)
+
+    ordered = list(timestamps_us.values())
+    assert all(later - earlier == seed_evidence_module.CASE_TIMESTAMP_INTERVAL_US for earlier, later in zip(ordered, ordered[1:]))
+    assert seed_evidence_module.CASE_TIMESTAMP_INTERVAL_US > 60 * 60 * 1_000_000
 
 
 def test_live_context_loader_supplies_repository_runbook_and_release_metadata():
@@ -88,6 +101,7 @@ def test_compose_uses_holmes_and_litellm_environment_names_for_deepseek():
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
     environment = compose["services"]["holmes-api"]["environment"]
+    assert compose["services"]["openobserve"]["environment"]["ZO_INGEST_ALLOWED_UPTO"] == "24"
     assert environment["MODEL"] == "${HOLMES_MODEL:-deepseek/deepseek-flash}"
     assert environment["DEEPSEEK_API_KEY"] == "${DEEPSEEK_API_KEY:-}"
     assert "HOLMES_MODEL" not in environment
@@ -161,9 +175,11 @@ def test_seed_local_evidence_uses_local_json_ingest_and_checks_accepted_count():
     assert len(records) == dataset["record_count"] == 2
     assert dataset["trace_ids"][CASE["id"]] == records[0]["trace_id"]
     assert dataset["run_id"] == records[0]["evaluation_run_id"]
+    assert dataset["case_timestamps_us"][CASE["id"]] == records[0]["_timestamp"]
     search = json.loads(search_request.data)
     assert search_request.full_url == "http://127.0.0.1:5080/api/default/_search"
     assert dataset["run_id"] in search["query"]["sql"]
+    assert CASE["id"] in search["query"]["sql"]
     assert search["query"]["size"] == 2
 
 
@@ -217,7 +233,13 @@ def test_search_visibility_waits_for_all_current_run_records(monkeypatch):
     monkeypatch.setattr(seed_evidence_module, "SEARCH_VISIBILITY_POLL_SECONDS", 0)
     opener = Opener()
     seed_evidence_module._wait_for_search_visibility(
-        "http://127.0.0.1:5080", "local-test", "not-a-real-secret", "c" * 32, 1_800_000_000_000_000, 2, opener
+        "http://127.0.0.1:5080",
+        "local-test",
+        "not-a-real-secret",
+        "c" * 32,
+        {CASE["id"]: 1_800_000_000_000_000},
+        {CASE["id"]: 2},
+        opener,
     )
     assert opener.calls == 2
 

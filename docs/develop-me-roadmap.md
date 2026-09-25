@@ -4,7 +4,7 @@
 > 开源底座：HolmesGPT；集成 OpenObserve、前端监控 SDK、NestJS、OpenTelemetry，Keep 按需加入。  
 > 范围：先在当前电脑 Docker 测试环境围绕真实应用故障建立「采集 → 告警 → 调查 → 审批处置 → 验证 → 复盘」闭环；正式环境部署后续另行规划和授权；不自建日志数据库。
 
-> **当前验收状态（2026-09-25）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；工作台已在浏览器分别登录 operator/approver，走通独立审批的测试动作 ON→OFF 闭环，并保存审核合成复盘。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；复核报告含 20 案、40 条已确认可搜索的 OpenObserve 记录、20/20 当前 run/case 证据查询命中、3/3 发布事件命中和 0 个工具错误。根因评分仍为 `not_scored`，不能声称诊断准确率或生产准确性；没有部署到生产环境。
+> **当前验收状态（2026-09-25）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；工作台已在浏览器分别登录 operator/approver，走通独立审批的测试动作 ON→OFF 闭环，并保存审核合成复盘。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新隔离报告含 20 案、40 条可搜索 OpenObserve 记录、20/20 精确案例证据查询命中、3/3 发布事件命中、0 个识别出的跨案例 fixture 命中，但有 9 次成功搜索未精确过滤 run/case。独立 AI 复核还发现模型诊断文字包含报告未保存的失败查询陈述；诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
 
 ## 1. 功能边界
 
@@ -248,6 +248,16 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 实测 `requests.Session` 从环境读取代理后，连接到了本机代理端口而非 URL 校验所得的 loopback 测试服务，绕过 pinned adapter。`fetch_webpage` 禁止继承环境代理和 `.netrc`，继续通过 IP-pinned adapter 直连；仍支持 `REQUESTS_CA_BUNDLE`/`CURL_CA_BUNDLE`。
 - [x] SSRF 测试增加代理环境覆盖；`tests/plugins/toolsets/test_internet_ssrf.py` **41 passed**。
 - [x] 全仓非 LLM 回归最终结果：**3861 passed、160 skipped、0 failed、119 warnings**。
+
+## 2026-09-25 增量：20 案隔离与评测轨迹审计
+
+- [x] 每个合成案例使用独立事件时间，案例间距 62 分钟，大于 Holmes 只读代理的一小时查询窗；Seeder 按 run/case/time window 逐案确认记录数和可见性，避免同一轮案例互相污染。
+- [x] 本机测试 Compose 的 OpenObserve `ZO_INGEST_ALLOWED_UPTO` 设为 24 小时，容纳最长约 20 小时的测试样本跨度。此设置仅用于本机测试；官方默认是五小时，生产写入策略需单独评审。
+- [x] 报告 schema 1.3 增加当前 run 的可识别跨案例 fixture 命中和未精确过滤 run/case 的成功搜索计数。隔离 live 报告验证为 20/20 精确案例证据命中、3/3 发布事件命中、0 个可识别外案 fixture 命中、9 个未精确过滤的成功搜索；报告通过 Draft 2020-12 校验。
+- [x] 独立 AI 复核前后 20 案，发现诊断文字陈述了报告未保存的失败查询；这不是人工诊断评分，`scoring` 继续保持 `not_scored`。
+- [x] Holmes 客户端在同时存在成功结果时保留 allowlist 工具的脱敏失败状态和参数，避免只保存成功结果而无法复核部分模型陈述；无成功证据仍失败关闭。
+- [x] 隔离 Compose 测试 **70 passed, 1 warning**；Seeder 测试 **18 passed**；schema 1.3 校验通过。
+- [ ] 重新运行 live 评测以验证新失败轨迹留痕，然后由人工按 rubric 评分；完成前不宣称诊断准确率。
 
 ## 2026-09-25 增量：浏览器工作台角色与处置闭环验收
 

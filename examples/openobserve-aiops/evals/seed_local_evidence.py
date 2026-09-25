@@ -21,6 +21,8 @@ MAX_RECORDS = 100
 MAX_RESPONSE_BYTES = 65_536
 SEARCH_VISIBILITY_TIMEOUT_SECONDS = 30
 SEARCH_VISIBILITY_POLL_SECONDS = 1
+CASE_TIMESTAMP_INTERVAL_US = 3_720_000_000
+LATEST_CASE_OFFSET_US = 120_000_000
 
 
 def build_records(
@@ -28,10 +30,15 @@ def build_records(
     run_id: str,
     timestamp_us: int,
     contexts: dict[str, dict[str, Any]] | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, str]]:
+) -> tuple[list[dict[str, Any]], dict[str, str], dict[str, int], dict[str, int]]:
     records = []
     trace_ids = {}
-    for case in cases:
+    case_timestamps_us = {}
+    case_record_counts = {}
+    latest_case_timestamp_us = timestamp_us
+    for index, case in enumerate(cases):
+        case_timestamp_us = latest_case_timestamp_us - (len(cases) - index - 1) * CASE_TIMESTAMP_INTERVAL_US
+        case_timestamps_us[case["id"]] = case_timestamp_us
         trace_id = hashlib.sha256(f"holmes-aiops-eval:{run_id}:{case['id']}".encode()).hexdigest()[:32]
         trace_ids[case["id"]] = trace_id
         context = (contexts or {}).get(case["id"])
@@ -42,8 +49,8 @@ def build_records(
                 continue
             message = TRACE_ID.sub(trace_id, evidence)
             records.append({
-                "_timestamp": timestamp_us,
-                "timestamp": datetime.fromtimestamp(timestamp_us / 1_000_000, timezone.utc).isoformat(),
+                "_timestamp": case_timestamp_us,
+                "timestamp": datetime.fromtimestamp(case_timestamp_us / 1_000_000, timezone.utc).isoformat(),
                 "trace_id": trace_id,
                 "service": case["service"],
                 "service_name": case["service"],
@@ -56,8 +63,8 @@ def build_records(
             })
         if context:
             records.append({
-                "_timestamp": timestamp_us,
-                "timestamp": datetime.fromtimestamp(timestamp_us / 1_000_000, timezone.utc).isoformat(),
+                "_timestamp": case_timestamp_us,
+                "timestamp": datetime.fromtimestamp(case_timestamp_us / 1_000_000, timezone.utc).isoformat(),
                 "service": case["service"],
                 "service_name": case["service"],
                 "event_type": "release_deployed",
@@ -69,9 +76,10 @@ def build_records(
                 "evaluation_source": "synthetic_fixture",
                 "message": context["release_evidence"],
             })
+        case_record_counts[case["id"]] = sum(record["evaluation_case_id"] == case["id"] for record in records)
     if not records or len(records) > MAX_RECORDS:
         raise ValueError("Synthetic evaluation record count is outside the allowed bound")
-    return records, trace_ids
+    return records, trace_ids, case_timestamps_us, case_record_counts
 
 
 def _validate_local_url(base_url: str) -> str:
@@ -95,62 +103,64 @@ def _wait_for_search_visibility(
     username: str,
     password: str,
     run_id: str,
-    timestamp_us: int,
-    expected_records: int,
+    case_timestamps_us: dict[str, int],
+    case_record_counts: dict[str, int],
     client: Any,
 ) -> None:
     auth = base64.b64encode(f"{username}:{password}".encode()).decode()
-    start_time = timestamp_us - 60_000_000
-    end_time = timestamp_us + 60_000_000
-    search = {
-        "query": {
-            "sql": f"SELECT _timestamp, evaluation_run_id, evaluation_case_id FROM app_logs WHERE evaluation_run_id = '{run_id}'",
-            "start_time": start_time,
-            "end_time": end_time,
-            "from": 0,
-            "size": expected_records,
-        },
-        "search_type": "ui",
-        "timeout": 5,
-    }
-    request = urllib.request.Request(
-        f"{target}/api/default/_search",
-        data=json.dumps(search).encode(),
-        headers={
-            "Authorization": f"Basic {auth}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    deadline = time.monotonic() + SEARCH_VISIBILITY_TIMEOUT_SECONDS
-    while True:
-        try:
-            with client.open(request, timeout=10) as response:
-                raw = response.read(MAX_RESPONSE_BYTES + 1)
-        except urllib.error.HTTPError:
-            raise ValueError("Local OpenObserve search visibility check failed") from None
-        except (urllib.error.URLError, TimeoutError, OSError):
+    for case_id, timestamp_us in case_timestamps_us.items():
+        search = {
+            "query": {
+                "sql": (
+                    "SELECT _timestamp, evaluation_run_id, evaluation_case_id FROM app_logs "
+                    f"WHERE evaluation_run_id = '{run_id}' AND evaluation_case_id = '{case_id}'"
+                ),
+                "start_time": timestamp_us - 60_000_000,
+                "end_time": timestamp_us + 60_000_000,
+                "from": 0,
+                "size": case_record_counts[case_id],
+            },
+            "search_type": "ui",
+            "timeout": 5,
+        }
+        request = urllib.request.Request(
+            f"{target}/api/default/_search",
+            data=json.dumps(search).encode(),
+            headers={
+                "Authorization": f"Basic {auth}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        deadline = time.monotonic() + SEARCH_VISIBILITY_TIMEOUT_SECONDS
+        while True:
+            try:
+                with client.open(request, timeout=10) as response:
+                    raw = response.read(MAX_RESPONSE_BYTES + 1)
+            except urllib.error.HTTPError:
+                raise ValueError("Local OpenObserve search visibility check failed") from None
+            except (urllib.error.URLError, TimeoutError, OSError):
+                if time.monotonic() >= deadline:
+                    raise ValueError("Local OpenObserve search visibility check timed out") from None
+                time.sleep(SEARCH_VISIBILITY_POLL_SECONDS)
+                continue
+            if len(raw) > MAX_RESPONSE_BYTES:
+                raise ValueError("Local OpenObserve search visibility response exceeded the size limit")
+            try:
+                result = json.loads(raw)
+                visible_records = result["total"]
+                if isinstance(visible_records, bool) or not isinstance(visible_records, int):
+                    raise ValueError
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                raise ValueError("Local OpenObserve returned an invalid search visibility response") from None
+            if visible_records == case_record_counts[case_id]:
+                break
+            if visible_records > case_record_counts[case_id]:
+                raise ValueError("Local OpenObserve returned more evaluation records than were seeded")
             if time.monotonic() >= deadline:
-                raise ValueError("Local OpenObserve search visibility check timed out") from None
+                raise ValueError("Local OpenObserve did not make every evaluation record searchable in time")
             time.sleep(SEARCH_VISIBILITY_POLL_SECONDS)
-            continue
-        if len(raw) > MAX_RESPONSE_BYTES:
-            raise ValueError("Local OpenObserve search visibility response exceeded the size limit")
-        try:
-            result = json.loads(raw)
-            visible_records = result["total"]
-            if isinstance(visible_records, bool) or not isinstance(visible_records, int):
-                raise ValueError
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            raise ValueError("Local OpenObserve returned an invalid search visibility response") from None
-        if visible_records == expected_records:
-            return
-        if visible_records > expected_records:
-            raise ValueError("Local OpenObserve returned more evaluation records than were seeded")
-        if time.monotonic() >= deadline:
-            raise ValueError("Local OpenObserve did not make every evaluation record searchable in time")
-        time.sleep(SEARCH_VISIBILITY_POLL_SECONDS)
 
 
 def seed_local_evidence(
@@ -169,8 +179,8 @@ def seed_local_evidence(
         raise ValueError("Local OpenObserve credentials are required")
 
     run_id = uuid.uuid4().hex
-    timestamp_us = time.time_ns() // 1_000
-    records, trace_ids = build_records(cases, run_id, timestamp_us, contexts)
+    timestamp_us = time.time_ns() // 1_000 - LATEST_CASE_OFFSET_US
+    records, trace_ids, case_timestamps_us, case_record_counts = build_records(cases, run_id, timestamp_us, contexts)
     auth = base64.b64encode(f"{username}:{password}".encode()).decode()
     request = urllib.request.Request(
         f"{target}/api/default/app_logs/_json",
@@ -203,10 +213,11 @@ def seed_local_evidence(
         raise ValueError("OpenObserve returned an invalid ingestion response") from None
     if successful != len(records) or failed != 0:
         raise ValueError("OpenObserve did not accept every synthetic evaluation record")
-    _wait_for_search_visibility(target, username, password, run_id, timestamp_us, successful, client)
+    _wait_for_search_visibility(target, username, password, run_id, case_timestamps_us, case_record_counts, client)
     return {
         "run_id": run_id,
-        "timestamp_us": timestamp_us,
+        "case_timestamps_us": case_timestamps_us,
+        "case_record_counts": case_record_counts,
         "record_count": successful,
         "trace_ids": trace_ids,
     }

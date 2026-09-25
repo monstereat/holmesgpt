@@ -41,6 +41,8 @@ The Holmes container reads a read-only config file. By default it mounts the com
 
 The model is selected through Holmes' `MODEL` environment variable, and LiteLLM reads the provider key from `DEEPSEEK_API_KEY`; the config template contains toolset settings and caps each investigation at 12 model steps.
 
+The local OpenObserve container permits up to 24-hour-old log ingestion so the live synthetic evaluation can place cases farther apart than the proxy's one-hour query limit. OpenObserve defaults to five hours. This setting is only for the local test Compose stack and must not be copied into production without an explicit data-ingestion policy review.
+
 After startup:
 
 - Order-service demo: [http://localhost:8080](http://localhost:8080)

@@ -108,6 +108,8 @@ def test_synthetic_evaluation_instructions_require_internal_mode_flag():
     assert '"evaluation_case_id":"case-1"' in eval_question
     assert '"search_window_start_unix_us":1799999940000000' in eval_question
     assert "do not cite rows from any other run" in eval_question
+    assert "Provide read-only next steps only" in eval_question
+    assert "approval and change process are required first" in eval_question
     assert "trusted server-generated alert search window" not in eval_question
 
 
@@ -156,6 +158,11 @@ def test_only_successful_allowlisted_openobserve_calls_become_verified_evidence(
     empty_evidence, verified = extract_evidence([_tool("no_data", data=None)])
     assert verified is False
     assert empty_evidence[0]["status"] == "no_data"
+    mixed_evidence, verified = extract_evidence([_tool(), _tool("error")])
+    assert verified is True
+    assert [item["status"] for item in mixed_evidence] == ["success", "error"]
+    assert mixed_evidence[1]["error_code"] == "openobserve_tool_error"
+    assert mixed_evidence[1]["data"] is None
     with pytest.raises(PermanentTaskError, match="no_openobserve_calls"):
         extract_evidence([unsafe_tool])
     with pytest.raises(PermanentTaskError, match="holmes_tool_error"):
