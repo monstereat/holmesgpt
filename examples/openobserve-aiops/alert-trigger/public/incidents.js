@@ -326,7 +326,12 @@
   document.getElementById("status-filter").addEventListener("change", loadIncidents);
   oidcLogin.addEventListener("click", () => { window.location.assign("/auth/login"); });
   document.getElementById("logout").addEventListener("click", async () => {
-    if (authMode === "oidc") await fetch("/auth/logout", { method: "POST" }).catch(() => {});
+    try {
+      await api("/auth/logout", { method: "POST" });
+    } catch (error) {
+      showError(pageMessage, error);
+      return;
+    }
     sessionStorage.removeItem(tokenKey);
     principal = null;
     detail.replaceChildren(el("p", "选择一条事故查看调查结果和时间线。", "muted"));

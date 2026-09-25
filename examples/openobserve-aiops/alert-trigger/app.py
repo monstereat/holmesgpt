@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from psycopg.types.json import Jsonb
 
 from action_client import ActionServiceError, OrderActionClient
-from auth import ROLE_PERMISSIONS, create_session, hash_password, parse_session, require_permission, verify_password
+from auth import ROLE_PERMISSIONS, create_session, hash_password, parse_session, require_permission, session_expiration, verify_password
 from models import IncidentInput, Principal
 from store import create_incident
 from trigger import MAX_BODY_BYTES, normalize_alert
@@ -197,8 +197,13 @@ def _load_principal(authorization: str | None, session_token: str | None = None)
     with psycopg.connect(_database_url()) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, username, role, resource_scopes FROM users WHERE id = %s::uuid AND active = TRUE",
-                (token_principal.user_id,),
+                """SELECT id, username, role, resource_scopes FROM users
+                   WHERE id = %s::uuid AND active = TRUE
+                     AND NOT EXISTS (
+                         SELECT 1 FROM revoked_sessions
+                         WHERE token_hash = %s AND expires_at > now()
+                     )""",
+                (token_principal.user_id, hashlib.sha256(token.encode()).hexdigest()),
             )
             user = cursor.fetchone()
     if not user:
@@ -407,7 +412,25 @@ async def oidc_callback(request: Request):
 
 
 @app.post("/auth/logout")
-def logout(request: Request):
+def logout(request: Request, authorization: str | None = Header(default=None)):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME, "")
+    if not session_token and authorization and authorization.startswith("Bearer "):
+        session_token = authorization[7:]
+    signing_key = os.getenv("SESSION_SIGNING_KEY", "")
+    if session_token and len(signing_key) >= 32:
+        try:
+            expires_at = session_expiration(session_token, signing_key)
+        except ValueError:
+            expires_at = None
+        if expires_at:
+            token_hash = hashlib.sha256(session_token.encode()).hexdigest()
+            with psycopg.connect(_database_url()) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("DELETE FROM revoked_sessions WHERE expires_at <= now()")
+                    cursor.execute(
+                        "INSERT INTO revoked_sessions (token_hash, expires_at) VALUES (%s, to_timestamp(%s)) ON CONFLICT (token_hash) DO NOTHING",
+                        (token_hash, expires_at),
+                    )
     response = JSONResponse({"status": "logged_out"})
     response.delete_cookie(
         SESSION_COOKIE_NAME,

@@ -152,6 +152,12 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert after_retry["tasks"][0]["status"] == "queued"
             assert any(event["event_type"] == "task.manual_retry_requested" for event in after_retry["timeline"])
             assert {event["event_type"] for event in after_retry["timeline"]} >= {"retrospective.draft", "retrospective.reviewed"}
+
+            logout = client.post("/auth/logout", headers=viewer)
+            assert logout.status_code == 200
+            assert client.get("/auth/me", headers=viewer).status_code == 401
+            refreshed_viewer = login("demo-viewer", "viewer-passphrase-123")
+            assert client.get("/auth/me", headers=refreshed_viewer).status_code == 200
     finally:
         with psycopg.connect(database_url) as conn:
             with conn.cursor() as cursor:

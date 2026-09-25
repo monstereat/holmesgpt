@@ -1,6 +1,6 @@
 import pytest
 
-from auth import authorize, create_session, hash_password, parse_session, require_permission, verify_password
+from auth import authorize, create_session, hash_password, parse_session, require_permission, session_expiration, verify_password
 from models import Principal
 
 
@@ -16,7 +16,9 @@ def test_password_hash_and_verification():
 def test_signed_session_rejects_tampering_and_expired_claims():
     principal = Principal("user-1", "operator", "operator", ("order-service",))
     token = create_session(principal, "x" * 32, now=100)
+    assert create_session(principal, "x" * 32, now=100) != token
     assert parse_session(token, "x" * 32, now=101) == principal
+    assert session_expiration(token, "x" * 32, now=101) == 100 + 8 * 60 * 60
     with pytest.raises(ValueError):
         parse_session(token + "x", "x" * 32, now=101)
     with pytest.raises(ValueError, match="Expired"):

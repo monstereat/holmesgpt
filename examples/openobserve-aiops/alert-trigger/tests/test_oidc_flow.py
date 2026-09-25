@@ -107,6 +107,7 @@ def test_oidc_authorization_and_callback_use_bound_state_pkce_and_http_only_sess
         FakeConnection(None),
         FakeConnection(("code-verifier", "saved-nonce")),
         FakeConnection(("00000000-0000-0000-0000-000000000007", "ops-user", "operator", ["order-service"], True)),
+        FakeConnection(None),
     ]
     connect = MagicMock(side_effect=connections)
     monkeypatch.setattr(app_module.psycopg, "connect", connect)
@@ -140,7 +141,12 @@ def test_oidc_authorization_and_callback_use_bound_state_pkce_and_http_only_sess
         assert "max-age=900" in callback.headers["set-cookie"].lower()
         assert fake.token_params["code_verifier"] == "code-verifier"
         assert fake.token_params["code"] == "authorization-code"
-        assert len(connect.call_args_list) == 3
+        logout = client.post("/auth/logout", headers={"Origin": "https://aiops.example.com"})
+        assert logout.status_code == 200
+        statements = [statement for statement, _params in connections[3].cursor_instance.statements]
+        assert any("DELETE FROM revoked_sessions" in statement for statement in statements)
+        assert any("INSERT INTO revoked_sessions" in statement for statement in statements)
+        assert len(connect.call_args_list) == 4
 
 
 def test_oidc_cookie_mutation_requires_exact_public_origin(monkeypatch):

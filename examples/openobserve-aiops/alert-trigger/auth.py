@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 from collections.abc import Iterable
 
@@ -78,6 +79,7 @@ def create_session(
         "scopes": list(principal.resource_scopes),
         "iat": issued,
         "exp": issued + ttl_seconds,
+        "jti": secrets.token_urlsafe(16),
     }
     body = _encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
     signature = hmac.new(_signing_key(key), body.encode(), hashlib.sha256).digest()
@@ -106,6 +108,13 @@ def parse_session(token: str, key: str | bytes, *, now: int | None = None) -> Pr
         )
     except (KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ValueError("Invalid session") from exc
+
+
+def session_expiration(token: str, key: str | bytes, *, now: int | None = None) -> int:
+    parse_session(token, key, now=now)
+    body, _signature = token.split(".", 1)
+    payload = json.loads(_decode(body))
+    return int(payload["exp"])
 
 
 def authorize(principal: Principal, permission: str, resource: str) -> bool:

@@ -53,6 +53,8 @@ The account seeded as `operator` can create/retry tasks and request the fixed `s
 
 The local `admin` can inspect application identity mappings and disable a user's workbench access. This does not change the user's identity-provider account; role and resource assignments remain controlled by OIDC group mappings. No local admin credential is committed.
 
+Logout revokes the current OIDC cookie or local bearer session server-side by storing only its token hash and expiry. The API checks revocation on authenticated requests. If logout cannot reach PostgreSQL, the workbench keeps the current session visible and reports the error instead of silently treating the token as revoked.
+
 Check service state and liveness:
 
 ```bash
@@ -83,7 +85,7 @@ Live 20-case evaluation seeds at most 100 synthetic evidence rows into the local
 
 ## Persistence and recovery
 
-PostgreSQL persists incidents, tasks, users, approvals, retrospectives, audit and outbox records in `aiops-postgres-data`. The one-shot `incident-migrate` service applies versioned SQL migrations before the API and worker start; the API processes never apply schema changes during startup. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.
+PostgreSQL persists incidents, tasks, users, revoked session hashes, approvals, retrospectives, audit and outbox records in `aiops-postgres-data`. The one-shot `incident-migrate` service applies versioned SQL migrations (currently through `0005_revoked_sessions`) before the API and worker start; the API processes never apply schema changes during startup. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.
 
 To verify a local backup and restore without overwriting the active database:
 
