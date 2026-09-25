@@ -104,7 +104,7 @@ def extract_evidence(tool_calls: Any) -> tuple[list[dict[str, Any]], bool]:
             "tool_name": name,
             "status": status,
             "params": redact(params),
-            "data": redact(result.get("data")),
+            "data": redact(_parse_json_result_data(result.get("data"))),
         })
     if not openobserve_calls:
         raise PermanentTaskError("holmes_no_openobserve_calls")
@@ -116,6 +116,15 @@ def extract_evidence(tool_calls: Any) -> tuple[list[dict[str, Any]], bool]:
     ):
         raise PermanentTaskError("holmes_tool_error")
     return evidence, any(item["status"] == "success" for item in evidence)
+
+
+def _parse_json_result_data(value: Any) -> Any:
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
+    return value
 
 
 @dataclass

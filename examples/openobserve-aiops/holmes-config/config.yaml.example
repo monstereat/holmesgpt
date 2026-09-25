@@ -1,5 +1,4 @@
-model: "{{ env.HOLMES_MODEL }}"
-api_key: "{{ env.MODEL_API_KEY }}"
+max_steps: 12
 custom_skill_paths:
   - /etc/holmes/skills
 toolsets:

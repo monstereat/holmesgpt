@@ -106,8 +106,8 @@ services:
       HOLMES_HOST: 0.0.0.0
       HOLMES_PORT: "5050"
       HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
-      HOLMES_MODEL: ${HOLMES_MODEL:-deepseek/deepseek-flash}
-      MODEL_API_KEY: ${DEEPSEEK_API_KEY:-${MODEL_API_KEY:-}}
+      MODEL: ${HOLMES_MODEL:-deepseek/deepseek-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OPENOBSERVE_PROXY_USERNAME: ${OPENOBSERVE_PROXY_USERNAME:?Export local proxy username before starting the demo}
       OPENOBSERVE_PROXY_PASSWORD: ${OPENOBSERVE_PROXY_PASSWORD:?Export local proxy password before starting the demo}
     volumes:

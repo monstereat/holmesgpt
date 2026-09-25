@@ -7,6 +7,7 @@ import pytest
 from urllib.error import HTTPError, URLError
 
 from holmes_client import HolmesClient, build_investigation_question, extract_evidence
+from evaluation import has_evaluation_record
 from task_errors import PermanentTaskError, RetryableTaskError
 
 
@@ -101,6 +102,26 @@ def test_only_successful_allowlisted_openobserve_calls_become_verified_evidence(
         extract_evidence([unsafe_tool])
     with pytest.raises(PermanentTaskError, match="holmes_tool_error"):
         extract_evidence([_tool("error")])
+
+
+def test_json_encoded_openobserve_results_remain_structured_for_fixture_matching():
+    data = {
+        "hits": [{
+            "evaluation_run_id": "run-123",
+            "evaluation_case_id": "case-123",
+            "event_type": "release_deployed",
+        }]
+    }
+    evidence, verified = extract_evidence([_tool(data=json.dumps(data))])
+
+    assert verified is True
+    assert isinstance(evidence[0]["data"], dict)
+    assert has_evaluation_record(
+        evidence,
+        run_id="run-123",
+        case_id="case-123",
+        event_type="release_deployed",
+    )
 
 
 @pytest.mark.parametrize("status, expected_code", [(401, "holmes_auth_failed"), (403, "holmes_auth_failed"), (400, "holmes_request_rejected")])

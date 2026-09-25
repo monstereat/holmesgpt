@@ -30,7 +30,7 @@ python examples/openobserve-aiops/evals/run_evals.py --mode live --confirm-live 
 
 `--confirm-live` is required because this appends synthetic data to the local Docker test OpenObserve and makes external model requests. Case inputs and reference diagnoses remain synthetic; retrieved records are tagged `synthetic_fixture` and originate from the local OpenObserve API. The report records a unique run ID and exact seeded-record count. A successful API response is not an accuracy score, and an error or empty evidence is recorded per case. A live run must not be described as production validation; the model provider receives synthetic case data and no production telemetry.
 
-The Compose example configures LiteLLM as `deepseek/deepseek-flash`; DeepSeek's current API model ID is `deepseek-flash`, which supports tool calls according to the [official model documentation](https://api-docs.deepseek.com/quick_start/pricing/). The `deepseek/` prefix selects LiteLLM's DeepSeek provider.
+The Compose example configures LiteLLM as `deepseek/deepseek-flash`; DeepSeek's current API model ID is `deepseek-flash`, which supports tool calls according to the [official model documentation](https://api-docs.deepseek.com/quick_start/pricing/). The `deepseek/` prefix selects LiteLLM's DeepSeek provider. The example Holmes config limits each investigation to 12 model steps so a single case cannot consume the default 100-step budget.
 
 ## Release and Runbook fixtures
 

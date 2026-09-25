@@ -29,7 +29,7 @@ Do not fill in values until an owner has selected and approved each item. Store 
 | Identity | OIDC/SAML provider, tenant mapping, group-to-role mapping, session lifetime, break-glass owner | `AIOPS_TEST_USERS_JSON`, local operator/approver accounts |
 | Database | HA PostgreSQL endpoint, TLS/CA policy, app and migration identities, connection limits, backup/retention | `POSTGRES_PASSWORD`, single local PostgreSQL container |
 | Queue | Redis-compatible managed broker, TLS/auth, persistence, visibility and retry policy | `REDIS_URL`, local Redis AOF |
-| Holmes/model | Approved model/provider, `HOLMES_MODEL`, secret reference for `DEEPSEEK_API_KEY` or replacement, request/cost limits, data-use approval | `HOLMES_API_KEY`, `DEEPSEEK_API_KEY`, `deepseek/deepseek-flash` |
+| Holmes/model | Approved model/provider, `HOLMES_MODEL` (mapped to Holmes `MODEL`), secret reference for `DEEPSEEK_API_KEY` or replacement, request/cost limits, data-use approval | `HOLMES_API_KEY`, `DEEPSEEK_API_KEY`, `deepseek/deepseek-flash` |
 | Telemetry | OpenObserve endpoint/org, least-privilege writer and read-only identities, tenant/stream allowlist | `ZO_ROOT_USER_EMAIL`, `ZO_ROOT_USER_PASSWORD`, proxy credentials |
 | Alert intake | Public or private webhook route, signature rotation, source allowlist, rate limits | `ALERT_WEBHOOK_TOKEN` |
 | Action owner | Service-specific action owner, resource allowlist, approval roles, idempotency, verification and rollback contract | `ORDER_ACTION_TOKEN`, demo-only `set-chaos-mode` action |

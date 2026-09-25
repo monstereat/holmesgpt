@@ -23,19 +23,19 @@ export AIOPS_TEST_USERS_JSON="$(python3 -c 'import json,os; print(json.dumps([{"
 docker compose up -d --build
 ```
 
-Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. Reuse `OPENOBSERVE_PROXY_USERNAME` and `OPENOBSERVE_PROXY_PASSWORD` when recreating Holmes and the proxy together. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; `DEEPSEEK_API_KEY` is optional for starting the services but required for live model calls. To add it without writing it to the repository, source the private runtime file, then enter it silently in the same shell before recreating Holmes:
+Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. Reuse `OPENOBSERVE_PROXY_USERNAME` and `OPENOBSERVE_PROXY_PASSWORD` when recreating Holmes and the proxy together. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; `DEEPSEEK_API_KEY` is optional for starting the services but required for live model calls. Keep it in the private file `~/.config/holmesgpt-aiops/deepseek.env`, outside the repository, with mode `0600`; create/edit it once with `export DEEPSEEK_API_KEY='paste-key-here'` and replace the placeholder with the real key.
 
 ```bash
 source /tmp/holmesgpt-aiops-test-runtime.sh
-read -s 'DEEPSEEK_API_KEY?DeepSeek API key: '
-export DEEPSEEK_API_KEY
-printf '\n'
+source "$HOME/.config/holmesgpt-aiops/deepseek.env"
 docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --force-recreate holmes-api
 ```
 
 DeepSeek's API key is passed only to the Holmes container; do not commit or log it.
 
 The Holmes container reads a read-only config file. By default it mounts the committed template `holmes-config/config.yaml.example`; to use a local config copy, set `HOLMES_CONFIG_FILE` to its absolute path before `docker compose up`. Holmes and OpenObserve share no Docker network, so Holmes can reach OpenObserve only through `openobserve-proxy`. That proxy requires separate client credentials, exposes only the log-stream list and search APIs, filters streams to `app_logs` and `frontend_errors`, validates a single ClickHouse SQL SELECT AST, and caps query windows, timeouts, rows and response bytes. The OpenObserve root credential is held by the proxy and telemetry writer; it is not passed to Holmes. This narrows the Holmes access path, but it does not add native RBAC to OpenObserve OSS or protect against compromise of the proxy, Docker host, or local OpenObserve administrator. Treat this instance as test-only. OpenObserve `/healthz` is available on the host; its UI remains loopback-bound.
+
+The model is selected through Holmes' `MODEL` environment variable, and LiteLLM reads the provider key from `DEEPSEEK_API_KEY`; the config template contains toolset settings and caps each investigation at 12 model steps.
 
 After startup:
 

@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from seed_local_evidence import _validate_local_url, build_records, seed_local_evidence
 from run_evals import load_evaluation_contexts, validate_local_holmes_url
@@ -70,6 +71,22 @@ def test_live_context_loader_supplies_repository_runbook_and_release_metadata():
     assert context["runbook_context"]["path"] in question
     assert "release_deployed" in question
     assert "do not infer a commit" in question
+
+
+def test_compose_uses_holmes_and_litellm_environment_names_for_deepseek():
+    compose_path = Path(__file__).parents[1] / "docker-compose.yaml"
+    config_path = Path(__file__).parents[1] / "holmes-config" / "config.yaml.example"
+    compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+    environment = compose["services"]["holmes-api"]["environment"]
+    assert environment["MODEL"] == "${HOLMES_MODEL:-deepseek/deepseek-flash}"
+    assert environment["DEEPSEEK_API_KEY"] == "${DEEPSEEK_API_KEY:-}"
+    assert "HOLMES_MODEL" not in environment
+    assert "MODEL_API_KEY" not in environment
+    assert config["max_steps"] == 12
+    assert "model" not in config
+    assert "api_key" not in config
 
 
 @pytest.mark.parametrize("url", [
