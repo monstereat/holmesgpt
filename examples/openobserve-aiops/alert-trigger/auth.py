@@ -15,8 +15,8 @@ SESSION_TTL_SECONDS = 8 * 60 * 60
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "viewer": frozenset({"incident:read", "task:read"}),
     "operator": frozenset({"incident:read", "task:read", "task:create", "task:retry"}),
-    "approver": frozenset({"incident:read", "task:read", "approval:review"}),
-    "admin": frozenset({"incident:read", "task:read", "task:create", "task:retry", "approval:review", "user:manage"}),
+    "approver": frozenset({"incident:read", "task:read", "approval:review", "incident:review"}),
+    "admin": frozenset({"incident:read", "task:read", "task:create", "task:retry", "approval:review", "incident:review", "user:manage"}),
 }
 
 

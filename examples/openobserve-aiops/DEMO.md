@@ -14,6 +14,7 @@
 2. 以独立的 `approver` 账户登录，批准该申请。申请人不能批准自己的动作。
 3. 回到 `operator` 账户执行已批准动作。工作台会调用 order-service 的固定内部接口、读取实际状态并记录审计结果。
 4. 在订单 demo 创建订单，确认请求失败；在浏览器和 OpenObserve 中用同一 Trace ID 查看错误关联。
+5. 使用 `approver` 账户在事故详情填写影响、根因、恢复措施和后续行动，先保存草稿，再标记已审核；`operator` 可查看但不能编辑。复盘内容、审核人和时间会持久化并进入事故审计时间线。
 
 若暂时没有真实 OpenObserve Alert 配置，可在当前 shell 设置同一 webhook token 后发送一个本地测试告警。trace ID 应替换为第 4 步实际观测到的 32 位十六进制 ID：
 
@@ -30,7 +31,7 @@ curl -fsS http://127.0.0.1:8081/webhooks/openobserve \
 
 工作台的事故详情展示任务状态、Trace ID、Holmes 结论、经过验证的 OpenObserve 工具结果及审计事件。只有 Holmes 成功调用允许的 `app_logs` / `frontend_errors` 工具并返回可接受结果时，证据才会标为已验证。
 
-Live 调查需要 Holmes 可用模型密钥、内部 `HOLMES_API_KEY` 和 OpenObserve 专用只读账户。未设置这些值时任务会记录安全错误状态；不要用 `evals/run_evals.py --mode mock` 的 fixture 结果替代 live 验收。mock 与 live 的区别及成本确认见 [`evals/README.md`](evals/README.md)。
+Live 调查需要 `DEEPSEEK_API_KEY` 和内部 `HOLMES_API_KEY`。OpenObserve OSS 没有原生 RBAC；本地 Holmes 通过隔离网络和只开放只读查询的策略代理访问 OpenObserve，不应把这描述成 OpenObserve 专用只读账户。未设置模型密钥时任务会记录安全错误状态；不要用 `evals/run_evals.py --mode mock` 的 fixture 结果替代 live 验收。mock 与 live 的区别及成本确认见 [`evals/README.md`](evals/README.md)。
 
 ## 4. 恢复演示服务
 

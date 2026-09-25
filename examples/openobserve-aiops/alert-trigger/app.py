@@ -11,7 +11,7 @@ import psycopg
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from psycopg.types.json import Jsonb
 
 from action_client import ActionServiceError, OrderActionClient
@@ -42,6 +42,23 @@ class ApprovalDecision(BaseModel):
     decision: str = Field(pattern="^(approve|reject)$")
 
     model_config = {"extra": "forbid"}
+
+
+class RetrospectiveRequest(BaseModel):
+    impact: str = Field(default="", max_length=5000)
+    root_cause: str = Field(default="", max_length=5000)
+    resolution: str = Field(default="", max_length=5000)
+    action_items: list[str] = Field(default_factory=list, max_length=20)
+    reviewed: bool = False
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("action_items")
+    @classmethod
+    def validate_action_items(cls, items: list[str]) -> list[str]:
+        if any(not item.strip() or len(item) > 500 for item in items):
+            raise ValueError("Action items must contain 1 to 500 characters")
+        return [item.strip() for item in items]
 
 
 def _seed_test_users(database_url: str, raw_users: str) -> None:
@@ -296,6 +313,84 @@ def get_incident(incident_id: str, authorization: str | None = Header(default=No
             for row in events
         ],
     }
+
+
+@app.get("/api/incidents/{incident_id}/retrospective")
+def get_retrospective(incident_id: str, authorization: str | None = Header(default=None)) -> dict[str, object]:
+    principal = _load_principal(authorization)
+    _authorize(principal, "incident:read", "order-service")
+    try:
+        incident_uuid = str(uuid.UUID(incident_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Incident not found") from None
+    with psycopg.connect(_database_url()) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT r.impact, r.root_cause, r.resolution, r.action_items, r.status,
+                          r.updated_at, updated.username, r.reviewed_at, reviewed.username
+                   FROM incidents i LEFT JOIN incident_retrospectives r ON r.incident_id = i.id
+                   LEFT JOIN users updated ON updated.id = r.updated_by
+                   LEFT JOIN users reviewed ON reviewed.id = r.reviewed_by
+                   WHERE i.id = %s""",
+                (incident_uuid,),
+            )
+            row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    return {
+        "impact": row[0] or "",
+        "root_cause": row[1] or "",
+        "resolution": row[2] or "",
+        "action_items": row[3] or [],
+        "status": row[4] or "draft",
+        "updated_at": row[5].isoformat() if row[5] else None,
+        "updated_by": row[6],
+        "reviewed_at": row[7].isoformat() if row[7] else None,
+        "reviewed_by": row[8],
+    }
+
+
+@app.put("/api/incidents/{incident_id}/retrospective")
+def save_retrospective(
+    incident_id: str,
+    body: RetrospectiveRequest,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    principal = _load_principal(authorization)
+    _authorize(principal, "incident:review", "order-service")
+    try:
+        incident_uuid = str(uuid.UUID(incident_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Incident not found") from None
+    status = "reviewed" if body.reviewed else "draft"
+    with psycopg.connect(_database_url()) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1 FROM incidents WHERE id = %s", (incident_uuid,))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Incident not found")
+                cursor.execute(
+                    """INSERT INTO incident_retrospectives
+                       (incident_id, impact, root_cause, resolution, action_items, status,
+                        updated_by, reviewed_by, reviewed_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s,
+                               CASE WHEN %s = 'reviewed' THEN %s::uuid END,
+                               CASE WHEN %s = 'reviewed' THEN now() END)
+                       ON CONFLICT (incident_id) DO UPDATE SET
+                           impact = EXCLUDED.impact, root_cause = EXCLUDED.root_cause,
+                           resolution = EXCLUDED.resolution, action_items = EXCLUDED.action_items,
+                           status = EXCLUDED.status, updated_by = EXCLUDED.updated_by,
+                           updated_at = now(), reviewed_by = EXCLUDED.reviewed_by,
+                           reviewed_at = EXCLUDED.reviewed_at""",
+                    (incident_uuid, body.impact, body.root_cause, body.resolution,
+                     Jsonb(body.action_items), status, principal.user_id, status,
+                     principal.user_id, status),
+                )
+                cursor.execute(
+                    "INSERT INTO audit_events (incident_id, actor_id, event_type, details) VALUES (%s, %s, %s, %s)",
+                    (incident_uuid, principal.user_id, f"retrospective.{status}", Jsonb({"status": status})),
+                )
+    return get_retrospective(incident_uuid, authorization)
 
 
 @app.post("/api/tasks/{task_id}/retry", status_code=202)

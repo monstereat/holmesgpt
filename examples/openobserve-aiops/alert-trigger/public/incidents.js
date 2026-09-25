@@ -179,6 +179,57 @@
       }
       detail.append(approvals);
 
+      const retrospective = await api(`/api/incidents/${encodeURIComponent(id)}/retrospective`);
+      const reviewSection = document.createElement("section");
+      reviewSection.append(el("h3", "事故复盘"));
+      const canReview = ["approver", "admin"].includes(principal.role);
+      const reviewState = retrospective.status === "reviewed"
+        ? `已审核 · ${retrospective.reviewed_by || "未知审核人"} · ${new Date(retrospective.reviewed_at).toLocaleString()}`
+        : `草稿${retrospective.updated_by ? ` · 最近编辑 ${retrospective.updated_by}` : " · 尚未填写"}`;
+      reviewSection.append(el("p", reviewState, "muted"));
+      const reviewFields = [
+        ["影响范围", "impact", retrospective.impact],
+        ["根因", "root_cause", retrospective.root_cause],
+        ["恢复措施", "resolution", retrospective.resolution],
+        ["后续行动（每行一项）", "action_items", retrospective.action_items.join("\n")],
+      ];
+      const reviewInputs = {};
+      for (const [labelText, key, value] of reviewFields) {
+        const label = el("label", labelText);
+        const input = document.createElement("textarea");
+        input.value = value;
+        input.readOnly = !canReview;
+        input.setAttribute("aria-label", labelText);
+        label.append(input);
+        reviewSection.append(label);
+        reviewInputs[key] = input;
+      }
+      if (canReview) {
+        for (const [label, reviewed] of [["保存草稿", false], ["保存并标记已审核", true]]) {
+          const save = el("button", label);
+          save.className = reviewed ? "primary" : "";
+          save.style.marginRight = "8px";
+          save.addEventListener("click", async () => {
+            save.disabled = true;
+            try {
+              await api(`/api/incidents/${encodeURIComponent(id)}/retrospective`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  impact: reviewInputs.impact.value,
+                  root_cause: reviewInputs.root_cause.value,
+                  resolution: reviewInputs.resolution.value,
+                  action_items: reviewInputs.action_items.value.split("\n").map((item) => item.trim()).filter(Boolean),
+                  reviewed,
+                }),
+              });
+              await loadIncident(id);
+            } catch (error) { showError(pageMessage, error); save.disabled = false; }
+          });
+          reviewSection.append(save);
+        }
+      }
+      detail.append(reviewSection);
+
       const timeline = document.createElement("section");
       timeline.append(el("h3", "审计时间线"));
       if (!incident.timeline.length) timeline.append(el("p", "暂无审计事件。", "muted"));

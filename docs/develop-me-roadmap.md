@@ -4,7 +4,7 @@
 > 开源底座：HolmesGPT；集成 OpenObserve、前端监控 SDK、NestJS、OpenTelemetry，Keep 按需加入。  
 > 范围：先在当前电脑 Docker 测试环境围绕真实应用故障建立「采集 → 告警 → 调查 → 审批处置 → 验证 → 复盘」闭环；正式环境部署后续另行规划和授权；不自建日志数据库。
 
-> **当前验收状态（2026-09-25）：** T000–T007 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；测试动作完成审批、执行和回滚验证。Holmes API 健康不代表 Agent 调查通过：当前没有模型凭据和 OpenObserve 专用只读凭据，最近一次真实告警任务以 `holmes_unavailable` 安全失败，故 AC-04 与完整 live 验收仍未完成。没有部署到生产环境。
+> **当前验收状态（2026-09-25）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；测试动作完成审批、执行和回滚验证，事故复盘已持久化并提供审核表单。Holmes API 健康不代表 Agent 调查通过：当前没有模型凭据，最近一次真实告警任务以 `holmes_unavailable` 安全失败，故 AC-04 与完整 live 验收仍未完成。没有部署到生产环境。
 
 ## 1. 功能边界
 
@@ -21,7 +21,7 @@
 | 故障知识库 | 外部知识文档工具 | 内部 Runbook / 历史事故 | 文档检索、引用及事后沉淀 | P1 |
 | 事故中心 | 可结合 Keep 或自建业务层 | NestJS、PostgreSQL | 故障工单、指派、分级、状态机和重复告警归并 | P1 |
 | 自动处置 | HolmesGPT 工具调用机制 | 受控 CI/CD、运维平台 | 工具白名单、审批、幂等执行、失败回退与审计 | P1 |
-| 故障复盘 | 调查结果和事件历史 | 发布记录、监控事件 | 自动整理时间线、根因及改进项 | P1 |
+| 故障复盘 | 调查结果和事件历史 | 发布记录、监控事件 | 持久化复盘、审核状态、改进项与审计 | P1 |
 | 故障评测 | 基础调查能力 | 故障注入和评测数据 | 已知根因样本、诊断准确性、证据完整性和恢复时间 | P2 |
 
 **产品限制：** OpenObserve 社区版不应默认按 Enterprise/Cloud 的完整事件管理或细粒度 RBAC 规划，缺失部分由自建 NestJS 事故中心或其他已授权工具补充。
@@ -37,7 +37,7 @@
 | 事故与审批服务 | Python/FastAPI + PostgreSQL | 本仓库已实现事故/任务持久化、测试身份与 RBAC、审批、审计、重启恢复和只限 demo order-service 的测试动作。schema 只应用于用户授权的本机测试数据库。 |
 | 缓存/队列 | Redis + Celery | 本地 Docker Compose 已启用 Redis AOF 和 Celery worker；重投依据 PostgreSQL outbox。 |
 
-因此，本仓库实际代码以 Python 为 Holmes AI 后端和事故业务 API，NestJS 只作为订单演示服务及测试动作 owner。当前没有新增 NestJS 事故中心或 BullMQ；本机测试事故 API 使用 Python/FastAPI、PostgreSQL 和 Redis/Celery。
+因此，本仓库实际代码以 Python 为 Holmes AI 后端和事故业务 API，NestJS 只作为订单演示服务及测试动作 owner。当前没有新增 NestJS 事故中心或 BullMQ；本机测试事故 API 使用 Python/FastAPI、PostgreSQL 和 Redis/Celery。Holmes 访问 OpenObserve OSS 时由隔离网络中的策略代理限制路径和查询范围；这不等于 OpenObserve 原生 RBAC 或独立用户权限。
 
 ## 2. P0：先完成可重复演示的故障闭环
 
@@ -62,10 +62,10 @@
 - [x] **内存 RCA 数据模型：** 已验证结论必须带 HTTPS 证据链接，未验证结论明确标为 assumption；原型只记录声明，不自动验证其真实性。
 - [ ] **真实 RCA 集成：** Holmes 输出逐项绑定 OpenObserve 日志/Trace、发布或 Runbook 来源；证据不足的结论保留为假设并可人工纠错。
 - [x] **本地调查 Skill：** 使用当前支持的 `custom_skill_paths`/`SKILL.md` 提供订单故障只读调查步骤，并通过 Holmes `scan_skill_directory` 验证解析；真实 CLI 调查及证据引用仍待模型凭据和 OpenObserve 查询权限。旧 Catalog 仅留作迁移参考。
-- [x] **复盘草稿原型：** 从已记录时间线和有证据结论生成复盘；人工可补充影响范围和长期改进项，所需字段齐全时标记 `ready_for_review`；不自动签发复盘（13 项流程测试通过）。
+- [x] **本机持久复盘：** 事故详情提供影响、根因、恢复措施和行动项表单；approver/admin 可保存草稿或标记已审核，viewer/operator 只读；PostgreSQL 保存审核人/时间并将变更写入事故审计时间线（隔离 API 集成测试通过）。
 - [x] **内存审批原型：** Agent 只能提交白名单建议，审批经外部授权回调验证；原型不执行运维命令。
 - [ ] **生产受控处置：** 独立执行器须重新校验用户身份、授权、动作白名单、幂等键、取消和审计；高风险生产回滚需有验证失败回退。
-- [ ] **完整复盘报告：** 当前是内存原型，根因需真实 Holmes 证据，且仍需人工复核、持久化和正式签发。
+- [ ] **完整复盘报告：** 本机已实现持久化和人工审核；需结合真实 Holmes 证据及发布记录完善 RCA，并完成浏览器端手工走查。正式签发流程属于后续产品决策。
 - [x] **本机告警/任务/Trace 关联：** 持久事故详情串联 alert fingerprint、task ID 和 Trace ID；发布版本双向查询与真实 CI 接入仍待完成。
 - [x] **本机任务查询原型：** 告警响应返回 task ID；同一 token 认证的 `GET /tasks/{task_id}` 返回状态、Trace ID 和结果，内存最多保留 1000 条/1 小时。未覆盖告警 ID、发布检索双向接口，且无持久化。
 - [x] **本地关联指纹：** 本地 `alert_id` 指纹可查询所关联 task IDs 与 Trace IDs，Webhook 重复响应复用该指纹；它不是 OpenObserve 原生告警 ID，且无发布关联和持久化。
@@ -160,10 +160,10 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] Spec 已通过独立审查并按用户确认的本机 Docker 测试范围进入 Spec 批准状态。
 - [x] 用户要求跳过 Plan 审核并直接按已登记任务编码；本机测试 schema/migration 获得明确授权。
 - [x] 持久事故/任务、可靠重试、事故工作台、测试身份/RBAC、demo 订单审批处置、验证/回退、20 例可重复 mock 评测及 Compose 恢复文档已实现并完成本机验证。
-- [ ] 真实 Holmes 只读证据调查仍阻塞：缺少有效模型凭据和 OpenObserve 专用只读用户/token；API health、mock 报告不能代替 live RCA。
+- [ ] 真实 Holmes 只读证据调查仍阻塞：缺少有效模型凭据；本机 OSS 由查询策略代理和网络隔离约束，API health、mock 报告不能代替 live RCA。
 - [x] 正式生产部署和真实生产操作不属于当前授权范围；数据库 schema/migration 仅应用于本机测试数据库。
 
-## 2026-09-25 增量：T000–T007 本机部署与验收状态
+## 2026-09-25 增量：T000–T009 本机部署与验收状态
 
 - [x] Holmes API、incident API/worker、PostgreSQL、Redis、OpenObserve 和 NestJS order-service 在同一 Compose project 启动；隔离测试 profile 42 passed。
 - [x] 本机告警创建持久 incident/task；operator 自审批被拒绝；approver 批准后动作可执行，并已验证切至 ON 后恢复 OFF。
@@ -184,6 +184,14 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] Compose 网络把 Holmes 与 OpenObserve/telemetry writer 分开；Holmes 仅通过代理网络连接策略代理，order-service 继续通过 telemetry 网络写日志。UI 只映射到宿主机 loopback。
 - [x] 11 项代理策略单测通过；Holmes 容器 DNS 不能解析 `openobserve`；Holmes Toolset 经代理看到两条 allowlist 流并成功完成一次本机 OpenObserve 查询。
 - [ ] DeepSeek API Key 未设置，真实模型驱动的 Holmes RCA 和事故流程尚未验证。该代理不改变 OpenObserve OSS 缺少原生 RBAC 的事实，也不防护代理/宿主 Docker 管理员被攻破。
+
+## 2026-09-25 增量：事故复盘持久化与工作台
+
+- [x] 新增 `0003_incident_retrospectives` migration，为每个事故持久化影响、根因、恢复措施、行动项、草稿/已审核状态及编辑/审核人和时间。
+- [x] 新增复盘读取/保存 API；approver/admin 可保存和审核，viewer/operator 仅能读取，跨资源仍由服务端 scope 检查；复盘操作追加审计事件。
+- [x] 事故详情工作台提供复盘表单和审核状态；`DEMO.md` 说明手工流程，并更正 OpenObserve OSS 通过代理隔离而非“只读账户”的描述。
+- [x] 隔离 Compose 测试 42 passed；当前本机数据库已应用 migration；本机 HTTP smoke 验证登录、复盘读取、operator 写入拒绝和工作台脚本已通过。
+- [ ] 浏览器人工走查仍待完成；真实 Holmes 证据驱动的 RCA/复盘仍待 DeepSeek API Key。
 
 ## 2026-09-25 增量：事故原型和告警输入边界
 

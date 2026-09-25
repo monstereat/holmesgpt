@@ -34,9 +34,9 @@
 - 依赖：T002
 - 对应 AC：AC-03、AC-04、AC-09、AC-10
 - 允许改动：`examples/openobserve-aiops/alert-trigger/holmes_client.py`、`app.py`、`worker.py`、`tests/test_holmes_client.py`、`tests/test_evidence.py`、`examples/openobserve-aiops/holmes-config/config.yaml.example`、`examples/openobserve-aiops/README.md`、`examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md`、`ROADMAP.md`。
-- 操作：以 `X-API-Key` 和 `stream:false` 调现有 Holmes `/api/chat`；task ID 仅作本地关联，重试幂等由事故服务保证。Holmes 服务端只启用 OpenObserve Toolset，使用显式 `allowed_streams` 和专用只读账号/RBAC；核验 HTTP 状态及 `tool_calls[].result` 后映射证据。
+- 操作：以 `X-API-Key` 和 `stream:false` 调现有 Holmes `/api/chat`；task ID 仅作本地关联，重试幂等由事故服务保证。Holmes 服务端只启用 OpenObserve Toolset，通过固定上游策略代理和隔离网络使用显式 `allowed_streams` 限制查询；OpenObserve OSS 不提供原生 RBAC；核验 HTTP 状态及 `tool_calls[].result` 后映射证据。
 - 验证命令：`docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_holmes_client.py tests/test_evidence.py`
-- 完成定义：测试精确 URL/body/header、401/429/5xx/timeout/tool error；模型文本不单独作为 verified 证据。live E2E 在 T007 验收；缺模型和 OpenObserve RO 凭据时 AC-04 保持 blocked；ROADMAP 记录结果。
+- 完成定义：测试精确 URL/body/header、401/429/5xx/timeout/tool error；模型文本不单独作为 verified 证据。live E2E 在 T007 验收；缺模型凭据时 AC-04 保持 blocked；ROADMAP 记录结果。
 
 ## T004：本机事故工作台
 
@@ -73,3 +73,12 @@
 - 操作：同一个 Compose project 运行 Holmes API（现有 `server.py`）、事故 API/worker、Postgres、Redis、OpenObserve 和 order-service。Holmes 服务通过根 Dockerfile build context `../..` 构建，显式 `python -u server.py` 启动、端口 5050、healthcheck `/healthz`；用户配置目录只读挂载。文档化 `pg_dump`/`pg_restore` 恢复到隔离测试 DB；不清理旧 volume。
 - 验证命令：使用 `/tmp/holmesgpt-aiops-test-runtime.sh` 中的本机测试变量（不写 `.env`），运行 `docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet`、`docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build`、`docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test` 和 `python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json`；另核对服务 health、浏览器/API E2E、API/worker/Redis/Postgres 重启后的 outbox 恢复及隔离数据库备份恢复。不能用健康检查代替 live Holmes 调查验收。
 - 完成定义：故障→live Holmes→证据→审批→demo 动作→验证/回退→复盘完整闭环。缺少模型、Holmes config 或 OpenObserve 只读账户/白名单时，AC-04 和整体验收保持 blocked/incomplete；ROADMAP 记录真实结果和阻塞。
+
+## T009：持久化事故复盘与工作台审核
+
+- 依赖：T001、T004
+- 对应 AC：AC-05、AC-06
+- 允许改动：`examples/openobserve-aiops/alert-trigger/app.py`、`auth.py`、`migrations/0003_incident_retrospectives.sql`、`public/incidents.html`、`public/incidents.js`、`tests/test_workbench_api.py`、`examples/openobserve-aiops/README.md`、`examples/openobserve-aiops/DEMO.md`、`ROADMAP.md`、`docs/develop-me-roadmap.md`、`specs/001-resume-aiops/tasks.md`、`specs/001-resume-aiops/roadmap.md`、`specs/001-resume-aiops/verify.md`。
+- 操作：每个事故持久化影响、根因、恢复措施、行动项、草稿/审核状态及编辑/审核者；approver/admin 可保存和审核，其他有事故读取权限的角色只读；每次保存写审计事件。
+- 验证：隔离 Compose 测试 profile；本机迁移版本核对、登录/复盘读取/越权写入 HTTP smoke、`node --check`；不要执行生产迁移。
+- 完成记录：42 项隔离测试通过；`0003_incident_retrospectives` 已应用到本机测试库；operator 写入复盘返回 403，工作台服务资源可加载。浏览器人工走查及 live Holmes RCA 仍是整体验收待办。

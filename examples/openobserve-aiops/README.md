@@ -44,7 +44,7 @@ After startup:
 - OpenObserve: [http://localhost:5080](http://localhost:5080)
 - Holmes API liveness: `http://localhost:5050/healthz`; readiness: `http://localhost:5050/readyz`
 
-The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action. The separate `approver` can approve or reject it. The requester cannot approve their own request. Both accounts are local demo identities, not a production identity provider.
+The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action. The separate `approver` can approve or reject it and edit/review incident retrospectives. The requester cannot approve their own request. Both accounts are local demo identities, not a production identity provider.
 
 Check service state and liveness:
 
@@ -66,13 +66,14 @@ In OpenObserve, configure the alert destination to call `http://incident-api:808
 2. Trigger the OpenObserve alert. The incident API validates the token and payload, then atomically writes an incident, task and outbox event to PostgreSQL.
 3. Redis/Celery delivers the task. The worker calls the Holmes API; successful allowlisted OpenObserve tool results are saved as evidence. The incident workbench shows task status, trace, findings, evidence and audit timeline.
 4. In the workbench, use the operator account to request a test action. Sign in separately as approver to approve/reject. The operator can then execute an approved action; the service rechecks authorization, verifies the resulting order-service state and audits any rollback.
+5. Use the approver account to write and review the incident retrospective. The report is stored per incident in PostgreSQL, and save/review actions are added to the audit timeline. Operators and viewers can read it but cannot edit it.
 5. Return the demo order-service to normal mode and confirm a new order succeeds.
 
 Live model investigation requires a valid `DEEPSEEK_API_KEY` and the local `HOLMES_API_KEY`. Set `DEEPSEEK_API_KEY` in the same shell before recreating `holmes-api`; never send it through the incident API or put it in this repository. Without a model key, investigation tasks fail with a safe error and live acceptance remains blocked; mock reports do not replace this requirement. Proxy-level read-only enforcement is active for Holmes, while OpenObserve OSS itself still has no native RBAC; use an RBAC edition for server-native user and tenant isolation. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
 
 ## Persistence and recovery
 
-PostgreSQL persists incidents, tasks, users, approvals, audit and outbox records in `aiops-postgres-data`. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.
+PostgreSQL persists incidents, tasks, users, approvals, retrospectives, audit and outbox records in `aiops-postgres-data`. The incident API applies versioned SQL migrations at startup. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.
 
 To verify a local backup and restore without overwriting the active database:
 
