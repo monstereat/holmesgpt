@@ -52,6 +52,7 @@ def build_case_report(case: dict[str, Any], *, mode: str, live_result: dict[str,
     is_live = mode == "live"
     result = live_result or {}
     evidence_source = "live_openobserve" if is_live else "synthetic_fixture"
+    evaluated_trace_ids = [result["evaluation_trace_id"]] if is_live and result.get("evaluation_trace_id") else trace_ids(case)
     return {
         "case_id": case["id"],
         "source": "known_root_causes.json#" + case["id"],
@@ -60,7 +61,7 @@ def build_case_report(case: dict[str, Any], *, mode: str, live_result: dict[str,
             "alert": case["alert"],
             "service": case["service"],
             "symptom": case["symptom"],
-            "trace_ids": trace_ids(case),
+            "trace_ids": evaluated_trace_ids,
         },
         "evidence": result.get("evidence", []) if is_live else case["evidence"],
         "evidence_source": evidence_source,
@@ -83,11 +84,15 @@ def build_report(cases: list[dict[str, Any]], *, mode: str, results: dict[str, d
         raise ValueError("evaluation corpus must contain exactly the curated 20 cases")
     results = results or {}
     reports = [build_case_report(case, mode=mode, live_result=results.get(case["id"])) for case in cases]
+    evaluation_run_id = next((result.get("evaluation_run_id") for result in results.values() if result.get("evaluation_run_id")), None)
+    seeded_record_count = next((result.get("seeded_record_count") for result in results.values() if result.get("evaluation_run_id") == evaluation_run_id), None)
     return {
         "schema_version": "1.0.0",
         "mode": mode,
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
         "case_source": "synthetic_fixture",
+        "evaluation_run_id": evaluation_run_id,
+        "seeded_record_count": seeded_record_count,
         "counts": {
             "total": len(reports),
             "live_errors": sum(item["error_code"] is not None for item in reports),

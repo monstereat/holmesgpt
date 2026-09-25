@@ -197,7 +197,18 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 
 - [x] 评测 JSON 加入重复键拒绝校验，防止 JSON parser 静默覆盖同名字段；20 例语料、fixture 到发布/Runbook 的引用测试 **3 passed**。
 - [x] 重新生成 20 例 mock 报告并检查每例诊断为空、总评为 `not_scored`；明确 mock 结果不代表 Holmes 诊断能力。
-- [ ] Live 20 例需要有效 `DEEPSEEK_API_KEY`；现有 fixture Trace ID 不保证在真实遥测中有匹配，运行结果仍需按实际证据判断。
+- [x] Live runner 已在每次评测时为病例生成唯一 Trace ID，并把本轮合成证据写入本机 OpenObserve；不依赖已有 fixture Trace ID。
+- [ ] Live 20 例需要有效 `DEEPSEEK_API_KEY`；模型结论、工具调用和诊断结果仍需按实际证据判断。
+
+## 2026-09-25 增量：Live 评测本机证据接入
+
+- [x] Live runner 发送数据前检查 DeepSeek key、Holmes 本机 URL 和健康状态；缺 Key 时安全退出，不写入评测数据。
+- [x] Live runner 为 20 个合成病例生成唯一 Trace ID，并写入本机 OpenObserve `app_logs`；报告记录评测 run ID、每例 Trace ID 和准确写入数量。每轮最多追加 100 行，不删除既有数据；live 仍需显式 `--confirm-live`。
+- [x] 本机 OpenObserve 实际接受 40 条记录（20 例，每例 2 条）；Holmes 经只读策略代理按首例 Trace ID 查询到两条匹配的 `synthetic_fixture` 记录。此项证明本机证据链可用，不代表模型诊断通过。
+- [x] Seeder URL / JSON ingestion / 部分写入失败测试新增；评测、seed、安全边界和 Holmes API 契约定向测试 **33 passed**；最新 Compose 隔离测试 **44 passed, 1 warning**。
+- [ ] DeepSeek 模型调用、工具调用、根因诊断质量和 20 例 live 评测仍待本机有效 `DEEPSEEK_API_KEY`。缺 Key 的拒绝路径已验证，并在写入 OpenObserve 之前退出。
+
+**最近验证（2026-09-25）：** `python3 examples/openobserve-aiops/evals/run_evals.py --mode mock` 生成 20 条 `not_scored` 报告；live 缺 Key 检查按预期拒绝且未 seed；`/tmp/poetry185/bin/poetry run pytest -q --no-cov examples/openobserve-aiops/evals/test_known_root_causes.py examples/openobserve-aiops/evals/test_seed_local_evidence.py examples/openobserve-aiops/alert-trigger/tests/test_evaluation.py examples/openobserve-aiops/alert-trigger/tests/test_holmes_client.py`（33 passed）；隔离 Compose profile（44 passed, 1 warning）。
 
 ## 2026-09-25 增量：事故原型和告警输入边界
 

@@ -71,6 +71,8 @@ In OpenObserve, configure the alert destination to call `http://incident-api:808
 
 Live model investigation requires a valid `DEEPSEEK_API_KEY` and the local `HOLMES_API_KEY`. Set `DEEPSEEK_API_KEY` in the same shell before recreating `holmes-api`; never send it through the incident API or put it in this repository. Without a model key, investigation tasks fail with a safe error and live acceptance remains blocked; mock reports do not replace this requirement. Proxy-level read-only enforcement is active for Holmes, while OpenObserve OSS itself still has no native RBAC; use an RBAC edition for server-native user and tenant isolation. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
 
+Live 20-case evaluation seeds at most 100 synthetic evidence rows into the local `app_logs` stream, then queries them through Holmes and the read-only proxy. Seeded rows remain in the local Docker OpenObserve volume, carry unique run/trace IDs and are labeled `synthetic_fixture`; the seeder refuses non-loopback endpoints. The evaluation also refuses non-local Holmes API targets. Details and the command are in [`evals/README.md`](evals/README.md).
+
 ## Persistence and recovery
 
 PostgreSQL persists incidents, tasks, users, approvals, retrospectives, audit and outbox records in `aiops-postgres-data`. The incident API applies versioned SQL migrations at startup. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.

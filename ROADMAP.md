@@ -20,15 +20,16 @@
 - T003：Holmes 非流式 `/api/chat` 客户端、状态码与工具结果校验、限定流范围的证据映射和敏感值脱敏已完成；14 项契约测试通过。该结果来自模拟响应，未代表 live Holmes/OpenObserve 验收。
 - T004：工作台提供本地登录、服务端角色/资源校验、事故/任务/Trace/证据/审批/审计详情和受限任务重试。一次性本机 PostgreSQL 集成测试 2 passed。
 - T005：工作台可申请/批准/拒绝/取消及执行测试动作；operator 与 approver 分权，执行前复验审批和固定白名单，调用 order-service owner 接口并核对实际状态，失败时恢复原状态并审计。一次性本机 PostgreSQL 集成测试 4 passed；`node --check` 和 Compose 配置校验通过。
-- T006：评测 runner 可生成 20 例 mock/live 结构化报告；mock 不生成模型诊断且标记 `not_scored`，live 请求需显式 `--confirm-live`，病例来源与实时 OpenObserve 证据分别标记。三条 synthetic 发布上下文准确引用病例证据并关联 Runbook。离线报告已重新生成 20 例，保持 `not_scored`；语料和上下文测试 3 passed，JSON loader 拒绝重复字段；未运行 live 请求。
+- T006：评测 runner 可生成 20 例 mock/live 结构化报告；mock 不生成模型诊断且标记 `not_scored`，live 请求需显式 `--confirm-live`，病例来源与实时 OpenObserve 证据分别标记。三条 synthetic 发布上下文准确引用病例证据并关联 Runbook。离线报告已重新生成 20 例，保持 `not_scored`；语料和上下文测试 3 passed，JSON loader 拒绝重复字段。当前缺模型 key，尚未发送 Holmes 模型请求。
 - T007：Holmes、事故 API/worker、PostgreSQL、Redis、OpenObserve 和 order-service 已在一个 Compose project 运行；42 项隔离测试通过。已实测告警→持久化任务、权限分离审批、demo 动作执行/回滚、API/worker/Redis/PostgreSQL 重启恢复及独立数据库备份/恢复。Holmes 默认已改为 `deepseek/deepseek-flash`，LiteLLM 识别该模型且支持工具调用，Compose 重建及配置校验通过；尚未提供 API Key，真实告警仍以 `holmes_unavailable` 安全失败。OpenObserve OSS 无服务端 RBAC，AC-04/live 整体验收未通过。
 - T008：加入固定上游、独立 Basic Auth、仅 streams/search 两条路由、SQLGlot ClickHouse AST、流 allowlist、单小时查询窗、超时/行数/请求和响应大小上限；Holmes 未加入 OpenObserve 或 telemetry 网络。11 项代理策略单测通过。Holmes 容器无法解析 OpenObserve 服务名，通过代理可见 2 条 allowlist 流并实际查询到日志。本机 OpenObserve UI 仍只绑定 loopback。
 - T009：新增本机迁移 `0003_incident_retrospectives` 和按事故持久化的复盘 API/工作台表单；approver/admin 可保存影响、根因、恢复措施、行动项并标记审核，viewer/operator 只能读取。审核保存写入 audit timeline；隔离测试 42 passed，运行中的本机测试数据库已应用迁移，HTTP 登录/读取/越权写入 smoke check 通过，前端脚本语法检查通过。
 - 真实 Holmes 模型调查尚未完成：DeepSeek API Key 未设置，不能声称 live RCA 或端到端事故任务通过。
+- T006 增量：live runner 先检查 DeepSeek 凭据、Holmes 本机 URL 与健康状态，再向本机 OpenObserve `app_logs` 写入带唯一 run/trace ID 的合成语料并逐例调用 Holmes；缺 DeepSeek Key 时在遥测写入前拒绝运行。当前本机实测写入 20 例共 40 条 synthetic fixture 日志，并经 Holmes 只读代理按唯一 Trace ID 检索到对应记录；尚未调用 DeepSeek 模型。
 
 ## 待办
 
-1. 在本机私有运行环境设置有效 `DEEPSEEK_API_KEY`，触发真实 500 告警并核对 Holmes 工具调用、持久证据和诊断结果。
+1. 在本机私有运行环境设置有效 `DEEPSEEK_API_KEY` 后，触发真实 500 告警并核对 Holmes 工具调用、持久证据和诊断结果；再运行 20 例 live 评测。密钥不要发送到聊天或写入仓库。
 2. 在浏览器按 demo 手册走查工作台登录、不同角色审批、动作执行/恢复与复盘表单；后端 API 权限和复盘写入已在隔离数据库验证。
 3. live 调查验收后再运行完整验收；生产平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍需单独设计与授权。
 
@@ -43,6 +44,7 @@
 
 - `docker compose ... config --quiet`、本机栈构建/启动和服务健康检查通过；Holmes `/healthz`、事故 API `/healthz`、OpenObserve `/healthz` 与订单服务返回 HTTP 200。
 - 隔离 Compose 测试 profile：42 passed，1 warning。
+- T006 live-eval 数据准备增量：定向 pytest **33 passed**；最新隔离 Compose 测试 profile **44 passed，1 warning**。Mock 报告检查 20 例、`not_scored`、无诊断；缺 DeepSeek Key 时在本机数据写入前退出。此前 OpenObserve 接收本轮 40 条合成记录，Holmes 经只读代理按 trace 查询命中对应日志；没有 DeepSeek 模型调用。
 - 复盘增量：隔离 Compose 测试 profile 42 passed，前端 `node --check` 通过；本机 API 登录后可读取现存事故复盘，operator 写入返回 403；测试数据库记录迁移版本 `0003_incident_retrospectives`。
 - 评测语料增量：20 例 mock 报告重生成，检查确认 `not_scored`、20 条病例且无模型诊断；语料/发布-Runbook fixture 校验 **3 passed**，重复 JSON 字段检测测试通过。
 - 订单 HTTP webhook 创建持久 incident/task；operator 自审批返回 403，approver 批准后执行状态 ON，再经批准恢复 OFF；最后实测状态为 OFF。

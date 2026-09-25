@@ -20,7 +20,7 @@
 
 ## 验证结果
 
-- `docker compose ... --profile test run --rm incident-test`：**42 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
+- `docker compose ... --profile test run --build --rm incident-test`：**44 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
 - Compose 栈构建、配置校验和服务恢复成功。最近检查：OpenObserve `/healthz`、Holmes `/healthz`、incident API `/healthz`、订单服务根路径均返回 HTTP 200。
 - 本机告警/事故工作流：已创建 1 条 incident；无 Holmes 凭据的任务安全终止，错误码 `holmes_unavailable`。
 - 本机权限与动作工作流：operator 自审批返回 403；approver 批准后执行并核验 order-service 状态 ON，再完成批准恢复并核验状态 OFF。
@@ -30,6 +30,9 @@
 - OpenObserve 策略代理：11 项 unittest 通过；Compose 配置及容器重建成功；代理健康、Holmes/incident API/order-service 健康。Holmes 容器内查询 `openobserve` 主机 DNS 失败（预期隔离）；真实 Holmes OpenObserve Toolset 经代理成功列出 2 个 allowlist 流并执行 5 分钟时间窗搜索，返回实际日志行。OpenObserve host `/healthz` 返回 HTTP 200，浏览器 UI 根路径返回 HTTP 308 重定向。
 - 持久复盘：隔离 Compose 测试 profile **42 passed, 1 warning**，覆盖迁移、复盘保存/读取、角色拒绝、审核和审计事件。Docker 测试库已记录 `0003_incident_retrospectives`；本机工作台 HTTP smoke 登录 operator 后读取现存事故复盘成功，operator 写入返回 403；`node --check examples/openobserve-aiops/alert-trigger/public/incidents.js` 与 `/incidents.js` HTTP 资源检查通过。
 - 20 例评测语料：去重键和发布/Runbook 关联验证 **3 passed**；mock 报告重新生成 20 条，明确保持 `not_scored`，未运行 live 模型请求。
+- Live 评测预检：DeepSeek Key 缺失时 runner 在写入 OpenObserve 前拒绝执行；mock 报告断言 20 条、无模型诊断、`not_scored`。
+- 本机评测证据准备：OpenObserve 本轮实际接收 40 条 synthetic fixture 行；Holmes 容器经只读代理按本轮 trace 检索到匹配行。没有模型调用，不代表 RCA 已验证。
+- 评测/seeder/Holmes API 契约定向 pytest：**33 passed**。
 
 ## 后续解阻条件
 

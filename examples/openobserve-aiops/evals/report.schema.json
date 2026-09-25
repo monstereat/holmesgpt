@@ -3,12 +3,14 @@
   "$id": "urn:holmes-openobserve-evaluation-report:1.0.0",
   "title": "Holmes OpenObserve evaluation report",
   "type": "object",
-  "required": ["schema_version", "mode", "evaluated_at", "case_source", "counts", "scoring", "cluster_taxonomy", "cases"],
+  "required": ["schema_version", "mode", "evaluated_at", "case_source", "evaluation_run_id", "seeded_record_count", "counts", "scoring", "cluster_taxonomy", "cases"],
   "properties": {
     "schema_version": {"const": "1.0.0"},
     "mode": {"enum": ["mock", "live"]},
     "evaluated_at": {"type": "string", "format": "date-time"},
     "case_source": {"const": "synthetic_fixture"},
+    "evaluation_run_id": {"type": ["string", "null"]},
+    "seeded_record_count": {"type": ["integer", "null"], "minimum": 1, "maximum": 100},
     "counts": {
       "type": "object",
       "required": ["total", "live_errors"],

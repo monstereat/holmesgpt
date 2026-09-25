@@ -20,13 +20,15 @@ poetry run pytest -q --no-cov examples/openobserve-aiops/evals/test_known_root_c
 
 ## Run a live Holmes investigation
 
-Live mode sends one Holmes request per case (up to 20 requests and model charges), using the case alert and trace IDs to query the configured OpenObserve toolsets. It requires a reachable Holmes API and model credentials configured for Holmes. In this local OSS Compose stack, Holmes reaches OpenObserve through the isolated policy proxy; OpenObserve OSS itself has no native RBAC or dedicated read-only service account. Set `HOLMES_API_URL` and `HOLMES_API_KEY` in the caller's environment, and configure `DEEPSEEK_API_KEY` for the Holmes container, then run:
+Live mode writes the corpus evidence into local OpenObserve's `app_logs` stream as synthetic fixture records, with a unique run ID and trace ID per case. It uses OpenObserve's documented [`POST /api/{organization}/{stream}/_json` endpoint](https://openobserve.ai/docs/reference/api/ingestion/logs/json/) and verifies the ingest response, then sends one Holmes request per case (up to 20 requests and model charges) so the configured read-only toolset can retrieve those records. The seeder only accepts `http://localhost:5080`, `127.0.0.1:5080`, or `[::1]:5080`; Holmes calls are restricted to the local API on port 5050. No existing records are deleted; each run appends up to 100 synthetic rows and reports its run ID and seeded count. The records remain in the local test volume.
+
+The command requires a reachable Holmes API, `HOLMES_API_URL`, `HOLMES_API_KEY`, `DEEPSEEK_API_KEY`, and the local OpenObserve root credentials (`ZO_ROOT_USER_EMAIL` and `ZO_ROOT_USER_PASSWORD`). Load the local test runtime environment, then run:
 
 ```bash
 python examples/openobserve-aiops/evals/run_evals.py --mode live --confirm-live --output /tmp/holmes-aiops-live-report.json
 ```
 
-`--confirm-live` is required because this makes external model requests. Case inputs and their reference diagnoses remain synthetic even in live mode; only retrieved evidence is labeled `live_openobserve`. A successful API response is not an accuracy score, and an error or empty evidence is recorded per case. The corpus trace IDs are fixture values, so a live OpenObserve deployment may return no matching data. A live run must not be described as production validation unless it uses representative, authorized telemetry.
+`--confirm-live` is required because this appends synthetic data to the local Docker test OpenObserve and makes external model requests. Case inputs and reference diagnoses remain synthetic; retrieved records are tagged `synthetic_fixture` and originate from the local OpenObserve API. The report records a unique run ID and exact seeded-record count. A successful API response is not an accuracy score, and an error or empty evidence is recorded per case. A live run must not be described as production validation; the model provider receives synthetic case data and no production telemetry.
 
 The Compose example configures LiteLLM as `deepseek/deepseek-flash`; DeepSeek's current API model ID is `deepseek-flash`, which supports tool calls according to the [official model documentation](https://api-docs.deepseek.com/quick_start/pricing/). The `deepseek/` prefix selects LiteLLM's DeepSeek provider.
 

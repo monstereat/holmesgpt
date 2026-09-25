@@ -6,8 +6,8 @@ from io import BytesIO
 import pytest
 from urllib.error import HTTPError, URLError
 
-from holmes_client import HolmesClient, extract_evidence
-from tasks import PermanentTaskError, RetryableTaskError
+from holmes_client import HolmesClient, build_investigation_question, extract_evidence
+from task_errors import PermanentTaskError, RetryableTaskError
 
 
 class FakeResponse:
@@ -69,6 +69,20 @@ def test_request_matches_holmes_non_streaming_api_contract():
     assert "task-1" not in payload["ask"]
     assert result["evidence_status"] == "verified"
     assert result["evidence"][0]["tool_name"] == "openobserve_find_trace"
+
+
+def test_synthetic_evaluation_instructions_require_internal_mode_flag():
+    task = {
+        "alert_name": "alert",
+        "trace_ids": ["a" * 32],
+        "summary": {"fixture_source": "synthetic_known_root_cause_case", "evaluation_case_id": "case-1"},
+    }
+
+    normal_question = build_investigation_question(task)
+    eval_question = build_investigation_question(task, evaluation=True)
+
+    assert "Treat these records as test fixtures" not in normal_question
+    assert "Treat these records as test fixtures" in eval_question
 
 
 def test_only_successful_allowlisted_openobserve_calls_become_verified_evidence():

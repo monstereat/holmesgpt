@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from psycopg.types.json import Jsonb
+from task_errors import PermanentTaskError, RetryableTaskError
 
 
 MAX_ATTEMPTS = 4
@@ -23,18 +24,6 @@ class ClaimedTask:
     alert_name: str
     trace_ids: list[str]
     summary: dict[str, Any]
-
-
-class RetryableTaskError(Exception):
-    def __init__(self, code: str = "upstream_unavailable"):
-        super().__init__(code)
-        self.code = code
-
-
-class PermanentTaskError(Exception):
-    def __init__(self, code: str = "investigation_failed"):
-        super().__init__(code)
-        self.code = code
 
 
 def retry_delay(attempt: int, *, base: int = RETRY_BASE_SECONDS, cap: int = RETRY_MAX_SECONDS) -> int:
