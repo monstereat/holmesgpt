@@ -123,7 +123,7 @@ services:
       openobserve-proxy:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/healthz', timeout=3)"]
+      test: ["CMD", "python", "-c", "import os,sys,urllib.request; sys.exit(0 if os.getenv('DEEPSEEK_API_KEY') and urllib.request.urlopen('http://127.0.0.1:5050/readyz', timeout=4).status == 200 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -227,7 +227,7 @@ services:
       redis:
         condition: service_healthy
       holmes-api:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "from worker import celery_app; import sys; sys.exit(0 if celery_app.control.ping(timeout=3) else 1)"]
       interval: 15s

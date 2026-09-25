@@ -72,6 +72,17 @@ def test_request_matches_holmes_non_streaming_api_contract():
     assert result["evidence"][0]["tool_name"] == "openobserve_find_trace"
 
 
+def test_protocol_markup_cannot_be_persisted_as_a_completed_diagnosis():
+    response = FakeResponse({
+        "analysis": "<|tool_call_begin|>openobserve_search_logs<|tool_call_end|>",
+        "tool_calls": [_tool()],
+    })
+    client = HolmesClient("http://holmes:5050", "service-key", opener=FakeOpener(response))
+
+    with pytest.raises(PermanentTaskError, match="holmes_analysis_not_readable"):
+        client.investigate({"alert_name": "order-500", "trace_ids": ["a" * 32], "summary": {}})
+
+
 def test_synthetic_evaluation_instructions_require_internal_mode_flag():
     task = {
         "alert_name": "alert",
@@ -81,18 +92,48 @@ def test_synthetic_evaluation_instructions_require_internal_mode_flag():
             "evaluation_case_id": "case-1",
             "evaluation_run_id": "b" * 32,
             "evaluation_timestamp_us": 1_800_000_000_000_000,
+            "alert_trigger_time_str": "2026-09-25T14:23:41Z",
         },
     }
 
     normal_question = build_investigation_question(task)
     eval_question = build_investigation_question(task, evaluation=True)
 
+    assert "Do not call shell/bash tools" in normal_question
+    assert "make no more than three OpenObserve calls" in normal_question
+    assert "Stop broadening the search after exact trace evidence is found" in normal_question
     assert "Treat these records as test fixtures" not in normal_question
     assert "Treat these records as test fixtures" in eval_question
     assert '"evaluation_run_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' in eval_question
     assert '"evaluation_case_id":"case-1"' in eval_question
     assert '"search_window_start_unix_us":1799999940000000' in eval_question
     assert "do not cite rows from any other run" in eval_question
+    assert "trusted server-generated alert search window" not in eval_question
+
+
+def test_production_alert_search_window_is_server_anchored_and_proxy_bounded():
+    question = build_investigation_question({
+        "alert_name": "order-500",
+        "trace_ids": ["a" * 32],
+        "summary": {"alert_trigger_time_str": "2026-09-25T14:23:41Z"},
+    })
+
+    assert '"alert_time_unix_us":1790346221000000' in question
+    assert '"search_window_start_unix_us":1790345921000000' in question
+    assert '"search_window_end_unix_us":1790346281000000' in question
+    assert "Use these exact start_time and end_time values" in question
+    assert "do not center a new window or extend it" in question
+
+
+def test_invalid_alert_timestamp_does_not_create_search_anchors():
+    question = build_investigation_question({
+        "alert_name": "order-500",
+        "trace_ids": [],
+        "summary": {"alert_trigger_time_str": "not-a-date"},
+    })
+
+    assert "No valid alert timestamp was supplied" in question
+    assert "alert_time_unix_us" not in question
 
 
 def test_synthetic_evaluation_requires_run_case_and_timestamp_anchors():

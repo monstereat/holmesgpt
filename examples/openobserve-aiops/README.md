@@ -6,6 +6,8 @@ This project keeps HolmesGPT's existing Python/FastAPI investigation API (`serve
 
 Run from this directory. Compose binds browser/API ports to `127.0.0.1` and keeps PostgreSQL and Redis on the private Compose network. Do not use this demo configuration as a production deployment.
 
+Live investigation requires the private DeepSeek key file. Create `~/.config/holmesgpt-aiops/deepseek.env` with mode `0600` and put `export DEEPSEEK_API_KEY='paste-key-here'` in it. Source it in the same shell before Compose; the key is not stored in this repository. If it is missing, Holmes is marked unhealthy and the incident worker waits instead of accepting investigation tasks.
+
 ```bash
 export ZO_ROOT_USER_EMAIL="${ZO_ROOT_USER_EMAIL:-demo@example.test}"
 export ZO_ROOT_USER_PASSWORD="$(openssl rand -hex 24)"
@@ -20,10 +22,11 @@ export OPERATOR_PASSWORD="$(openssl rand -hex 24)"
 export APPROVER_PASSWORD="$(openssl rand -hex 24)"
 export AIOPS_TEST_USERS_JSON="$(python3 -c 'import json,os; print(json.dumps([{"username":"operator","password":os.environ["OPERATOR_PASSWORD"],"role":"operator","resource_scopes":["order-service"]},{"username":"approver","password":os.environ["APPROVER_PASSWORD"],"role":"approver","resource_scopes":["order-service"]}]))')"
 
+source "$HOME/.config/holmesgpt-aiops/deepseek.env"
 docker compose up -d --build
 ```
 
-Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Compose explicitly sets `AIOPS_ENV=local`; the service rejects `AIOPS_TEST_USERS_JSON` in every other environment. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. Reuse `OPENOBSERVE_PROXY_USERNAME` and `OPENOBSERVE_PROXY_PASSWORD` when recreating Holmes and the proxy together. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; `DEEPSEEK_API_KEY` is optional for starting the services but required for live model calls. Keep it in the private file `~/.config/holmesgpt-aiops/deepseek.env`, outside the repository, with mode `0600`; create/edit it once with `export DEEPSEEK_API_KEY='paste-key-here'` and replace the placeholder with the real key.
+Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Compose explicitly sets `AIOPS_ENV=local`; the service rejects `AIOPS_TEST_USERS_JSON` in every other environment. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. Reuse `OPENOBSERVE_PROXY_USERNAME` and `OPENOBSERVE_PROXY_PASSWORD` when recreating Holmes and the proxy together. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; a missing `DEEPSEEK_API_KEY` makes Holmes unhealthy and holds the incident worker until the key is loaded. The local Holmes readiness check confirms the key is present and the model is configured; it does not validate the remote provider credential.
 
 ```bash
 source /tmp/holmesgpt-aiops-test-runtime.sh
@@ -71,7 +74,7 @@ In OpenObserve, configure the alert destination to call `http://incident-api:808
 5. Use the approver account to write and review the incident retrospective. The report is stored per incident in PostgreSQL, and save/review actions are added to the audit timeline. Operators and viewers can read it but cannot edit it.
 6. Return the demo order-service to normal mode and confirm a new order succeeds.
 
-Live model investigation requires a valid `DEEPSEEK_API_KEY` and the local `HOLMES_API_KEY`. Set `DEEPSEEK_API_KEY` in the same shell before recreating `holmes-api`; never send it through the incident API or put it in this repository. Without a model key, investigation tasks fail with a safe error and live acceptance remains blocked; mock reports do not replace this requirement. Proxy-level read-only enforcement is active for Holmes, while OpenObserve OSS itself still has no native RBAC; use an RBAC edition for server-native user and tenant isolation. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
+Live model investigation requires the private `DEEPSEEK_API_KEY` and the local `HOLMES_API_KEY`. Source the private key file before recreating `holmes-api`; never send it through the incident API or put it in this repository. Without a model key, the worker remains gated by Holmes health and live acceptance is unavailable; mock reports do not replace this requirement. Proxy-level read-only enforcement is active for Holmes, while OpenObserve OSS itself still has no native RBAC; use an RBAC edition for server-native user and tenant isolation. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
 
 Live 20-case evaluation seeds at most 100 synthetic evidence rows into the local `app_logs` stream, then queries them through Holmes and the read-only proxy. Three release-linked cases also seed typed `release_deployed` events; Holmes receives the linked repository Runbook and source path, and must ground release claims in returned telemetry. Seeded rows remain in the local Docker OpenObserve volume, carry unique run/trace IDs where applicable and are labeled `synthetic_fixture`; the seeder refuses non-loopback endpoints. The evaluation also refuses non-local Holmes API targets. Details and the command are in [`evals/README.md`](evals/README.md).
 
