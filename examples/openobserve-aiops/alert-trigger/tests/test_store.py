@@ -1,11 +1,13 @@
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 import psycopg
 import pytest
 
 from models import IncidentInput
-from store import create_incident, stable_fingerprint
+from store import TaskQueueAtCapacity, create_incident, stable_fingerprint
 
 
 class FakeCursor:
@@ -21,7 +23,11 @@ class FakeCursor:
 
     def execute(self, query, params=()):
         self.conn.queries.append((query, params))
-        if query.startswith("INSERT INTO incidents"):
+        if query.startswith("SELECT id, status, created_at FROM incidents WHERE fingerprint"):
+            self.row = None if self.conn.new_incident else (self.conn.incident_id, "open", "now")
+        elif query.startswith("SELECT count(*) FROM tasks"):
+            self.row = (self.conn.pending_count,)
+        elif query.startswith("INSERT INTO incidents"):
             self.row = (params[0], "open", "now") if self.conn.new_incident else None
         elif "WHERE fingerprint" in query:
             self.row = (self.conn.incident_id, "open", "now")
@@ -37,6 +43,7 @@ class FakeConnection:
         self.new_incident = new_incident
         self.incident_id = "existing-incident"
         self.task_id = "existing-task"
+        self.pending_count = 0
         self.queries = []
 
     class Transaction:
@@ -101,6 +108,39 @@ def test_invalid_fingerprint_is_rejected_before_database_access():
     assert not conn.queries
 
 
+def test_pending_task_capacity_admits_up_to_limit_and_preserves_duplicate_idempotency():
+    conn = FakeConnection(new_incident=True)
+    result = create_incident(
+        conn,
+        IncidentInput("a" * 64, "order-500"),
+        max_pending_tasks=1,
+    )
+
+    assert result["created"] is True
+    assert any("pg_advisory_xact_lock" in query for query, _ in conn.queries)
+    assert any("SELECT count(*) FROM tasks" in query for query, _ in conn.queries)
+
+    duplicate_conn = FakeConnection(new_incident=False)
+    duplicate_conn.pending_count = 1
+    duplicate = create_incident(
+        duplicate_conn,
+        IncidentInput("c" * 64, "order-500"),
+        max_pending_tasks=1,
+    )
+    assert duplicate["created"] is False
+    assert not any("SELECT count(*) FROM tasks" in query for query, _ in duplicate_conn.queries)
+
+
+def test_pending_task_capacity_rejects_new_alert_atomically():
+    conn = FakeConnection(new_incident=True)
+    conn.pending_count = 1
+
+    with pytest.raises(TaskQueueAtCapacity):
+        create_incident(conn, IncidentInput("a" * 64, "order-500"), max_pending_tasks=1)
+
+    assert not any(query.startswith("INSERT INTO") for query, _ in conn.queries)
+
+
 def test_postgres_migration_and_idempotency_on_local_test_database():
     database_url = os.getenv("AIOPS_TEST_DATABASE_URL")
     if not database_url:
@@ -151,3 +191,50 @@ def test_postgres_rolls_back_incident_and_task_if_outbox_insert_fails():
             cursor.execute("SELECT count(*) FROM incidents WHERE fingerprint = %s", (fingerprint,))
             assert cursor.fetchone() == (0,)
             cursor.execute("DELETE FROM outbox_events WHERE idempotency_key = %s", (idempotency_key,))
+
+
+def test_postgres_pending_task_cap_is_atomic_across_concurrent_webhooks():
+    database_url = os.getenv("AIOPS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("AIOPS_TEST_DATABASE_URL is not set")
+    if urlparse(database_url).hostname not in {"postgres", "host.docker.internal", "127.0.0.1", "localhost"}:
+        pytest.fail("integration tests only permit local Docker PostgreSQL hosts")
+
+    alerts = []
+    for _ in range(2):
+        candidate = IncidentInput("0" * 64, f"capacity-admission-{os.urandom(8).hex()}")
+        alerts.append(IncidentInput(stable_fingerprint(candidate), candidate.alert_name))
+    barrier = threading.Barrier(len(alerts))
+
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM tasks WHERE status IN ('queued', 'running', 'retrying')")
+            capacity = cursor.fetchone()[0] + 1
+
+    def attempt(alert):
+        barrier.wait(timeout=5)
+        with psycopg.connect(database_url) as conn:
+            try:
+                return create_incident(conn, alert, max_pending_tasks=capacity)
+            except TaskQueueAtCapacity:
+                return None
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(attempt, alerts))
+        admitted = [result for result in results if result is not None]
+        assert len(admitted) == 1
+        admitted_alert = alerts[results.index(admitted[0])]
+        with psycopg.connect(database_url) as conn:
+            duplicate = create_incident(conn, admitted_alert, max_pending_tasks=capacity)
+        assert duplicate["created"] is False
+    finally:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                for alert in alerts:
+                    cursor.execute("SELECT id FROM incidents WHERE fingerprint = %s", (alert.fingerprint,))
+                    row = cursor.fetchone()
+                    if row:
+                        cursor.execute("DELETE FROM outbox_events WHERE aggregate_id = %s", (row[0],))
+                        cursor.execute("DELETE FROM tasks WHERE incident_id = %s", (row[0],))
+                        cursor.execute("DELETE FROM incidents WHERE id = %s", (row[0],))

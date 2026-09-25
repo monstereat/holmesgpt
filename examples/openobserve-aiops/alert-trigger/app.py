@@ -23,7 +23,7 @@ from psycopg.types.json import Jsonb
 from action_client import ActionServiceError, OrderActionClient
 from auth import ROLE_PERMISSIONS, create_session, hash_password, parse_session, require_permission, session_expiration, verify_password
 from models import IncidentInput, Principal
-from store import create_incident
+from store import TaskQueueAtCapacity, create_incident
 from trigger import MAX_BODY_BYTES, normalize_alert
 from worker import start_outbox_dispatcher
 from identity import OIDCSettings, load_oidc_settings, principal_claims
@@ -91,6 +91,19 @@ def _validate_auth_configuration() -> OIDCSettings | None:
 def _validate_metrics_configuration() -> None:
     if os.getenv("AIOPS_ENV", "production") != "local" and len(os.getenv("AIOPS_METRICS_TOKEN", "")) < 32:
         raise RuntimeError("AIOPS_METRICS_TOKEN must contain at least 32 bytes outside local mode")
+
+
+def _max_pending_tasks() -> int | None:
+    raw = os.getenv("AIOPS_MAX_PENDING_TASKS", "").strip()
+    if not raw and os.getenv("AIOPS_ENV", "production") == "local":
+        return None
+    try:
+        capacity = int(raw)
+    except ValueError:
+        raise RuntimeError("AIOPS_MAX_PENDING_TASKS must be a positive integer outside local mode") from None
+    if capacity < 1:
+        raise RuntimeError("AIOPS_MAX_PENDING_TASKS must be a positive integer")
+    return capacity
 
 
 class LoginRequest(BaseModel):
@@ -241,6 +254,7 @@ def _require_demo_actions_enabled() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _validate_metrics_configuration()
+    _max_pending_tasks()
     settings = _validate_auth_configuration()
     if settings:
         metadata = await _oidc_client(settings).load_server_metadata()
@@ -312,7 +326,7 @@ def internal_metrics(request: Request) -> PlainTextResponse:
                 status_counts = dict(cursor.fetchall())
                 cursor.execute(
                     """SELECT COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at))), 0)
-                       FROM tasks WHERE status IN ('queued', 'retrying')"""
+                       FROM tasks WHERE status IN ('queued', 'running', 'retrying')"""
                 )
                 oldest_pending_age = cursor.fetchone()[0]
                 cursor.execute("SELECT COALESCE(sum(GREATEST(attempt - 1, 0)), 0) FROM tasks")
@@ -325,13 +339,20 @@ def internal_metrics(request: Request) -> PlainTextResponse:
         "# HELP aiops_tasks Current incident tasks grouped by lifecycle status.",
         "# TYPE aiops_tasks gauge",
         *(f'aiops_tasks{{status="{status}"}} {int(status_counts.get(status, 0))}' for status in statuses),
-        "# HELP aiops_oldest_pending_task_age_seconds Age of the oldest queued or retrying task.",
+        "# HELP aiops_oldest_pending_task_age_seconds Age of the oldest queued, running, or retrying task.",
         "# TYPE aiops_oldest_pending_task_age_seconds gauge",
         f"aiops_oldest_pending_task_age_seconds {max(0, float(oldest_pending_age or 0))}",
         "# HELP aiops_task_retry_attempts_total Persisted task retry attempts beyond the initial attempt.",
         "# TYPE aiops_task_retry_attempts_total counter",
         f"aiops_task_retry_attempts_total {int(retry_attempts or 0)}",
     ]
+    capacity = _max_pending_tasks()
+    if capacity is not None:
+        lines.extend([
+            "# HELP aiops_pending_task_capacity Maximum admitted queued, running, and retrying tasks.",
+            "# TYPE aiops_pending_task_capacity gauge",
+            f"aiops_pending_task_capacity {capacity}",
+        ])
     return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
@@ -1017,7 +1038,13 @@ async def openobserve_webhook(request: Request) -> dict[str, object]:
     alert = IncidentInput(fingerprint, name, tuple(traces), summary)
     with psycopg.connect(database_url) as conn:
         try:
-            result = create_incident(conn, alert)
+            result = create_incident(conn, alert, max_pending_tasks=_max_pending_tasks())
+        except TaskQueueAtCapacity:
+            raise HTTPException(
+                status_code=503,
+                detail="Alert queue is at capacity; retry the webhook later",
+                headers={"Retry-After": "30"},
+            ) from None
         except psycopg.Error as exc:
             raise HTTPException(status_code=503, detail="Incident could not be persisted") from exc
     return {

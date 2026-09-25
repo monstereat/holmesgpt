@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境优先：T000–T009 已部署；生产部署包和生产准入尚未完成。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。最新隔离评测有 20/20 精确案例证据命中、3/3 发布事件命中、0 个未限定成功查询、0 个跨案例 fixture 命中和 0 个工具错误；报告 schema 1.3 通过验证。评测专用策略按服务端 run/case 上下文拒绝缺少精确条件或含 OR 的搜索；大小写无关头读取与字符串字面量边界均有回归测试。诊断评分仍为 `not_scored`，不能声明准确率。Holmes 只能经受限的流列表/搜索端点访问 allowlist 流。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
+**本机 Docker 测试环境优先：T000–T009 已部署；生产部署包和生产准入尚未完成。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。最新隔离评测有 20/20 精确案例证据命中、3/3 发布事件命中、0 个未限定成功查询、0 个跨案例 fixture 命中和 0 个工具错误；报告 schema 1.3 通过验证。评测专用策略按服务端 run/case 上下文拒绝缺少精确条件或含 OR 的搜索；大小写无关头读取与字符串字面量边界均有回归测试。Incident API 现要求生产显式配置待处理任务容量，并以 PostgreSQL 事务锁限制并发 webhook admission；容量必须由压测确定。诊断评分仍为 `not_scored`，不能声明准确率。Holmes 只能经受限的流列表/搜索端点访问 allowlist 流。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
 
 ## 已完成并验证
 
@@ -13,6 +13,8 @@
 - T000：order-service 新增仅限 `set-chaos-mode` 的内部测试动作接口；服务端验证 token、资源、参数和幂等键；4 项定向 Node 测试通过，TypeScript build 通过。
 
 ## 实施状态与验证
+
+- 2026-09-26 过载保护增量：生产模式现在要求显式 `AIOPS_MAX_PENDING_TASKS`；基于 PostgreSQL transaction advisory lock，跨 API 副本原子限制 queued/running/retrying 总数。重复告警即使队列满仍返回已有事故；新告警容量满时返回 503 和 `Retry-After: 30`。新增并发 admission 集成测试、配置/HTTP 回归；隔离 Compose suite **87 passed，1 warning**。API 已重建并通过 `/readyz`；生产容量值仍必须由授权压测决定，本地 Compose 不设默认上限。
 
 - `specs/001-resume-aiops/` 的 Spec 已获用户确认并通过独立审查；Plan/Tasks 已按用户要求直接批准。数据库迁移获授权仅作用于本机 Docker 测试库。
 - T001：事故/任务/审批/审计/outbox PostgreSQL schema、稳定指纹与事务写入、带资源范围的测试角色授权、口令哈希与签名会话已完成；一次性本机 PostgreSQL 集成测试验证迁移、重复事件去重及 outbox 失败回滚。

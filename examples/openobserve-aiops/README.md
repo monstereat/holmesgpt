@@ -70,7 +70,7 @@ curl -fsS http://127.0.0.1:8080/
 
 The incident API `/healthz` is liveness; `/readyz` checks PostgreSQL connectivity. The incident worker health check requires a Celery ping response through Redis. Holmes `/healthz` is liveness; `/readyz` reflects model readiness and can fail when no model is configured. OpenObserve's image has no shell-based health probe, so its endpoint is checked from the host.
 
-The incident API exposes Prometheus text metrics at `/_internal/metrics` only when `AIOPS_METRICS_TOKEN` is set. The scraper must send `Authorization: Bearer <token>`; keep this endpoint private and store the token in the target's secret manager. It reports task counts by state, oldest pending task age, and persisted retry attempts. The local Compose token is optional and the endpoint stays disabled when it is unset.
+The incident API exposes Prometheus text metrics at `/_internal/metrics` only when `AIOPS_METRICS_TOKEN` is set. The scraper must send `Authorization: Bearer <token>`; keep this endpoint private and store the token in the target's secret manager. It reports task counts by state, oldest pending task age, persisted retry attempts, and—when configured—the pending-task admission cap. Outside local mode, set `AIOPS_MAX_PENDING_TASKS` to a positive capacity chosen from an approved load test. PostgreSQL advisory locking enforces it across API replicas; duplicate alerts still resolve to the existing incident, while new alerts at capacity receive `503` with `Retry-After: 30`. Local Compose leaves the cap unset. The local Compose metrics token is optional and the endpoint stays disabled when it is unset.
 
 ## Alert routing and end-to-end walkthrough
 

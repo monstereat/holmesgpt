@@ -10,6 +10,10 @@ from psycopg.types.json import Jsonb
 from models import IncidentInput
 
 
+class TaskQueueAtCapacity(Exception):
+    """Raised when admitting an alert would exceed the configured task queue cap."""
+
+
 def stable_fingerprint(alert: IncidentInput) -> str:
     trace_ids = sorted(set(alert.trace_ids))
     if trace_ids:
@@ -21,16 +25,38 @@ def stable_fingerprint(alert: IncidentInput) -> str:
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
-def create_incident(conn: Any, alert: IncidentInput) -> dict[str, Any]:
+def create_incident(
+    conn: Any,
+    alert: IncidentInput,
+    *,
+    max_pending_tasks: int | None = None,
+) -> dict[str, Any]:
     """Create one incident, task and outbox event atomically for a fingerprint."""
     if len(alert.fingerprint) != 64 or any(char not in "0123456789abcdef" for char in alert.fingerprint):
         raise ValueError("fingerprint must be a lowercase SHA-256 hex digest")
+    if max_pending_tasks is not None and max_pending_tasks < 1:
+        raise ValueError("max_pending_tasks must be positive")
     incident_id = uuid.uuid4()
     task_id = uuid.uuid4()
     outbox_id = uuid.uuid4()
     task_key = f"investigate:{alert.fingerprint}"
     with conn.transaction():
         with conn.cursor() as cursor:
+            if max_pending_tasks is not None:
+                # Serialize admission so concurrent API replicas cannot exceed the pending-task cap.
+                cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", (1095329616, 1396928336))
+                cursor.execute(
+                    "SELECT id, status, created_at FROM incidents WHERE fingerprint = %s",
+                    (alert.fingerprint,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    cursor.execute(
+                        "SELECT count(*) FROM tasks WHERE status IN ('queued', 'running', 'retrying')"
+                    )
+                    pending_count = cursor.fetchone()[0]
+                    if pending_count >= max_pending_tasks:
+                        raise TaskQueueAtCapacity
             cursor.execute(
                 """INSERT INTO incidents (id, fingerprint, alert_name, trace_ids, summary)
                    VALUES (%s, %s, %s, %s, %s)
@@ -38,8 +64,10 @@ def create_incident(conn: Any, alert: IncidentInput) -> dict[str, Any]:
                    RETURNING id, status, created_at""",
                 (incident_id, alert.fingerprint, alert.alert_name, list(alert.trace_ids), Jsonb(alert.summary)),
             )
-            row = cursor.fetchone()
-            created = row is not None
+            inserted_row = cursor.fetchone()
+            created = inserted_row is not None
+            if inserted_row is not None:
+                row = inserted_row
             if not created:
                 cursor.execute(
                     "SELECT id, status, created_at FROM incidents WHERE fingerprint = %s",

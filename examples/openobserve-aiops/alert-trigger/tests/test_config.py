@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app import (
     _auth_mode,
     _require_demo_actions_enabled,
+    _max_pending_tasks,
     _test_users_configuration,
     _validate_metrics_configuration,
     app,
@@ -63,6 +64,24 @@ def test_metrics_token_is_required_outside_local_runtime(monkeypatch):
     _validate_metrics_configuration()
 
 
+def test_pending_task_capacity_is_required_and_validated_outside_local_runtime(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.delenv("AIOPS_MAX_PENDING_TASKS", raising=False)
+    with pytest.raises(RuntimeError, match="AIOPS_MAX_PENDING_TASKS"):
+        _max_pending_tasks()
+    monkeypatch.setenv("AIOPS_MAX_PENDING_TASKS", "0")
+    with pytest.raises(RuntimeError, match="positive integer"):
+        _max_pending_tasks()
+    monkeypatch.setenv("AIOPS_MAX_PENDING_TASKS", "250")
+    assert _max_pending_tasks() == 250
+
+
+def test_pending_task_capacity_is_optional_only_for_local_runtime(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "local")
+    monkeypatch.delenv("AIOPS_MAX_PENDING_TASKS", raising=False)
+    assert _max_pending_tasks() is None
+
+
 def test_metrics_endpoint_is_disabled_without_a_token(monkeypatch):
     monkeypatch.setenv("AIOPS_ENV", "local")
     monkeypatch.delenv("AIOPS_METRICS_TOKEN", raising=False)
@@ -73,6 +92,7 @@ def test_metrics_endpoint_is_disabled_without_a_token(monkeypatch):
 def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     monkeypatch.setenv("AIOPS_ENV", "local")
     monkeypatch.setenv("AIOPS_METRICS_TOKEN", "m" * 40)
+    monkeypatch.setenv("AIOPS_MAX_PENDING_TASKS", "250")
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
     cursor = MagicMock()
     cursor.fetchall.return_value = [("queued", 2), ("completed", 4)]
@@ -93,6 +113,7 @@ def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     assert 'aiops_tasks{status="failed"} 0' in response.text
     assert "aiops_oldest_pending_task_age_seconds 7.5" in response.text
     assert "aiops_task_retry_attempts_total 3" in response.text
+    assert "aiops_pending_task_capacity 250" in response.text
 
 
 def test_incident_api_readiness_fails_without_database(monkeypatch):

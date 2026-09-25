@@ -1,9 +1,12 @@
 import json
 import os
+from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 import pytest
 from fastapi.testclient import TestClient
+
+from store import TaskQueueAtCapacity
 
 from app import app
 
@@ -33,6 +36,32 @@ def test_webhook_rejects_malformed_payload_before_persistence(monkeypatch):
         )
         assert response.status_code == 400
         assert "Invalid alert payload" in response.text
+
+
+def test_webhook_returns_retryable_response_when_task_queue_is_full(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "local")
+    monkeypatch.setenv("AIOPS_MAX_PENDING_TASKS", "1")
+    monkeypatch.setenv("ALERT_WEBHOOK_TOKEN", "test-token")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    monkeypatch.setattr("app.psycopg.connect", lambda *args, **kwargs: connection)
+
+    def reject_at_capacity(*args, **kwargs):
+        assert kwargs["max_pending_tasks"] == 1
+        raise TaskQueueAtCapacity
+
+    monkeypatch.setattr("app.create_incident", reject_at_capacity)
+    payload = {"alert_name": "order-500", "trace_id": "a" * 32, "err_count": 1}
+    with TestClient(app) as client:
+        response = client.post(
+            "/webhooks/openobserve",
+            headers={"X-Alert-Token": "test-token"},
+            json=payload,
+        )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "30"
 
 
 def test_webhook_persists_and_deduplicates_on_local_postgres(monkeypatch):

@@ -107,7 +107,7 @@ def test_synthetic_evaluation_instructions_require_internal_mode_flag():
     assert '"evaluation_run_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' in eval_question
     assert '"evaluation_case_id":"case-1"' in eval_question
     assert '"search_window_start_unix_us":1799999940000000' in eval_question
-    assert "do not cite rows from any other run" in eval_question
+    assert "Do not cite rows from any other run" in eval_question
     assert "Every openobserve_search_logs query must include both exact" in eval_question
     assert "This also applies to release_deployed checks" in eval_question
     assert "If a query is rejected, correct its SQL before retrying" in eval_question
