@@ -49,7 +49,7 @@ The eventual platform-specific bundle must satisfy all of the following before s
 - Use separate runtime and migration database identities with least privilege. Review migrations, run them as a gated release step, and test rollback/forward recovery against a restored staging copy.
 - Disable demo-only OpenObserve SSRF bypasses. Use native tenant/RBAC controls where available; otherwise document the residual trust placed in the read-only proxy and its credentials.
 - Keep the Holmes tool path read-only, stream-scoped, time-bounded, size-bounded, and audited. Explicitly approve which telemetry may leave the environment for model inference.
-- Leave production remediation disabled by default. Add an action only after its owner provides a narrow API, independent approval policy, idempotency key, postcondition, rollback behavior, and audit evidence.
+- Keep production remediation disabled by default. The existing demo `set-chaos-mode` action now requires an explicit `AIOPS_DEMO_ACTIONS_ENABLED=true`; the application default is disabled. Add a production action only after its owner provides a narrow API, independent approval policy, idempotency key, postcondition, rollback behavior, and audit evidence.
 - Configure resource requests/limits, liveness/readiness probes, graceful shutdown, worker concurrency, queue backpressure, log/trace correlation, and alerting from measured load. Set SLO values from an owner-approved capacity exercise rather than guessing.
 - Configure PostgreSQL backup/PITR and retention, Redis recovery expectations, OpenObserve retention, restore ownership, and a measured restore drill. Do not treat a successful backup command as a recovery objective.
 

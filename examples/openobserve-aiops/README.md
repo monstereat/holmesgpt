@@ -44,7 +44,7 @@ After startup:
 - OpenObserve: [http://localhost:5080](http://localhost:5080)
 - Holmes API liveness: `http://localhost:5050/healthz`; readiness: `http://localhost:5050/readyz`
 
-The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action. The separate `approver` can approve or reject it and edit/review incident retrospectives. The requester cannot approve their own request. Both accounts are local demo identities, not a production identity provider.
+The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action; Compose explicitly enables it with `AIOPS_DEMO_ACTIONS_ENABLED=true`. The action is disabled by default in every other environment, including for already approved requests. The separate `approver` can approve or reject it and edit/review incident retrospectives. The requester cannot approve their own request. Both accounts are local demo identities, not a production identity provider.
 
 Check service state and liveness:
 

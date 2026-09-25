@@ -49,6 +49,7 @@ def test_approval_permissions_execution_verification_and_rollback(monkeypatch):
     monkeypatch.setattr("worker.start_outbox_dispatcher", lambda: NoopDispatcher())
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("SESSION_SIGNING_KEY", "local-test-session-signing-key-123456")
+    monkeypatch.setenv("AIOPS_DEMO_ACTIONS_ENABLED", "true")
     apply_migrations(database_url)
     users = [
         (str(uuid.uuid4()), "approval-operator", "operator-passphrase-456", "operator", ["order-service"]),
@@ -83,6 +84,10 @@ def test_approval_permissions_execution_verification_and_rollback(monkeypatch):
             assert client.post(f"/api/incidents/{incidents[0][1]['incident_id']}/approvals", headers=operator, json={**action, "shell": "echo unsafe"}).status_code == 422
             assert client.post(f"/api/approvals/{uuid.uuid4()}/decision", headers=operator, json={"decision": "approve"}).status_code == 403
 
+            monkeypatch.setenv("AIOPS_DEMO_ACTIONS_ENABLED", "false")
+            disabled = client.post(f"/api/incidents/{incidents[0][1]['incident_id']}/approvals", headers=operator, json=action)
+            assert disabled.status_code == 503
+            monkeypatch.setenv("AIOPS_DEMO_ACTIONS_ENABLED", "true")
             created = client.post(f"/api/incidents/{incidents[0][1]['incident_id']}/approvals", headers=operator, json=action)
             assert created.status_code == 201
             approval_id = created.json()["approval_id"]
@@ -92,6 +97,10 @@ def test_approval_permissions_execution_verification_and_rollback(monkeypatch):
 
             owner = FakeOwner()
             monkeypatch.setattr("app._order_action_client", lambda: owner)
+            monkeypatch.setenv("AIOPS_DEMO_ACTIONS_ENABLED", "false")
+            assert client.post(f"/api/approvals/{approval_id}/execute", headers=operator).status_code == 503
+            assert owner.actions == []
+            monkeypatch.setenv("AIOPS_DEMO_ACTIONS_ENABLED", "true")
             executed = client.post(f"/api/approvals/{approval_id}/execute", headers=operator)
             assert executed.status_code == 200
             assert executed.json()["verified"] is True

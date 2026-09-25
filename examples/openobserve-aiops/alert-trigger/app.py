@@ -153,6 +153,11 @@ def _order_action_client() -> OrderActionClient:
         raise HTTPException(status_code=503, detail="Demo action service is not configured") from None
 
 
+def _require_demo_actions_enabled() -> None:
+    if os.getenv("AIOPS_DEMO_ACTIONS_ENABLED", "").lower() != "true":
+        raise HTTPException(status_code=503, detail="Demo remediation actions are disabled")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     raw_users = _test_users_configuration()
@@ -420,6 +425,7 @@ def request_approval(
 ) -> dict[str, str]:
     principal = _load_principal(authorization)
     _authorize(principal, "task:create", "order-service")
+    _require_demo_actions_enabled()
     try:
         incident_uuid = str(uuid.UUID(incident_id))
     except ValueError:
@@ -522,6 +528,7 @@ def cancel_approval(approval_id: str, authorization: str | None = Header(default
 def execute_approval(approval_id: str, authorization: str | None = Header(default=None)) -> dict[str, object]:
     principal = _load_principal(authorization)
     _authorize(principal, "task:create", "order-service")
+    _require_demo_actions_enabled()
     try:
         approval_uuid = str(uuid.UUID(approval_id))
     except ValueError:
