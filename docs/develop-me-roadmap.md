@@ -206,9 +206,10 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 本机 OpenObserve 实际接受 40 条记录（20 例，每例 2 条）；Holmes 经只读策略代理按首例 Trace ID 查询到两条匹配的 `synthetic_fixture` 记录。此项证明本机证据链可用，不代表模型诊断通过。
 - [x] Seeder URL / JSON ingestion / 部分写入失败测试新增；评测、seed、安全边界和 Holmes API 契约定向测试 **35 passed**；最新 Compose 隔离测试 **44 passed, 1 warning**。
 - [x] 三个带发布记录的用例现在以 `release_deployed` 结构化事件写入，且只包含语料中明确给出的 release/changed files；未给出的 commit SHA 存为空。对应 Runbook 原文与仓库路径会放入该例 Holmes 只读调查上下文；有配置关联 Skill 的病例同时提供 Skill 来源。
+- [x] Holmes 自定义技能目录纳入库存故障、数据库 schema/migration 不匹配、发布回归三个只读 Skill；运行中的 Holmes 容器从实际挂载路径扫描到 3 个 Skill，skill loader 定向测试通过。
 - [ ] DeepSeek 模型调用、工具调用、根因诊断质量和 20 例 live 评测仍待本机有效 `DEEPSEEK_API_KEY`。缺 Key 的拒绝路径已验证，并在写入 OpenObserve 之前退出。
 
-**最近验证（2026-09-25）：** `python3 examples/openobserve-aiops/evals/run_evals.py --mode mock` 生成 20 条 `not_scored` 报告；live 缺 Key 检查按预期拒绝且未 seed；`/tmp/poetry185/bin/poetry run pytest -q --no-cov examples/openobserve-aiops/evals/test_known_root_causes.py examples/openobserve-aiops/evals/test_seed_local_evidence.py examples/openobserve-aiops/alert-trigger/tests/test_evaluation.py examples/openobserve-aiops/alert-trigger/tests/test_holmes_client.py`（35 passed）；隔离 Compose profile（44 passed, 1 warning）。结构化发布事件/Runbook 上下文已有单测覆盖，未在当前本机 OpenObserve 重复追加数据。
+**最近验证（2026-09-25）：** `python3 examples/openobserve-aiops/evals/run_evals.py --mode mock` 生成 20 条 `not_scored` 报告；live 缺 Key 检查按预期拒绝且未 seed；定向 pytest（36 passed）；隔离 Compose profile（44 passed, 1 warning）。结构化发布事件/Runbook 上下文有单测覆盖，Holmes 容器扫描到 3 个项目 Skill，未在当前本机 OpenObserve 重复追加数据。
 
 ## 2026-09-25 增量：事故原型和告警输入边界
 

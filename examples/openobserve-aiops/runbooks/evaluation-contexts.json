@@ -19,7 +19,7 @@
       "commit_sha": null,
       "changed_files": [],
       "runbook": "examples/openobserve-aiops/runbooks/order-service-database-schema-mismatch.md",
-      "skill": null
+      "skill": "examples/openobserve-aiops/skills/order-service-database-schema-mismatch/SKILL.md"
     },
     {
       "case_id": "order-release-regression",
@@ -29,7 +29,7 @@
       "commit_sha": null,
       "changed_files": ["src/orders/mapper.ts"],
       "runbook": "examples/openobserve-aiops/runbooks/order-service-release-regression.md",
-      "skill": null
+      "skill": "examples/openobserve-aiops/skills/order-service-release-regression/SKILL.md"
     }
   ]
 }

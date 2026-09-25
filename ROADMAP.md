@@ -26,6 +26,7 @@
 - T009：新增本机迁移 `0003_incident_retrospectives` 和按事故持久化的复盘 API/工作台表单；approver/admin 可保存影响、根因、恢复措施、行动项并标记审核，viewer/operator 只能读取。审核保存写入 audit timeline；隔离测试 42 passed，运行中的本机测试数据库已应用迁移，HTTP 登录/读取/越权写入 smoke check 通过，前端脚本语法检查通过。
 - 真实 Holmes 模型调查尚未完成：DeepSeek API Key 未设置，不能声称 live RCA 或端到端事故任务通过。
 - T006 增量：live runner 先检查 DeepSeek 凭据、Holmes 本机 URL 与健康状态，再向本机 OpenObserve `app_logs` 写入带唯一 run/trace ID 的合成语料并逐例调用 Holmes；缺 DeepSeek Key 时在遥测写入前拒绝运行。三例发布上下文会作为结构化 `release_deployed` 事件写入，关联的 repository Runbook 与来源路径会随对应调查请求传入。seeder/context 单测已通过；实际模型验证仍待 API Key。
+- Runbook 增量：Holmes 的自定义技能目录现包含订单库存、数据库迁移不匹配和发布回归三份只读 Skill；评测用例引用相应 Skill。定向测试扫描通过，运行中的 Holmes 容器从实际挂载目录加载到 3 个 Skill。
 
 ## 待办
 
@@ -45,7 +46,8 @@
 - `docker compose ... config --quiet`、本机栈构建/启动和服务健康检查通过；Holmes `/healthz`、事故 API `/healthz`、OpenObserve `/healthz` 与订单服务返回 HTTP 200。
 - 隔离 Compose 测试 profile：42 passed，1 warning。
 - 浏览器实际打开 `http://localhost:8081/`，显示事故工作台登录表单且无浏览器 console error；本轮未在浏览器输入账号密码，审批、执行、复盘页面仍以 API/隔离集成测试验证，未记作手工 UI 全流程通过。
-- T006 live-eval 数据准备增量：定向 pytest **35 passed**；最新隔离 Compose 测试 profile **44 passed，1 warning**。Mock 报告检查 20 例、`not_scored`、无诊断；缺 DeepSeek Key 时在本机数据写入前退出。此前 OpenObserve 接收 40 条合成记录，Holmes 经只读代理按 trace 查询命中对应日志；没有 DeepSeek 模型调用。结构化发布事件和 Runbook prompt 上下文通过单测，尚未在当前 OpenObserve 卷追加新一轮数据或运行模型。
+- T006 live-eval 数据准备增量：定向 pytest **36 passed**；最新隔离 Compose 测试 profile **44 passed，1 warning**。Mock 报告检查 20 例、`not_scored`、无诊断；缺 DeepSeek Key 时在本机数据写入前退出。此前 OpenObserve 接收 40 条合成记录，Holmes 经只读代理按 trace 查询命中对应日志；没有 DeepSeek 模型调用。结构化发布事件和 Runbook prompt 上下文通过单测，尚未在当前 OpenObserve 卷追加新一轮数据或运行模型。
+- Holmes 实际挂载的 `/etc/holmes/skills` 由容器内技能加载器识别到 3 个项目 Skill（库存故障、数据库 schema/migration 不匹配、发布回归）；无模型调用。
 - 复盘增量：隔离 Compose 测试 profile 42 passed，前端 `node --check` 通过；本机 API 登录后可读取现存事故复盘，operator 写入返回 403；测试数据库记录迁移版本 `0003_incident_retrospectives`。
 - 评测语料增量：20 例 mock 报告重生成，检查确认 `not_scored`、20 条病例且无模型诊断；语料/发布-Runbook fixture 校验 **3 passed**，重复 JSON 字段检测测试通过。
 - 订单 HTTP webhook 创建持久 incident/task；operator 自审批返回 403，approver 批准后执行状态 ON，再经批准恢复 OFF；最后实测状态为 OFF。

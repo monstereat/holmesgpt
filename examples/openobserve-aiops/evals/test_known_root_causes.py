@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from holmes.plugins.skills.skill_loader import SkillSource, scan_skill_directory
+
 
 CORPUS_PATH = Path(__file__).with_name("known_root_causes.json")
 EXAMPLE_PATH = CORPUS_PATH.parents[1]
@@ -68,3 +70,14 @@ def test_evaluation_release_and_runbook_contexts_are_grounded_in_fixture_evidenc
         assert runbook_path.is_file()
         if context["skill"]:
             assert (EXAMPLE_PATH.parent.parent / context["skill"]).is_file()
+
+
+def test_all_evaluation_runbooks_are_loadable_holmes_skills():
+    skill_root = EXAMPLE_PATH / "skills"
+    skills = scan_skill_directory(skill_root, source=SkillSource.USER)
+
+    assert {skill.name for skill in skills} == {
+        "order-service-inventory-failure",
+        "order-service-database-schema-mismatch",
+        "order-service-release-regression",
+    }
