@@ -54,7 +54,9 @@ def build_investigation_question(task: dict[str, Any], *, evaluation: bool = Fal
     evaluation_context = (
         " This is a synthetic evaluation case. Search app_logs for the exact evaluation_case_id and "
         "evaluation_run_id supplied below, and correlate the supplied run-specific trace ID. "
-        "Treat these records as test fixtures, not production telemetry."
+        "Treat these records as test fixtures, not production telemetry. If a repository runbook is supplied, "
+        "use it as guidance and identify its path as the runbook source. Correlate a release only when a "
+        "matching release_deployed record is returned; do not infer a commit or changed file that is absent."
         if evaluation else ""
     )
     return (

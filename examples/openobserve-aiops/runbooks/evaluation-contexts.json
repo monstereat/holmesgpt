@@ -5,6 +5,9 @@
       "case_id": "order-inventory-negative-stock",
       "mode": "synthetic_fixture",
       "release_evidence": "Release v1.0.1 changed inventory reservation from a pre-check to an atomic reserve call.",
+      "release": "v1.0.1",
+      "commit_sha": null,
+      "changed_files": [],
       "runbook": "examples/openobserve-aiops/runbooks/order-service-inventory-failure.md",
       "skill": "examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md"
     },
@@ -12,6 +15,9 @@
       "case_id": "order-database-deploy-mismatch",
       "mode": "synthetic_fixture",
       "release_evidence": "Release v1.2.0 added delivery_window to the ORM model; database migration event is absent in the release window.",
+      "release": "v1.2.0",
+      "commit_sha": null,
+      "changed_files": [],
       "runbook": "examples/openobserve-aiops/runbooks/order-service-database-schema-mismatch.md",
       "skill": null
     },
@@ -19,6 +25,9 @@
       "case_id": "order-release-regression",
       "mode": "synthetic_fixture",
       "release_evidence": "Release event v2.4.1 at 14:02 UTC changed src/orders/mapper.ts.",
+      "release": "v2.4.1",
+      "commit_sha": null,
+      "changed_files": ["src/orders/mapper.ts"],
       "runbook": "examples/openobserve-aiops/runbooks/order-service-release-regression.md",
       "skill": null
     }

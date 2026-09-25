@@ -32,7 +32,7 @@
 - 20 例评测语料：去重键和发布/Runbook 关联验证 **3 passed**；mock 报告重新生成 20 条，明确保持 `not_scored`，未运行 live 模型请求。
 - Live 评测预检：DeepSeek Key 缺失时 runner 在写入 OpenObserve 前拒绝执行；mock 报告断言 20 条、无模型诊断、`not_scored`。
 - 本机评测证据准备：OpenObserve 本轮实际接收 40 条 synthetic fixture 行；Holmes 容器经只读代理按本轮 trace 检索到匹配行。没有模型调用，不代表 RCA 已验证。
-- 评测/seeder/Holmes API 契约定向 pytest：**33 passed**。
+- 评测/seeder/Holmes API 契约定向 pytest：**35 passed**；增加断言覆盖结构化 release event 字段、Runbook 文本及来源路径进入 live 调查指令。
 
 ## 后续解阻条件
 

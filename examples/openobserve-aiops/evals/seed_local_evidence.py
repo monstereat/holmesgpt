@@ -21,13 +21,23 @@ MAX_RECORDS = 100
 MAX_RESPONSE_BYTES = 65_536
 
 
-def build_records(cases: list[dict[str, Any]], run_id: str, timestamp_us: int) -> tuple[list[dict[str, Any]], dict[str, str]]:
+def build_records(
+    cases: list[dict[str, Any]],
+    run_id: str,
+    timestamp_us: int,
+    contexts: dict[str, dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     records = []
     trace_ids = {}
     for case in cases:
         trace_id = hashlib.sha256(f"holmes-aiops-eval:{run_id}:{case['id']}".encode()).hexdigest()[:32]
         trace_ids[case["id"]] = trace_id
+        context = (contexts or {}).get(case["id"])
+        if context and (context.get("mode") != "synthetic_fixture" or context.get("release_evidence") not in case["evidence"]):
+            raise ValueError("Release context must match the synthetic evaluation case")
         for evidence in case["evidence"]:
+            if context and evidence == context["release_evidence"]:
+                continue
             message = TRACE_ID.sub(trace_id, evidence)
             records.append({
                 "_timestamp": timestamp_us,
@@ -41,6 +51,21 @@ def build_records(cases: list[dict[str, Any]], run_id: str, timestamp_us: int) -
                 "evaluation_run_id": run_id,
                 "evaluation_source": "synthetic_fixture",
                 "message": message,
+            })
+        if context:
+            records.append({
+                "_timestamp": timestamp_us,
+                "timestamp": datetime.fromtimestamp(timestamp_us / 1_000_000, timezone.utc).isoformat(),
+                "service": case["service"],
+                "service_name": case["service"],
+                "event_type": "release_deployed",
+                "release": context["release"],
+                "commit_sha": context.get("commit_sha"),
+                "changed_files": context.get("changed_files", []),
+                "evaluation_case_id": case["id"],
+                "evaluation_run_id": run_id,
+                "evaluation_source": "synthetic_fixture",
+                "message": context["release_evidence"],
             })
     if not records or len(records) > MAX_RECORDS:
         raise ValueError("Synthetic evaluation record count is outside the allowed bound")
@@ -70,6 +95,7 @@ def seed_local_evidence(
     username: str | None = None,
     password: str | None = None,
     opener: Any = None,
+    contexts: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     target = _validate_local_url(base_url or os.environ.get("OPENOBSERVE_INGEST_URL", "http://127.0.0.1:5080"))
     username = username if username is not None else os.environ.get("ZO_ROOT_USER_EMAIL", "")
@@ -79,7 +105,7 @@ def seed_local_evidence(
 
     run_id = uuid.uuid4().hex
     timestamp_us = time.time_ns() // 1_000
-    records, trace_ids = build_records(cases, run_id, timestamp_us)
+    records, trace_ids = build_records(cases, run_id, timestamp_us, contexts)
     auth = base64.b64encode(f"{username}:{password}".encode()).decode()
     request = urllib.request.Request(
         f"{target}/api/default/app_logs/_json",

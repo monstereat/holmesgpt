@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 EXAMPLE = Path(__file__).resolve().parents[1]
 ALERT_TRIGGER = EXAMPLE / "alert-trigger"
+REPOSITORY_ROOT = EXAMPLE.parent.parent
 sys.path.insert(0, str(ALERT_TRIGGER))
 
 from evaluation import build_report  # noqa: E402
@@ -35,6 +36,43 @@ def validate_local_holmes_url(base_url: str) -> str:
     ):
         raise ValueError("Live evaluations can only call local Holmes on port 5050")
     return f"http://{parsed.netloc}"
+
+
+def load_evaluation_contexts() -> dict[str, dict[str, Any]]:
+    context_path = EXAMPLE / "runbooks" / "evaluation-contexts.json"
+    raw = json.loads(context_path.read_text(encoding="utf-8"))
+    if raw.get("source") != "examples/openobserve-aiops/evals/known_root_causes.json":
+        raise SystemExit("evaluation context source did not match the local corpus")
+    contexts = {}
+    for item in raw.get("contexts", []):
+        runbook = (REPOSITORY_ROOT / item["runbook"]).resolve()
+        skill_path = (REPOSITORY_ROOT / item["skill"]).resolve() if item.get("skill") else None
+        if not runbook.is_relative_to(REPOSITORY_ROOT) or not runbook.is_file():
+            raise SystemExit("evaluation runbook must be a repository file")
+        runbook_text = runbook.read_text(encoding="utf-8")
+        if len(runbook_text) > 12_000:
+            raise SystemExit("evaluation runbook exceeded the size limit")
+        skill = None
+        if skill_path:
+            if not skill_path.is_relative_to(REPOSITORY_ROOT) or not skill_path.is_file():
+                raise SystemExit("evaluation skill must be a repository file")
+            skill = {
+                "path": item["skill"],
+                "content": skill_path.read_text(encoding="utf-8"),
+            }
+        case_id = item["case_id"]
+        if case_id in contexts:
+            raise SystemExit("evaluation context contains a duplicate case")
+        contexts[case_id] = {
+            **item,
+            "runbook_context": {
+                "source": "repository_runbook",
+                "path": item["runbook"],
+                "content": runbook_text,
+            },
+            "skill_context": skill,
+        }
+    return contexts
 
 
 def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -58,8 +96,10 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
     from seed_local_evidence import seed_local_evidence
 
+    contexts = load_evaluation_contexts()
+
     try:
-        dataset = seed_local_evidence(cases)
+        dataset = seed_local_evidence(cases, contexts=contexts)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
     from holmes_client import HolmesClient
@@ -77,6 +117,17 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             "evaluation_run_id": dataset["run_id"],
             "evaluation_timestamp_us": dataset["timestamp_us"],
         }
+        if case["id"] in contexts:
+            summary["release_context"] = {
+                "source": "synthetic_fixture",
+                "event_type": "release_deployed",
+                "release": contexts[case["id"]]["release"],
+                "commit_sha": contexts[case["id"]].get("commit_sha"),
+                "changed_files": contexts[case["id"]].get("changed_files", []),
+            }
+            summary["runbook_context"] = contexts[case["id"]]["runbook_context"]
+            if contexts[case["id"]]["skill_context"]:
+                summary["skill_context"] = contexts[case["id"]]["skill_context"]
         try:
             results[case["id"]] = client.investigate(
                 {
