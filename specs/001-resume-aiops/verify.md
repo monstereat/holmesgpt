@@ -9,7 +9,7 @@
 | AC-01 告警安全接收和幂等 | 通过 | 事故服务测试通过；本机 HTTP Webhook 创建持久事故/任务，告警鉴权和事务写入由 T001/T002 定向测试覆盖。 |
 | AC-02 跨重启恢复 | 通过 | API、worker、Redis、PostgreSQL 重启后服务恢复；已创建 incident 仍存在；outbox/租约恢复由 T002 测试覆盖。 |
 | AC-03 有界重试和明确终态 | 通过（mock/故障路径） | Holmes 客户端/worker 的瞬时错误、超时、永久失败与脱敏由定向测试覆盖；本机缺外部配置时任务终态为 `failed:holmes_unavailable`。 |
-| AC-04 Holmes 只读调查和证据 | **阻塞** | Holmes 默认模型已切换为 `deepseek/deepseek-flash`，当前 LiteLLM 能识别且支持工具调用；尚未提供 `DEEPSEEK_API_KEY`，未产生真实诊断证据。OpenObserve OSS 无服务端 RBAC，需受限代理或支持 RBAC 的版本；健康检查和 mock 不作为通过证据。 |
+| AC-04 Holmes 只读调查和证据 | **部分完成，live RCA 阻塞** | T008 增加服务端受限代理和网络隔离；Holmes 无法解析 OpenObserve 服务名，只能访问代理。真实 OpenObserve Toolset 通过代理发现 2 条 allowlist 流并查询到实际日志。Holmes 默认模型为 `deepseek/deepseek-flash`，LiteLLM 支持工具调用；尚未提供 `DEEPSEEK_API_KEY`，未产生模型诊断证据。OpenObserve OSS 仍无原生 RBAC。 |
 | AC-05 事故工作台 | 部分验证 | 本机浏览器已加载登录页；incident API 登录、事故/任务/审批接口由定向测试覆盖。未在浏览器中登录后逐项手工走查完整事故/审批页面，因此不记为完整浏览器验收。入口 `http://localhost:8081/`。 |
 | AC-06 测试身份、角色、资源授权 | 通过 | operator 与 approver 分开；operator 自审批实测返回 HTTP 403；认证/权限矩阵测试通过。 |
 | AC-07 仅限 demo 的受控动作 | 通过（本机演示动作） | operator 请求动作、approver 批准后 order-service 状态 ON；获批恢复后状态 OFF。动作 owner 验证授权、固定资源和幂等键；测试涵盖拒绝、验证和回退路径。 |
@@ -27,7 +27,8 @@
 - PostgreSQL 备份恢复到独立数据库成功；恢复库 `incidents` 行数为 1。备份 `/tmp/aiops-test.dump` 和恢复数据库保留供检查。
 - Holmes/OpenObserve live RCA 和 live 20 例评测没有通过，不得把本机 API 健康、合成 fixture 或 mock 报告描述为 live 结果。
 - DeepSeek 切换验证：Compose 配置检查和 Holmes 镜像重建通过；安全检查渲染配置确认模型为 `deepseek/deepseek-flash` 且 API Key 未设置；仓库容器中的 LiteLLM 元数据确认其支持 function calling。没有发出模型请求，live RCA 仍未验证。
+- OpenObserve 策略代理：11 项 unittest 通过；Compose 配置及容器重建成功；代理健康、Holmes/incident API/order-service 健康。Holmes 容器内查询 `openobserve` 主机 DNS 失败（预期隔离）；真实 Holmes OpenObserve Toolset 经代理成功列出 2 个 allowlist 流并执行 5 分钟时间窗搜索，返回实际日志行。OpenObserve host `/healthz` 返回 HTTP 200，浏览器 UI 根路径返回 HTTP 308 重定向。
 
 ## 后续解阻条件
 
-在本机运行变量中提供有效 `DEEPSEEK_API_KEY`，并先为 OpenObserve 配置服务端强制的只读访问（当前 OSS 版不支持原生 RBAC），再重跑真实订单 HTTP 500 告警，核对工具调用结果、Trace/日志证据链接和诊断假设；随后按 `examples/openobserve-aiops/evals/README.md` 显式运行 live 评测。此记录未授权正式环境部署、数据迁移或真实生产动作。
+在本机运行变量中提供有效 `DEEPSEEK_API_KEY`，触发真实订单 HTTP 500 告警，核对模型工具调用、Trace/日志证据链接和诊断假设；随后按 `examples/openobserve-aiops/evals/README.md` 显式运行 live 评测。当前策略代理只提供 Holmes 入口的只读路由/流边界，OpenObserve OSS 仍没有原生用户/租户 RBAC。此记录未授权正式环境部署、数据迁移或真实生产动作。

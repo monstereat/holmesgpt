@@ -175,7 +175,15 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 
 - [x] 本机 Compose 默认模型切换为 `deepseek/deepseek-flash`，`DEEPSEEK_API_KEY` 仅映射到 Holmes 容器现有的 `MODEL_API_KEY` 配置；模型可被仓库当前 LiteLLM 版本识别并支持 function calling。
 - [x] Compose 配置校验和本机 Holmes 镜像重建通过；API liveness 返回 healthy。当前 API Key 未配置，因此这不是一次真实模型调用或 live RCA 验收。
-- [ ] 提供有效 DeepSeek API Key，并为 OpenObserve OSS 增加服务端强制的只读策略（代理或支持 RBAC 的发行版）后，再完成真实调查验收。OSS 原生账号不具备服务端 RBAC。
+- [ ] 提供有效 DeepSeek API Key 后完成真实模型调查验收。OpenObserve OSS 没有原生 RBAC；本机策略代理仅约束 Holmes 入口，不提供原生用户/租户隔离。
+
+## 2026-09-25 增量：OpenObserve OSS 查询策略代理
+
+- [x] 新增固定上游只读代理，仅放行日志流列表与搜索 API；要求独立客户端 Basic Auth，只返回 `app_logs`、`frontend_errors`，并以 SQLGlot ClickHouse AST 限制为单表 SELECT。
+- [x] 代理在服务端限制查询窗口、超时、结果行数、请求体和上游响应大小，并过滤流列表与搜索结果字段；拒绝未知路由、非日志流、非 allowlist 表和复杂查询。
+- [x] Compose 网络把 Holmes 与 OpenObserve/telemetry writer 分开；Holmes 仅通过代理网络连接策略代理，order-service 继续通过 telemetry 网络写日志。UI 只映射到宿主机 loopback。
+- [x] 11 项代理策略单测通过；Holmes 容器 DNS 不能解析 `openobserve`；Holmes Toolset 经代理看到两条 allowlist 流并成功完成一次本机 OpenObserve 查询。
+- [ ] DeepSeek API Key 未设置，真实模型驱动的 Holmes RCA 和事故流程尚未验证。该代理不改变 OpenObserve OSS 缺少原生 RBAC 的事实，也不防护代理/宿主 Docker 管理员被攻破。
 
 ## 2026-09-25 增量：事故原型和告警输入边界
 

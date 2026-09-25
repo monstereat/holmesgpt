@@ -6,10 +6,10 @@ toolsets:
   openobserve:
     enabled: true
     config:
-      api_url: "http://openobserve:5080"
+      api_url: "http://openobserve-proxy:8090"
       organization: "default"
-      username: "{{ env.OPENOBSERVE_SERVICE_USER }}"
-      password: "{{ env.OPENOBSERVE_SERVICE_TOKEN }}"
+      username: "{{ env.OPENOBSERVE_PROXY_USERNAME }}"
+      password: "{{ env.OPENOBSERVE_PROXY_PASSWORD }}"
       verify_ssl: true
       timeout_seconds: 30
       max_window_seconds: 3600

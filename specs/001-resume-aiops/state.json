@@ -1264,8 +1264,32 @@
       "action": "run_check",
       "status": "executing",
       "note": "T007-deepseek-config-deploy: pass (source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build)"
+    },
+    {
+      "at": "2026-09-25T05:18:13Z",
+      "action": "block",
+      "status": "blocked",
+      "note": "T007 的 live Holmes 调查无法通过现有 OpenObserve OSS 凭据满足服务器侧只读隔离；需先修订并实现 AC-04 的本机策略代理任务。DeepSeek API Key 仍属外部条件。"
+    },
+    {
+      "at": "2026-09-25T05:18:13Z",
+      "action": "resume",
+      "status": "plan_draft",
+      "note": "按照用户已明确的“不要审核，直接按文档要求编码”授权，发现 AC-04 还需一个本机网络隔离的策略代理，现补充最小计划任务后继续。"
+    },
+    {
+      "at": "2026-09-25T05:42:50Z",
+      "action": "block",
+      "status": "blocked",
+      "note": "T007 暂停期间以独立子任务 specs/002-openobserve-readonly-proxy 实现 AC-04 所需的本机策略代理；该 T008 已通过测试和范围门禁。恢复原 Compose 端到端验收。"
+    },
+    {
+      "at": "2026-09-25T05:42:50Z",
+      "action": "resume",
+      "status": "executing",
+      "note": "策略代理 T008 已完成并在本机验证；继续执行原 AIOps 目标中尚未完成的浏览器验收与 live RCA。"
     }
   ],
   "created_at": "2026-09-25T03:20:15Z",
-  "updated_at": "2026-09-25T05:11:29Z"
+  "updated_at": "2026-09-25T05:42:50Z"
 }

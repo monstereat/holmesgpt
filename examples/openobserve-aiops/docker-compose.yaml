@@ -11,14 +11,43 @@ services:
       # Required only for this local demo's private Docker-network webhook.
       # Never enable this setting in production.
       ZO_SKIP_SSRF_CHECKS: "true"
-      # Demo only. Production must use a dedicated read-only service account
-      # plus stream-level RBAC, see holmes/plugins/toolsets/openobserve/SECURITY.md
+      # This OSS test instance has no native RBAC; Holmes reaches it only through
+      # openobserve-proxy on a network that the Holmes container cannot join.
     ports:
       - "127.0.0.1:5080:5080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - oo-data:/data
+    networks:
+      - observe-ui
+      - telemetry-write
+      - observe-policy
+      - incident-webhook
+
+  openobserve-proxy:
+    build: ./openobserve-proxy
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      OPENOBSERVE_PROXY_USERNAME: ${OPENOBSERVE_PROXY_USERNAME:?Export local proxy username before starting the demo}
+      OPENOBSERVE_PROXY_PASSWORD: ${OPENOBSERVE_PROXY_PASSWORD:?Export local proxy password before starting the demo}
+      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-demo@example.test}
+      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?Export ZO_ROOT_USER_PASSWORD before starting the local demo}
+    networks:
+      - observe-policy
+      - holmes-observe
+    depends_on:
+      openobserve:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   postgres:
     image: postgres:16.6-alpine
@@ -28,6 +57,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}
     volumes:
       - aiops-postgres-data:/var/lib/postgresql/data
+    networks:
+      - app
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aiops -d aiops"]
       interval: 5s
@@ -58,6 +89,8 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - aiops-redis-data:/data
+    networks:
+      - app
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -75,16 +108,20 @@ services:
       HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
       HOLMES_MODEL: ${HOLMES_MODEL:-deepseek/deepseek-flash}
       MODEL_API_KEY: ${DEEPSEEK_API_KEY:-${MODEL_API_KEY:-}}
-      OPENOBSERVE_SERVICE_USER: ${OPENOBSERVE_SERVICE_USER:-}
-      OPENOBSERVE_SERVICE_TOKEN: ${OPENOBSERVE_SERVICE_TOKEN:-}
+      OPENOBSERVE_PROXY_USERNAME: ${OPENOBSERVE_PROXY_USERNAME:?Export local proxy username before starting the demo}
+      OPENOBSERVE_PROXY_PASSWORD: ${OPENOBSERVE_PROXY_PASSWORD:?Export local proxy password before starting the demo}
     volumes:
       - ${HOLMES_CONFIG_FILE:-./holmes-config/config.yaml.example}:/root/.holmes/config.yaml:ro
       - ./skills:/etc/holmes/skills:ro
     ports:
       - "127.0.0.1:5050:5050"
+    networks:
+      - holmes-observe
+      - incident-holmes
+      - model-egress
     depends_on:
-      openobserve:
-        condition: service_started
+      openobserve-proxy:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/healthz', timeout=3)"]
       interval: 10s
@@ -108,6 +145,9 @@ services:
       RELEASE_VERSION: ${RELEASE_VERSION:-v1.0.0}
     ports:
       - "127.0.0.1:8080:8080"
+    networks:
+      - app
+      - telemetry-write
     depends_on:
       openobserve:
         condition: service_started
@@ -125,22 +165,20 @@ services:
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:?Export ALERT_WEBHOOK_TOKEN before starting the local demo}
       DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
       REDIS_URL: redis://redis:6379/0
-      HOLMES_API_URL: http://holmes-api:5050
-      HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
-      HOLMES_TIMEOUT_SECONDS: ${HOLMES_TIMEOUT_SECONDS:-900}
       SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:?Export SESSION_SIGNING_KEY before starting the local demo}
       AIOPS_TEST_USERS_JSON: ${AIOPS_TEST_USERS_JSON:?Export AIOPS_TEST_USERS_JSON with local test accounts before starting the local demo}
       ORDER_SERVICE_URL: http://order-service:8080
       ORDER_ACTION_SERVICE_TOKEN: ${ORDER_ACTION_TOKEN:?Export ORDER_ACTION_TOKEN before starting the local demo}
     ports:
       - "127.0.0.1:8081:8081"
+    networks:
+      - app
+      - incident-webhook
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      holmes-api:
-        condition: service_started
       order-service:
         condition: service_started
     healthcheck:
@@ -160,6 +198,9 @@ services:
       HOLMES_API_URL: http://holmes-api:5050
       HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
       HOLMES_TIMEOUT_SECONDS: ${HOLMES_TIMEOUT_SECONDS:-900}
+    networks:
+      - app
+      - incident-holmes
     depends_on:
       postgres:
         condition: service_healthy
@@ -188,5 +229,18 @@ volumes:
   aiops-redis-data:
 
 networks:
+  app:
+  observe-ui:
+  telemetry-write:
+    internal: true
+  observe-policy:
+    internal: true
+  holmes-observe:
+    internal: true
+  incident-holmes:
+    internal: true
+  incident-webhook:
+    internal: true
+  model-egress:
   test-isolated:
     internal: true

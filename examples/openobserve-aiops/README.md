@@ -9,6 +9,8 @@ Run from this directory. Compose binds browser/API ports to `127.0.0.1` and keep
 ```bash
 export ZO_ROOT_USER_EMAIL="${ZO_ROOT_USER_EMAIL:-demo@example.test}"
 export ZO_ROOT_USER_PASSWORD="$(openssl rand -hex 24)"
+export OPENOBSERVE_PROXY_USERNAME="holmes-proxy"
+export OPENOBSERVE_PROXY_PASSWORD="$(openssl rand -hex 32)"
 export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 export ALERT_WEBHOOK_TOKEN="$(openssl rand -hex 32)"
 export ORDER_ACTION_TOKEN="$(openssl rand -hex 32)"
@@ -21,7 +23,7 @@ export AIOPS_TEST_USERS_JSON="$(python3 -c 'import json,os; print(json.dumps([{"
 docker compose up -d --build
 ```
 
-Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; `DEEPSEEK_API_KEY` is optional for starting the services but required for live model calls. To add it without writing it to the repository, source the private runtime file, then enter it silently in the same shell before recreating Holmes:
+Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. Reuse `OPENOBSERVE_PROXY_USERNAME` and `OPENOBSERVE_PROXY_PASSWORD` when recreating Holmes and the proxy together. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; `DEEPSEEK_API_KEY` is optional for starting the services but required for live model calls. To add it without writing it to the repository, source the private runtime file, then enter it silently in the same shell before recreating Holmes:
 
 ```bash
 source /tmp/holmesgpt-aiops-test-runtime.sh
@@ -33,7 +35,7 @@ docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --force-r
 
 DeepSeek's API key is passed only to the Holmes container; do not commit or log it.
 
-The Holmes container reads a read-only config file. By default it mounts the committed template `holmes-config/config.yaml.example`; to use a local config copy, set `HOLMES_CONFIG_FILE` to its absolute path before `docker compose up`. Do not commit credentials. The current OpenObserve open-source image does not enforce user/role RBAC; `allowed_streams` and the Holmes Toolset constrain the agent's configured queries but do not make its credentials a server-enforced read-only identity. Treat this instance as test-only and do not put unrelated telemetry in it. A separate policy proxy or an OpenObserve edition with RBAC is required for server-enforced read-only access.
+The Holmes container reads a read-only config file. By default it mounts the committed template `holmes-config/config.yaml.example`; to use a local config copy, set `HOLMES_CONFIG_FILE` to its absolute path before `docker compose up`. Holmes and OpenObserve share no Docker network, so Holmes can reach OpenObserve only through `openobserve-proxy`. That proxy requires separate client credentials, exposes only the log-stream list and search APIs, filters streams to `app_logs` and `frontend_errors`, validates a single ClickHouse SQL SELECT AST, and caps query windows, timeouts, rows and response bytes. The OpenObserve root credential is held by the proxy and telemetry writer; it is not passed to Holmes. This narrows the Holmes access path, but it does not add native RBAC to OpenObserve OSS or protect against compromise of the proxy, Docker host, or local OpenObserve administrator. Treat this instance as test-only. OpenObserve `/healthz` is available on the host; its UI remains loopback-bound.
 
 After startup:
 
@@ -66,7 +68,7 @@ In OpenObserve, configure the alert destination to call `http://incident-api:808
 4. In the workbench, use the operator account to request a test action. Sign in separately as approver to approve/reject. The operator can then execute an approved action; the service rechecks authorization, verifies the resulting order-service state and audits any rollback.
 5. Return the demo order-service to normal mode and confirm a new order succeeds.
 
-Live investigation requires a valid `DEEPSEEK_API_KEY` and the local `HOLMES_API_KEY`. Set `DEEPSEEK_API_KEY` in the same shell before recreating `holmes-api`; never send it through the incident API or put it in this repository. Without a model key, investigation tasks fail with a safe error and live acceptance remains blocked; mock reports do not replace this requirement. The bundled OpenObserve OSS image also lacks server-enforced user/role RBAC, so its native credentials do not meet the dedicated read-only-account acceptance criterion; use an RBAC edition or add a scoped policy proxy before treating live access as least-privilege. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
+Live model investigation requires a valid `DEEPSEEK_API_KEY` and the local `HOLMES_API_KEY`. Set `DEEPSEEK_API_KEY` in the same shell before recreating `holmes-api`; never send it through the incident API or put it in this repository. Without a model key, investigation tasks fail with a safe error and live acceptance remains blocked; mock reports do not replace this requirement. Proxy-level read-only enforcement is active for Holmes, while OpenObserve OSS itself still has no native RBAC; use an RBAC edition for server-native user and tenant isolation. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
 
 ## Persistence and recovery
 
@@ -89,6 +91,13 @@ Run service tests against an isolated, ephemeral PostgreSQL instance (Compose st
 
 ```bash
 docker compose --profile test run --rm incident-test
+```
+
+Run the OpenObserve policy proxy checks:
+
+```bash
+docker build -t aiops-openobserve-proxy:test openobserve-proxy
+docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v
 ```
 
 Generate a deterministic report for the 20 synthetic root-cause cases:

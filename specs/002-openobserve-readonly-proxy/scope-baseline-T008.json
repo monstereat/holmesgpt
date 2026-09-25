@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "base_commit": "c76ee8ecc2fbd442212edc00acbc80a90c5aae4f",
+  "initial_snapshots": {
+    "specs/001-resume-aiops/state-plan-draft-before-user-steering.json": {
+      "kind": "file",
+      "sha256": "c62c4ae5ec627a72f2e4a7bef033ca8e3e28e3079f26b63f47fa53086f3e436e"
+    },
+    "specs/001-resume-aiops/state-production-scope-draft.json": {
+      "kind": "file",
+      "sha256": "04d31f6c721a422f6f87bae6cf3ce07336fbb4b98bd06b8e4bf6025ad51db153"
+    },
+    "specs/001-resume-aiops/state.json": {
+      "kind": "file",
+      "sha256": "3c26811fe2ef9ab00733fead13c9ec105656558eed91e214567ea114e27b2e6e"
+    }
+  },
+  "internal_patterns": [
+    "specs/002-openobserve-readonly-proxy/**",
+    "specs/002-openobserve-readonly-proxy/scope-baseline-T008.json"
+  ]
+}

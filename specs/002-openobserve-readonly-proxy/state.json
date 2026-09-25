@@ -1,0 +1,345 @@
+{
+  "schema_version": 2,
+  "change_id": "002-openobserve-readonly-proxy",
+  "mode": "standard",
+  "status": "verifying",
+  "current_task": null,
+  "waiting_for": null,
+  "artifacts": {
+    "spec": "specs/002-openobserve-readonly-proxy/spec.md",
+    "plan": "specs/002-openobserve-readonly-proxy/plan.md",
+    "tasks": "specs/002-openobserve-readonly-proxy/tasks.md",
+    "verify": "specs/002-openobserve-readonly-proxy/verify.md"
+  },
+  "controls": {
+    "commit_strategy": "task",
+    "branch": null,
+    "independent_review": "off"
+  },
+  "approvals": {
+    "spec": {
+      "at": "2026-09-25T05:20:57Z",
+      "approver": "monstereat",
+      "evidence": "用户明确回复：不审核了，直接按文档要求编码；并要求 /goal 完成本机 Docker 测试环境完整 AIOps 项目。",
+      "review_report": null
+    },
+    "plan": {
+      "at": "2026-09-25T05:20:57Z",
+      "approver": "monstereat",
+      "evidence": "用户明确回复：不审核了，直接按文档要求编码；该实现仅部署于已授权的本机 Docker 测试环境，不涉及正式环境。",
+      "review_report": null
+    },
+    "acceptance": null
+  },
+  "acceptance_criteria": {
+    "AC-01": {
+      "description": "本机 OpenObserve OSS 通过策略代理向 Holmes 提供服务端强制的只读流/查询边界，拒绝绕过和越权请求。"
+    }
+  },
+  "tasks": {
+    "T008": {
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/openobserve-proxy/**",
+        "examples/openobserve-aiops/docker-compose.yaml",
+        "examples/openobserve-aiops/holmes-config/config.yaml.example",
+        "examples/openobserve-aiops/README.md",
+        "ROADMAP.md",
+        "docs/develop-me-roadmap.md",
+        "specs/001-resume-aiops/verify.md",
+        "specs/002-openobserve-readonly-proxy/**"
+      ],
+      "commands": [
+        "docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T008-proxy-pinned-base"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/002-openobserve-readonly-proxy/scope-baseline-T008.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/002-openobserve-readonly-proxy/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/002-openobserve-readonly-proxy/scope-report-T008.json",
+        "sha256": "3d9ce77c5dc6a0dcc474f468054d1b9d20cd6cfa35783c15f16c1e8077e9c9fd"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "T008-proxy-unit",
+      "type": "command",
+      "kind": "unit",
+      "task": "T008",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T05:24:53Z",
+      "duration_ms": 13384,
+      "exit_code": 1,
+      "result": "fail",
+      "stdout_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-unit.stdout.log",
+      "stderr_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-unit.stderr.log",
+      "git": {
+        "head": "c76ee8ecc2fbd442212edc00acbc80a90c5aae4f",
+        "changed_files": [
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "examples/openobserve-aiops/holmes-config/config.yaml.example",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "36141330394bd37cd43c5a1bfe3700ce12a861b9535be7a7f90da50e6292a56f"
+      }
+    },
+    {
+      "id": "T008-proxy-unit-retry",
+      "type": "command",
+      "kind": "unit",
+      "task": "T008",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T05:25:34Z",
+      "duration_ms": 5587,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-unit-retry.stdout.log",
+      "stderr_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-unit-retry.stderr.log",
+      "git": {
+        "head": "c76ee8ecc2fbd442212edc00acbc80a90c5aae4f",
+        "changed_files": [
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "examples/openobserve-aiops/holmes-config/config.yaml.example",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "36141330394bd37cd43c5a1bfe3700ce12a861b9535be7a7f90da50e6292a56f"
+      }
+    },
+    {
+      "id": "T008-proxy-final",
+      "type": "command",
+      "kind": "unit",
+      "task": "T008",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T05:31:42Z",
+      "duration_ms": 2606,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-final.stdout.log",
+      "stderr_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-final.stderr.log",
+      "git": {
+        "head": "c76ee8ecc2fbd442212edc00acbc80a90c5aae4f",
+        "changed_files": [
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "examples/openobserve-aiops/holmes-config/config.yaml.example",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "acd5d029a0704dcd9e63de2e6e5e63006cb3f9724c5486954bc1f099ad56916f"
+      }
+    },
+    {
+      "id": "T008-proxy-current",
+      "type": "command",
+      "kind": "unit",
+      "task": "T008",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T05:36:19Z",
+      "duration_ms": 2285,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-current.stdout.log",
+      "stderr_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-current.stderr.log",
+      "git": {
+        "head": "c76ee8ecc2fbd442212edc00acbc80a90c5aae4f",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "examples/openobserve-aiops/holmes-config/config.yaml.example",
+          "specs/001-resume-aiops/state.json",
+          "specs/001-resume-aiops/verify.md"
+        ],
+        "diff_sha256": "626616ad7a7d7e81618e3d6fb5c683e57fe83336fd46c978a7233678213bdcdd"
+      }
+    },
+    {
+      "id": "T008-proxy-pinned-base",
+      "type": "command",
+      "kind": "unit",
+      "task": "T008",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T05:42:13Z",
+      "duration_ms": 1833,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-pinned-base.stdout.log",
+      "stderr_log": "specs/002-openobserve-readonly-proxy/evidence/T008-proxy-pinned-base.stderr.log",
+      "git": {
+        "head": "c76ee8ecc2fbd442212edc00acbc80a90c5aae4f",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "examples/openobserve-aiops/holmes-config/config.yaml.example",
+          "specs/001-resume-aiops/state.json",
+          "specs/001-resume-aiops/verify.md"
+        ],
+        "diff_sha256": "158322bb7fc4dfccbb957005581f812e03582735a8868f7f89278d6fd2d93873"
+      }
+    },
+    {
+      "id": "T008-network-isolation",
+      "type": "observation",
+      "task": "T008",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "observer": "Codex",
+      "evidence": "Docker inspect 显示 Holmes 的 holmes-observe/incident-holmes/model-egress 与 OpenObserve 的 observe-ui/telemetry-write/observe-policy/incident-webhook 没有交集；Holmes 内解析 openobserve 返回 NXDOMAIN；openobserve-proxy 同时连接上游与 Holmes 网络。",
+      "result": "pass",
+      "at": "2026-09-25T05:42:30Z"
+    },
+    {
+      "id": "T008-proxy-live-query",
+      "type": "observation",
+      "task": "T008",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "observer": "Codex",
+      "evidence": "Holmes 容器原生 OpenObserveToolset prerequisites 经独立 proxy credentials 返回 2 个白名单 stream；向 order-service 写入合成测试订单并 flush 后，Holmes Toolset 经 proxy 搜索到对应 1 条 app_logs 记录。无 DeepSeek key，未发 LLM 请求。",
+      "result": "pass",
+      "at": "2026-09-25T05:42:30Z"
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-09-25T05:20:41Z",
+      "action": "init",
+      "status": "initialized",
+      "note": "State created."
+    },
+    {
+      "at": "2026-09-25T05:20:57Z",
+      "action": "set_draft",
+      "status": "spec_draft",
+      "note": "定义 OpenObserve OSS 查询策略代理和网络边界。"
+    },
+    {
+      "at": "2026-09-25T05:20:57Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-01."
+    },
+    {
+      "at": "2026-09-25T05:20:57Z",
+      "action": "approve",
+      "status": "spec_approved",
+      "note": "spec approved by monstereat: 用户明确回复：不审核了，直接按文档要求编码；并要求 /goal 完成本机 Docker 测试环境完整 AIOps 项目。"
+    },
+    {
+      "at": "2026-09-25T05:20:57Z",
+      "action": "set_draft",
+      "status": "plan_draft",
+      "note": "已基于 Holmes 真实 OpenObserve Toolset 请求契约确定固定只读路由与网络隔离方案。"
+    },
+    {
+      "at": "2026-09-25T05:20:57Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T008."
+    },
+    {
+      "at": "2026-09-25T05:20:57Z",
+      "action": "approve",
+      "status": "plan_approved",
+      "note": "plan approved by monstereat: 用户明确回复：不审核了，直接按文档要求编码；该实现仅部署于已授权的本机 Docker 测试环境，不涉及正式环境。"
+    },
+    {
+      "at": "2026-09-25T05:20:57Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T008."
+    },
+    {
+      "at": "2026-09-25T05:25:07Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T008-proxy-unit: fail (docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v)"
+    },
+    {
+      "at": "2026-09-25T05:25:40Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T008-proxy-unit-retry: pass (docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v)"
+    },
+    {
+      "at": "2026-09-25T05:31:45Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T008-proxy-final: pass (docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v)"
+    },
+    {
+      "at": "2026-09-25T05:36:22Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T008-proxy-current: pass (docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v)"
+    },
+    {
+      "at": "2026-09-25T05:42:15Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T008-proxy-pinned-base: pass (docker build -t aiops-openobserve-proxy:test examples/openobserve-aiops/openobserve-proxy && docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v)"
+    },
+    {
+      "at": "2026-09-25T05:42:30Z",
+      "action": "record_observation",
+      "status": "executing",
+      "note": "T008-network-isolation: pass by Codex"
+    },
+    {
+      "at": "2026-09-25T05:42:30Z",
+      "action": "record_observation",
+      "status": "executing",
+      "note": "T008-proxy-live-query: pass by Codex"
+    },
+    {
+      "at": "2026-09-25T05:42:30Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T008 with T008-proxy-pinned-base."
+    },
+    {
+      "at": "2026-09-25T05:50:51Z",
+      "action": "begin_verify",
+      "status": "verifying",
+      "note": "All registered tasks are complete."
+    }
+  ],
+  "created_at": "2026-09-25T05:20:41Z",
+  "updated_at": "2026-09-25T05:50:51Z"
+}

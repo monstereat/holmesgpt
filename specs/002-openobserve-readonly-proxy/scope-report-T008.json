@@ -1,0 +1,45 @@
+{
+  "base_commit": "c76ee8ecc2fbd442212edc00acbc80a90c5aae4f",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/002-openobserve-readonly-proxy/scope-baseline-T008.json",
+  "new_files": [
+    "ROADMAP.md",
+    "docs/develop-me-roadmap.md",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/docker-compose.yaml",
+    "examples/openobserve-aiops/holmes-config/config.yaml.example",
+    "examples/openobserve-aiops/openobserve-proxy/Dockerfile",
+    "examples/openobserve-aiops/openobserve-proxy/app.py",
+    "examples/openobserve-aiops/openobserve-proxy/requirements.txt",
+    "examples/openobserve-aiops/openobserve-proxy/tests/test_proxy.py",
+    "specs/001-resume-aiops/verify.md"
+  ],
+  "modified_preexisting_files": [],
+  "touched_files": [
+    "ROADMAP.md",
+    "docs/develop-me-roadmap.md",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/docker-compose.yaml",
+    "examples/openobserve-aiops/holmes-config/config.yaml.example",
+    "examples/openobserve-aiops/openobserve-proxy/Dockerfile",
+    "examples/openobserve-aiops/openobserve-proxy/app.py",
+    "examples/openobserve-aiops/openobserve-proxy/requirements.txt",
+    "examples/openobserve-aiops/openobserve-proxy/tests/test_proxy.py",
+    "specs/001-resume-aiops/verify.md"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/openobserve-proxy/**",
+    "examples/openobserve-aiops/docker-compose.yaml",
+    "examples/openobserve-aiops/holmes-config/config.yaml.example",
+    "examples/openobserve-aiops/README.md",
+    "ROADMAP.md",
+    "docs/develop-me-roadmap.md",
+    "specs/001-resume-aiops/verify.md",
+    "specs/002-openobserve-readonly-proxy/**"
+  ],
+  "internal_patterns": [
+    "specs/002-openobserve-readonly-proxy/**",
+    "specs/002-openobserve-readonly-proxy/scope-baseline-T008.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}
