@@ -73,8 +73,9 @@ The 20-case suite is a regression signal, not by itself proof of production read
 
 ## Current gaps and next decisions
 
-- The live DeepSeek investigation and 20-case live evaluation remain unverified until a valid key is configured locally and the synthetic live run is explicitly started.
+- Local verification is complete for the DeepSeek investigation path and the 20-case live evaluation: 20/20 requests returned diagnoses, 14/20 cases matched current-run evidence, all 3/3 release-event cases matched, and there were no API call errors. Root-cause diagnosis scoring remains `not_scored`; this does not establish production accuracy.
 - Production platform, identity provider, hostname/TLS ownership, managed data services, OpenObserve edition/tenant model, retention, SLO/RPO/RTO, and first action owner are pending decisions.
 - OpenObserve OSS does not provide the required native user/tenant RBAC; the local proxy narrows Holmes access but does not prove production tenant isolation.
-- There is no production deployment manifest or production credential configuration in this repository. Generate one only after the platform decisions above are approved.
+- The repository Helm chart deploys the Holmes API only. It does not deploy the AIOps incident API, worker, workbench, PostgreSQL, Redis, or OpenObserve policy proxy. The AIOps example has only a local Docker Compose stack; the local machine currently has no configured Kubernetes context. No complete AIOps production deployment manifest or production credential configuration exists. Generate a platform-specific bundle only after the platform and deployment scope are selected.
+- The AIOps workbench currently seeds local test identities from `AIOPS_TEST_USERS_JSON`, and the incident API applies migrations during startup. Production identity federation and a separately gated migration job are not implemented.
 - Any production data migration, production deployment, or production remediation requires separate explicit authorization and a production-specific review.
