@@ -1,0 +1,24 @@
+\set ON_ERROR_STOP on
+
+-- Run as a database administrator against a fresh AIOps database before the
+-- first migration. Set passwords or bind managed identities outside this file.
+SELECT 'CREATE ROLE aiops_runtime LOGIN'
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aiops_runtime')
+\gexec
+
+SELECT 'CREATE ROLE aiops_migrator LOGIN'
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aiops_migrator')
+\gexec
+
+SELECT format('GRANT CONNECT ON DATABASE %I TO aiops_runtime, aiops_migrator', current_database())
+\gexec
+
+GRANT USAGE ON SCHEMA public TO aiops_runtime;
+GRANT USAGE, CREATE ON SCHEMA public TO aiops_migrator;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aiops_runtime;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO aiops_runtime;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE aiops_migrator IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO aiops_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE aiops_migrator IN SCHEMA public
+    GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO aiops_runtime;

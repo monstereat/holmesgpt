@@ -39,6 +39,7 @@
 - 观测增量：Incident API 新增 `/_internal/metrics`，默认关闭并由 Bearer token 保护；非 local 模式启动强制要求至少 32 字节 token。指标包含任务状态、最老 queued/retrying age 和持久化重试次数，不含用户/事故标签。隔离 Compose 测试 **70 passed，1 warning**；真实 PostgreSQL 指标请求成功、readiness 200；完成 smoke 后移除一次性测试 token，验证端点回到默认 404。生产仍需私网 scraper、告警规则、worker/model latency 与成本指标和容量 SLO。
 - 生产权限与回归修复：迁移命令在非 local 环境要求独立 `MIGRATION_DATABASE_URL`，不得回退到 API/worker 的 `DATABASE_URL`；本地 Compose 明确复用本机测试身份。隔离事故服务回归 **78 passed，1 warning**。同时修复合成评测 release event matcher 的未定义变量，以及 Holmes 仅有失败工具调用时未失败关闭的问题。
 - 简历证据增量：新增项目专属的简历表述与面试证据页，限定为本机 Docker 测试部署，列明可复核能力、78 项事故服务测试、20 案检索结果及尚不能声称的生产/准确率结论。
+- PostgreSQL 权限增量：新增无口令的 `aiops_migrator` / `aiops_runtime` PostgreSQL bootstrap 模板；隔离 PG16 测试库由 migrator 执行 0001–0005 schema 变更，runtime 对 users/incidents/tasks/audit_events 的写入和序列权限通过事务验证，runtime 建表被拒绝。当前 Compose 数据库仍用单一测试身份；托管数据库/现有 schema 的身份和 owner 迁移仍需平台适配与 staging 验收。
 - Runbook 增量：Holmes 的自定义技能目录现包含订单库存、数据库迁移不匹配和发布回归三份只读 Skill；评测用例引用相应 Skill。定向测试扫描通过，运行中的 Holmes 容器从实际挂载目录加载到 3 个 Skill。
 
 ## 待办

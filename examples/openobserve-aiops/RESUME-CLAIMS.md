@@ -10,6 +10,7 @@ Use the wording below only for the work and evidence currently present in this r
 - Implemented an incident workbench with API-enforced viewer/operator/approver/admin permissions, separate approval and execution roles, audited state transitions, and an owner-side allowlisted action API with idempotency, postcondition checks, and rollback.
 - Integrated Holmes investigations with DeepSeek and OpenObserve through a read-only query proxy that restricts routes, streams, query windows, result sizes, and timeouts; retained redacted tool evidence with each investigation.
 - Added provider-neutral OIDC/PKCE identity foundations, persisted login transactions, session revocation, account disablement, and an authenticated low-cardinality Prometheus endpoint for queue state, pending age, and retries.
+- Added a PostgreSQL least-privilege role bootstrap template separating application DML from schema migration privileges; exercised migrations 0001–0005 on an isolated PostgreSQL 16 database and verified the runtime role could not create schema objects.
 - Validated the local Docker stack with **78 incident-service tests passing** and a live 20-case synthetic retrieval run: 20/20 exact case-evidence matches and 3/3 release-event matches. The report also recorded nine successful searches without exact run/case predicates; root-cause diagnosis scoring remains `not_scored`.
 
 ## Interview framing
