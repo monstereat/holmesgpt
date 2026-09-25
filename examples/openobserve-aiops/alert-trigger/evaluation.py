@@ -62,7 +62,7 @@ def has_evaluation_record(
                 and (event_type is None or value.get("event_type") == event_type)
             ):
                 return True
-            if value.get("tool_name") == "openobserve_search_logs" and value.get("status") == "success":
+            if value.get("tool_name") in {"openobserve_search_logs", "openobserve_find_trace"} and value.get("status") == "success":
                 params = value.get("params")
                 data = value.get("data")
                 sql = params.get("sql") if isinstance(params, dict) else None
@@ -95,7 +95,7 @@ def cross_case_exposure_case_ids(
         value = pending.pop()
         inspected += 1
         if isinstance(value, dict):
-            if value.get("tool_name") == "openobserve_search_logs" and value.get("status") == "success":
+            if value.get("tool_name") in {"openobserve_search_logs", "openobserve_find_trace"} and value.get("status") == "success":
                 data = value.get("data")
                 hits = data.get("hits") if isinstance(data, dict) else None
                 if isinstance(hits, list):

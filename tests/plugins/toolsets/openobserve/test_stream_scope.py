@@ -37,6 +37,53 @@ def test_allowed_stream_query(toolset, monkeypatch):
     assert len(seen) == 1
 
 
+def test_evaluation_search_requires_exact_run_and_case_scope(toolset, monkeypatch):
+    seen = []
+    monkeypatch.setattr(toolset, "_request", lambda *a, **kw: (seen.append(kw["json_body"]) or {"hits": []}))
+    run_id = "a" * 32
+    case_id = "order-case-1"
+    context = SimpleNamespace(request_context={"headers": {
+        "x-aiops-evaluation-run-id": run_id,
+        "x-aiops-evaluation-case-id": case_id,
+    }})
+    params = {
+        "sql": f"SELECT * FROM frontend_logs WHERE evaluation_run_id = '{run_id}' AND evaluation_case_id = '{case_id}'",
+        "start_time": 1_700_000_000_000_000,
+        "end_time": 1_700_000_060_000_000,
+    }
+
+    result = OpenObserveSearchLogs(toolset)._invoke(params, context)
+
+    assert result.status == StructuredToolResultStatus.SUCCESS
+    assert len(seen) == 1
+
+    limit_case_id = "order-rate-limit-provider"
+    limit_context = SimpleNamespace(request_context={"headers": {
+        "x-aiops-evaluation-run-id": run_id,
+        "x-aiops-evaluation-case-id": limit_case_id,
+    }})
+    result = OpenObserveSearchLogs(toolset)._invoke(
+        {
+            **params,
+            "sql": (
+                f"SELECT * FROM frontend_logs WHERE evaluation_run_id = '{run_id}' "
+                f"AND evaluation_case_id = '{limit_case_id}' LIMIT 50"
+            ),
+        },
+        limit_context,
+    )
+    assert result.status == StructuredToolResultStatus.SUCCESS
+    assert len(seen) == 2
+
+    for sql in (
+        f"SELECT * FROM frontend_logs WHERE evaluation_run_id = '{run_id}'",
+        f"SELECT * FROM frontend_logs WHERE evaluation_run_id = '{run_id}' AND (evaluation_case_id = '{case_id}' OR event_type = 'release_deployed')",
+    ):
+        result = OpenObserveSearchLogs(toolset)._invoke({**params, "sql": sql}, context)
+        assert result.status == StructuredToolResultStatus.ERROR
+    assert len(seen) == 2
+
+
 @pytest.mark.parametrize("sql", [
     'SELECT * FROM "secret_logs"',
     'SELECT * FROM "frontend_logs", "secret_logs"',
@@ -61,6 +108,29 @@ def test_trace_tool_respects_stream_scope(toolset, monkeypatch):
         "start_time": 1000000, "end_time": 2000000,
     }, None)
     assert result.status == StructuredToolResultStatus.ERROR
+
+
+def test_trace_tool_is_limited_to_alert_trace_ids(toolset, monkeypatch):
+    seen = []
+    monkeypatch.setattr(toolset, "_request", lambda *a, **kw: (seen.append(kw["json_body"]) or {"hits": []}))
+    trace_id = "a" * 32
+    params = {
+        "stream": "frontend_logs", "trace_id": trace_id,
+        "start_time": 1000000, "end_time": 2000000,
+    }
+
+    allowed = OpenObserveFindTrace(toolset)._invoke(
+        params,
+        SimpleNamespace(request_context={"headers": {"x-aiops-trace-ids": trace_id}}),
+    )
+    denied = OpenObserveFindTrace(toolset)._invoke(
+        params,
+        SimpleNamespace(request_context={"headers": {"x-aiops-trace-ids": "none"}}),
+    )
+
+    assert allowed.status == StructuredToolResultStatus.SUCCESS
+    assert denied.status == StructuredToolResultStatus.ERROR
+    assert len(seen) == 1
 
 
 def test_stream_listing_filtered(toolset, monkeypatch):

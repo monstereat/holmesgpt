@@ -4,7 +4,7 @@
 > 开源底座：HolmesGPT；集成 OpenObserve、前端监控 SDK、NestJS、OpenTelemetry，Keep 按需加入。  
 > 范围：先在当前电脑 Docker 测试环境围绕真实应用故障建立「采集 → 告警 → 调查 → 审批处置 → 验证 → 复盘」闭环；正式环境部署后续另行规划和授权；不自建日志数据库。
 
-> **当前验收状态（2026-09-25）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；工作台已在浏览器分别登录 operator/approver，走通独立审批的测试动作 ON→OFF 闭环，并保存审核合成复盘。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新隔离报告含 20 案、40 条可搜索 OpenObserve 记录、20/20 精确案例证据查询命中、3/3 发布事件命中、0 个识别出的跨案例 fixture 命中，但有 9 次成功搜索未精确过滤 run/case。独立 AI 复核还发现模型诊断文字包含报告未保存的失败查询陈述；诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
+> **当前验收状态（2026-09-26）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务在同一个 Docker Compose project 运行。工作台角色审批、测试动作和复盘闭环已有浏览器验收。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新报告含 20 案、40 条合成记录、20/20 案例证据命中、3/3 发布事件命中、0 次未限定成功查询、0 个已识别的跨案例 fixture 命中和 0 个工具错误，schema 1.3 通过 Draft 2020-12 校验。诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
 
 ## 1. 功能边界
 
@@ -272,6 +272,22 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 修复 live evaluation release event matcher 的未定义 `normalized` 变量；修复 Holmes 只有失败工具调用时被误接受的问题，同时保留“有成功证据时附带记录失败调用”的行为。
 - [x] 隔离 Compose incident suite **78 passed, 1 warning**。
 - [ ] 生产平台的 migration Job、数据库角色/授权脚本及前向/回滚演练仍需按目标 PostgreSQL 平台生成和验收。
+
+## 2026-09-26 增量：评测查询范围服务端强制
+
+- [x] Holmes 客户端将评测 run/case 与 alert trace IDs 作为服务端上下文头传入；OpenObserve 搜索必须包含精确 run/case 条件并通过 AND 连接，拒绝 OR；trace 查询必须属于告警提供的 trace ID 列表。普通生产调查不启用评测 run/case 限制。
+- [x] 修复 HTTP 头名小写化后的查找，以及 SQL 字符串字面量内 `-limit-` 被误识别为 LIMIT 子句的问题；定向 OpenObserve 测试 **13 passed**，事故服务 Compose suite **80 passed, 1 warning**。
+- [x] 最终 DeepSeek live 报告 schema 1.3 通过校验：20/20 案例证据、3/3 发布事件、0 次未限定成功搜索、0 跨案 fixture、0 工具错误；RCA scoring 仍为 `not_scored`。报告 `/tmp/holmes-aiops-live-report-final.json`，run `18add25121ba4ccdb0955c783b7dafc8`。
+- [ ] 生产平台/OIDC Provider 与租户模型、托管数据服务及正式部署边界仍待用户确认；诊断准确率 rubric 与生产 staging 验收未完成。
+
+## 2026-09-26 增量：失败调查留痕与真实 trace 证据校准
+
+- [x] 对照 Holmes 仓库的 OpenObserve tool implementation 确认 `openobserve_find_trace` 将内部 SQL 返回在 `result.params.sql`，不包含原始 `stream` 参数；证据提取器现从 SQL 校验 allowlist stream，并要求 trace ID 与告警输入完全匹配。
+- [x] 对仅有失败工具调用的调查，在稳定错误码失败关闭的同时保留已脱敏参数/状态；失败任务持久化该证据，重新 claim/手动重试清除旧 attempt 结果；live eval 报告也写入失败调用证据。
+- [x] 跨案例 fixture 审计现在同时查看 `openobserve_find_trace` 和 `openobserve_search_logs` 命中。
+- [x] 隔离 Compose incident suite **80 passed, 1 warning**，包括失败 worker 持久化脱敏轨迹及手动重试清空旧结果的验证。最新 DeepSeek 20 案 live 报告 schema 1.3 通过：20/20 当前 run/case 证据匹配、3/3 release 匹配、0 跨案 fixture、0 病例级错误，5 条失败工具轨迹留痕。
+- [ ] 本次 15 次成功日志搜索未带完整精确 run+case 条件，须让评测调用器或 query policy 拒绝/隔离这类搜索后再作为发布评测依据；诊断人工 rubric 仍未完成，`scoring=not_scored`。
+- 报告 `/tmp/holmes-aiops-live-report-trace-audit-v1.3.json`，run ID `52de154d9c3747e59fa5035b1f98bc6f`。
 
 ## 2026-09-25 增量：浏览器工作台角色与处置闭环验收
 

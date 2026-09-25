@@ -11,7 +11,7 @@ Use the wording below only for the work and evidence currently present in this r
 - Integrated Holmes investigations with DeepSeek and OpenObserve through a read-only query proxy that restricts routes, streams, query windows, result sizes, and timeouts; retained redacted tool evidence with each investigation.
 - Added provider-neutral OIDC/PKCE identity foundations, persisted login transactions, session revocation, account disablement, and an authenticated low-cardinality Prometheus endpoint for queue state, pending age, and retries.
 - Added a PostgreSQL least-privilege role bootstrap template separating application DML from schema migration privileges; exercised migrations 0001–0005 on an isolated PostgreSQL 16 database and verified the runtime role could not create schema objects.
-- Validated the local Docker stack with **78 incident-service tests passing** and a live 20-case synthetic retrieval run: 20/20 exact case-evidence matches and 3/3 release-event matches. The report also recorded nine successful searches without exact run/case predicates; root-cause diagnosis scoring remains `not_scored`.
+- Validated the local Docker stack with **80 incident-service tests passing** and a live 20-case synthetic retrieval run: 20/20 case-evidence matches, 3/3 release-event matches, zero successful searches without exact run/case scope, zero detected cross-case fixture hits, and zero tool errors. Root-cause diagnosis scoring remains `not_scored`.
 
 ## Interview framing
 
@@ -25,5 +25,5 @@ Do not claim production launch, multi-tenant isolation, high availability, measu
 
 - [Production readiness gates](PRODUCTION-READINESS.md)
 - [Project progress and validation record](../../docs/develop-me-roadmap.md)
-- Latest local incident-service result: 78 passed, 1 upstream deprecation warning (2026-09-26).
-- Latest live synthetic report: `/tmp/holmes-aiops-live-report-isolated-v1.3.json` (local ephemeral artifact, not committed).
+- Latest local incident-service result: 80 passed, 1 upstream deprecation warning (2026-09-26).
+- Latest live synthetic report: `/tmp/holmes-aiops-live-report-final.json`, run `18add25121ba4ccdb0955c783b7dafc8` (local ephemeral artifact, not committed; schema 1.3 validated).

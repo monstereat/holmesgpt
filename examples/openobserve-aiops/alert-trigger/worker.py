@@ -150,8 +150,11 @@ def investigate_task(task_id: str) -> str:
         with psycopg.connect(database_url) as conn:
             return fail_task(conn, task, exc.code, retryable=True)
     except PermanentTaskError as exc:
+        failure_result = (
+            {"evidence": exc.evidence, "evidence_status": "unavailable"} if exc.evidence else None
+        )
         with psycopg.connect(database_url) as conn:
-            return fail_task(conn, task, exc.code, retryable=False)
+            return fail_task(conn, task, exc.code, retryable=False, failure_result=failure_result)
     except Exception:
         with psycopg.connect(database_url) as conn:
             return fail_task(conn, task, "internal_error", retryable=False)

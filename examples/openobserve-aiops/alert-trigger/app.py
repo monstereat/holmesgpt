@@ -763,7 +763,7 @@ def retry_task(task_id: str, request: Request, authorization: str | None = Heade
             with conn.cursor() as cursor:
                 cursor.execute(
                     """UPDATE tasks SET status = 'queued', attempt = 0, max_attempts = 4,
-                              error_code = NULL, completed_at = NULL, available_at = now(),
+                              error_code = NULL, result = NULL, completed_at = NULL, available_at = now(),
                               lease_expires_at = NULL, updated_at = now()
                        WHERE id = %s AND status = 'failed' RETURNING incident_id""",
                     (task_uuid,),

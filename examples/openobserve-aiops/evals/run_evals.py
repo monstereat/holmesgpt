@@ -151,7 +151,11 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         except (PermanentTaskError, RetryableTaskError, ValueError) as exc:
             # Store only a stable safe code, never upstream details.
             code = getattr(exc, "code", "evaluation_request_failed")
-            results[case["id"]] = {"evidence": [], "evidence_status": "unavailable", "error_code": str(code)[:64]}
+            results[case["id"]] = {
+                "evidence": getattr(exc, "evidence", []),
+                "evidence_status": "unavailable",
+                "error_code": str(code)[:64],
+            }
         case_evidence = results[case["id"]].get("evidence", [])
         results[case["id"]]["evaluation_evidence_match"] = has_evaluation_record(
             case_evidence,

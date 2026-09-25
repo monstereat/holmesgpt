@@ -106,7 +106,10 @@ def build_investigation_question(task: dict[str, Any], *, evaluation: bool = Fal
             " This is a synthetic evaluation case. The following local evaluation anchors are authoritative: "
             + json.dumps(search_window, separators=(",", ":"))
             + ". First search app_logs using the exact evaluation_run_id AND evaluation_case_id above, "
-            "within the supplied start/end microsecond bounds; do not cite rows from any other run. "
+            "within the supplied start/end microsecond bounds. Every openobserve_search_logs query must "
+            "include both exact evaluation_run_id and evaluation_case_id predicates joined with AND; never "
+            "use OR. This also applies to release_deployed checks, which must add the exact event_type predicate. "
+            "If a query is rejected, correct its SQL before retrying. Do not cite rows from any other run. "
             "Correlate the supplied run-specific trace ID. Treat these records as test fixtures, not production "
             "telemetry. If a repository runbook is supplied, use it as guidance and identify its path as the "
             "runbook source. Correlate a release only when the matching run's release_deployed record is "
@@ -130,11 +133,20 @@ def build_investigation_question(task: dict[str, Any], *, evaluation: bool = Fal
     )
 
 
-def extract_evidence(tool_calls: Any) -> tuple[list[dict[str, Any]], bool]:
+def extract_evidence(
+    tool_calls: Any,
+    *,
+    expected_trace_ids: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], bool]:
     if not isinstance(tool_calls, list):
         raise PermanentTaskError("holmes_tool_calls_invalid")
     openobserve_calls = []
     evidence: list[dict[str, Any]] = []
+    expected_traces = {
+        trace_id.lower()
+        for trace_id in (expected_trace_ids or [])
+        if isinstance(trace_id, str) and re.fullmatch(r"[a-fA-F0-9]{32}", trace_id)
+    }
     for call in tool_calls[:MAX_EVIDENCE_CALLS]:
         if not isinstance(call, dict) or not str(call.get("tool_name", "")).startswith("openobserve_"):
             continue
@@ -148,7 +160,21 @@ def extract_evidence(tool_calls: Any) -> tuple[list[dict[str, Any]], bool]:
         if not isinstance(params, dict):
             continue
         if name == "openobserve_find_trace":
-            if params.get("stream") not in ALLOWED_STREAMS:
+            stream = params.get("stream")
+            trace_id = params.get("trace_id")
+            sql = params.get("sql")
+            if isinstance(sql, str):
+                streams = re.findall(r'\bfrom\s+"?([A-Za-z0-9_]+)"?(?=\s|$)', sql, re.IGNORECASE)
+                trace_ids = re.findall(r"\btrace_id\s*=\s*'([a-fA-F0-9]{32})'", sql, re.IGNORECASE)
+                if len(streams) != 1 or len(trace_ids) != 1:
+                    continue
+                stream, trace_id = streams[0], trace_ids[0]
+            if (
+                stream not in ALLOWED_STREAMS
+                or not isinstance(trace_id, str)
+                or not re.fullmatch(r"[a-fA-F0-9]{32}", trace_id)
+                or (expected_trace_ids is not None and trace_id.lower() not in expected_traces)
+            ):
                 continue
         else:
             sql = params.get("sql", "")
@@ -174,7 +200,7 @@ def extract_evidence(tool_calls: Any) -> tuple[list[dict[str, Any]], bool]:
         and call["result"].get("status") not in {"success", "no_data"}
         for call in openobserve_calls
     ):
-        raise PermanentTaskError("holmes_tool_error")
+        raise PermanentTaskError("holmes_tool_error", evidence=evidence)
     return evidence, any(item["status"] == "success" for item in evidence)
 
 
@@ -211,6 +237,17 @@ class HolmesClient:
             headers={"Content-Type": "application/json", "Accept": "application/json", "X-API-Key": self.api_key},
             method="POST",
         )
+        trace_ids = task.get("trace_ids", [])
+        allowed_trace_ids = [
+            trace_id.lower()
+            for trace_id in trace_ids[:100]
+            if isinstance(trace_id, str) and re.fullmatch(r"[a-fA-F0-9]{32}", trace_id)
+        ] if isinstance(trace_ids, list) else []
+        request.add_header("X-AIOPS-Trace-IDs", ",".join(allowed_trace_ids) or "none")
+        if evaluation:
+            summary = task.get("summary", {})
+            request.add_header("X-AIOPS-Evaluation-Run-ID", summary["evaluation_run_id"])
+            request.add_header("X-AIOPS-Evaluation-Case-ID", summary["evaluation_case_id"])
         try:
             with self.opener.open(request, timeout=self.timeout_seconds) as response:
                 if response.status < 200 or response.status >= 300:
@@ -237,7 +274,11 @@ class HolmesClient:
             raise PermanentTaskError("holmes_analysis_empty")
         if PROTOCOL_ONLY_ANALYSIS.search(analysis):
             raise PermanentTaskError("holmes_analysis_not_readable")
-        evidence, has_positive_evidence = extract_evidence(response.get("tool_calls"))
+        trace_ids = task.get("trace_ids", [])
+        evidence, has_positive_evidence = extract_evidence(
+            response.get("tool_calls"),
+            expected_trace_ids=trace_ids if isinstance(trace_ids, list) else [],
+        )
         return {
             "analysis": redact(analysis),
             "evidence": evidence,

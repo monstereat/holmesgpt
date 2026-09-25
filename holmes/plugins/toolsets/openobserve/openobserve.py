@@ -285,10 +285,48 @@ class OpenObserveSearchLogs(_BaseOpenObserveTool):
         if stream not in allowlist:
             raise ValueError("Log stream is not in the configured allowlist")
 
+    @staticmethod
+    def validate_evaluation_scope(sql: str, context: ToolInvokeContext | None) -> None:
+        request_context = getattr(context, "request_context", None) or {}
+        headers = request_context.get("headers") or {}
+        run_id = next((value for key, value in headers.items() if str(key).lower() == "x-aiops-evaluation-run-id"), None)
+        case_id = next((value for key, value in headers.items() if str(key).lower() == "x-aiops-evaluation-case-id"), None)
+        if run_id is None and case_id is None:
+            return
+        if (
+            not isinstance(run_id, str)
+            or not re.fullmatch(r"[a-f0-9]{32}", run_id)
+            or not isinstance(case_id, str)
+            or not re.fullmatch(r"[a-z0-9-]{1,100}", case_id)
+        ):
+            raise ValueError("Evaluation query scope is invalid")
+        normalized = re.sub(r'["`]', "", sql).lower()
+        masked_literals = re.sub(
+            r"'(?:''|[^'])*'",
+            lambda match: "'" + " " * (len(match.group(0)) - 2) + "'",
+            normalized,
+        )
+        where_match = re.search(
+            r"\bwhere\b(.*?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)",
+            masked_literals,
+            re.DOTALL,
+        )
+        if not where_match or re.search(r"\bor\b", where_match.group(1)):
+            raise ValueError("Evaluation query must filter the exact run and case IDs with AND")
+        run_predicate = rf"evaluation_run_id\s*=\s*'{re.escape(run_id)}'"
+        case_predicate = rf"evaluation_case_id\s*=\s*'{re.escape(case_id)}'"
+        predicate = normalized[where_match.start(1):where_match.end(1)]
+        if not (
+            re.search(run_predicate + r"\s+and\s+" + case_predicate, predicate)
+            or re.search(case_predicate + r"\s+and\s+" + run_predicate, predicate)
+        ):
+            raise ValueError("Evaluation query must filter the exact run and case IDs with AND")
+
     def _invoke(self, params: dict, context: ToolInvokeContext) -> StructuredToolResult:
         try:
             sql = self.validate_sql(str(params["sql"]))
             self.validate_stream_scope(sql, self._toolset.openobserve_config.allowed_streams)
+            self.validate_evaluation_scope(sql, context)
             start_time = int(params["start_time"])
             end_time = int(params["end_time"])
             if start_time <= 0 or end_time <= 0 or end_time <= start_time:
@@ -383,6 +421,13 @@ class OpenObserveFindTrace(_BaseOpenObserveTool):
                 raise ValueError("Invalid stream name")
             if not re.fullmatch(r"[a-fA-F0-9]{32}", trace_id):
                 raise ValueError("trace_id must be 32 hexadecimal characters")
+            request_context = getattr(context, "request_context", None) or {}
+            headers = request_context.get("headers") or {}
+            allowed_trace_ids = next((value for key, value in headers.items() if str(key).lower() == "x-aiops-trace-ids"), None)
+            if allowed_trace_ids is not None:
+                allowed = set() if allowed_trace_ids == "none" else set(allowed_trace_ids.split(","))
+                if trace_id.lower() not in allowed:
+                    raise ValueError("Trace ID is outside the alert scope")
             allowed = self._toolset.openobserve_config.allowed_streams
             if allowed and stream not in allowed:
                 raise ValueError("Log stream is not in the configured allowlist")

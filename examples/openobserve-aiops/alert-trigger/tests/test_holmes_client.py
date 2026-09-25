@@ -108,9 +108,33 @@ def test_synthetic_evaluation_instructions_require_internal_mode_flag():
     assert '"evaluation_case_id":"case-1"' in eval_question
     assert '"search_window_start_unix_us":1799999940000000' in eval_question
     assert "do not cite rows from any other run" in eval_question
+    assert "Every openobserve_search_logs query must include both exact" in eval_question
+    assert "This also applies to release_deployed checks" in eval_question
+    assert "If a query is rejected, correct its SQL before retrying" in eval_question
     assert "Provide read-only next steps only" in eval_question
     assert "approval and change process are required first" in eval_question
     assert "trusted server-generated alert search window" not in eval_question
+
+
+def test_evaluation_scope_is_forwarded_as_server_context_headers():
+    trace_id = "a" * 32
+    opener = FakeOpener(FakeResponse({"analysis": "Found evidence", "tool_calls": [_tool()]}))
+    client = HolmesClient("http://holmes:5050", "service-key", opener=opener)
+    task = {
+        "alert_name": "alert",
+        "trace_ids": [trace_id],
+        "summary": {
+            "evaluation_run_id": "b" * 32,
+            "evaluation_case_id": "case-1",
+            "evaluation_timestamp_us": 1_800_000_000_000_000,
+        },
+    }
+
+    client.investigate(task, evaluation=True)
+
+    assert opener.request.get_header("X-aiops-evaluation-run-id") == "b" * 32
+    assert opener.request.get_header("X-aiops-evaluation-case-id") == "case-1"
+    assert opener.request.get_header("X-aiops-trace-ids") == trace_id
 
 
 def test_production_alert_search_window_is_server_anchored_and_proxy_bounded():
@@ -165,8 +189,36 @@ def test_only_successful_allowlisted_openobserve_calls_become_verified_evidence(
     assert mixed_evidence[1]["data"] is None
     with pytest.raises(PermanentTaskError, match="no_openobserve_calls"):
         extract_evidence([unsafe_tool])
-    with pytest.raises(PermanentTaskError, match="holmes_tool_error"):
+    with pytest.raises(PermanentTaskError, match="holmes_tool_error") as error:
         extract_evidence([_tool("error")])
+    assert error.value.evidence[0]["status"] == "error"
+    assert error.value.evidence[0]["error_code"] == "openobserve_tool_error"
+
+
+def test_find_trace_uses_the_generated_sql_and_must_match_the_alert_trace_id():
+    trace_id = "a" * 32
+    call = {
+        "tool_name": "openobserve_find_trace",
+        "result": {
+            "status": "success",
+            "params": {
+                "sql": f'SELECT * FROM "app_logs" WHERE trace_id = \'{trace_id}\' ORDER BY _timestamp DESC',
+                "start_time": 100,
+                "end_time": 200,
+            },
+            "data": {"hits": [{"trace_id": trace_id, "evaluation_run_id": "run-1", "evaluation_case_id": "case-1"}]},
+        },
+    }
+
+    evidence, verified = extract_evidence([call], expected_trace_ids=[trace_id])
+
+    assert verified is True
+    assert evidence[0]["tool_name"] == "openobserve_find_trace"
+    assert has_evaluation_record(evidence, run_id="run-1", case_id="case-1")
+    with pytest.raises(PermanentTaskError, match="holmes_no_openobserve_calls"):
+        extract_evidence([call], expected_trace_ids=["b" * 32])
+    with pytest.raises(PermanentTaskError, match="holmes_no_openobserve_calls"):
+        extract_evidence([call], expected_trace_ids=[])
 
 
 def test_json_encoded_openobserve_results_remain_structured_for_fixture_matching():

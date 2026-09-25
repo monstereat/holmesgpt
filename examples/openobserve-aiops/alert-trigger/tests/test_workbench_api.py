@@ -56,7 +56,12 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
         fingerprint = stable_fingerprint(IncidentInput("0" * 64, "workbench-order-500", ("9" * 32,), {"err_count": 1}))
         incident = create_incident(conn, IncidentInput(fingerprint, "workbench-order-500", ("9" * 32,), {"err_count": 1}))
         with conn.cursor() as cursor:
-            cursor.execute("UPDATE tasks SET status = 'failed', attempt = 1, error_code = 'holmes_unavailable', completed_at = now() WHERE id = %s", (incident["task_id"],))
+            cursor.execute(
+                """UPDATE tasks SET status = 'failed', attempt = 1,
+                          error_code = 'holmes_unavailable', result = '{\"evidence_status\":\"unavailable\"}'::jsonb,
+                          completed_at = now() WHERE id = %s""",
+                (incident["task_id"],),
+            )
 
     try:
         with TestClient(app) as client:
@@ -150,6 +155,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert client.post(f"/api/tasks/{incident['task_id']}/retry", headers=operator).status_code == 409
             after_retry = client.get(f"/api/incidents/{incident['incident_id']}", headers=operator).json()
             assert after_retry["tasks"][0]["status"] == "queued"
+            assert after_retry["tasks"][0]["result"] is None
             assert any(event["event_type"] == "task.manual_retry_requested" for event in after_retry["timeline"])
             assert {event["event_type"] for event in after_retry["timeline"]} >= {"retrospective.draft", "retrospective.reviewed"}
 

@@ -121,17 +121,24 @@ def test_report_counts_exact_case_and_release_retrieval_matches():
 
 
 def test_cross_case_exposure_reports_only_other_cases_from_the_current_run():
-    evidence = [{
-        "tool_name": "openobserve_search_logs",
-        "status": "success",
-        "data": {"hits": [
-            {"evaluation_run_id": "run-1", "evaluation_case_id": "case-1"},
-            {"evaluation_run_id": "run-1", "evaluation_case_id": "case-2"},
-            {"evaluation_run_id": "run-old", "evaluation_case_id": "case-3"},
-        ]},
-    }]
+    evidence = [
+        {
+            "tool_name": "openobserve_search_logs",
+            "status": "success",
+            "data": {"hits": [
+                {"evaluation_run_id": "run-1", "evaluation_case_id": "case-1"},
+                {"evaluation_run_id": "run-1", "evaluation_case_id": "case-2"},
+                {"evaluation_run_id": "run-old", "evaluation_case_id": "case-3"},
+            ]},
+        },
+        {
+            "tool_name": "openobserve_find_trace",
+            "status": "success",
+            "data": {"hits": [{"evaluation_run_id": "run-1", "evaluation_case_id": "case-4"}]},
+        },
+    ]
 
-    assert cross_case_exposure_case_ids(evidence, run_id="run-1", case_id="case-1") == ["case-2"]
+    assert cross_case_exposure_case_ids(evidence, run_id="run-1", case_id="case-1") == ["case-2", "case-4"]
 
 
 def test_unscoped_successful_search_count_flags_or_and_missing_case_filters():

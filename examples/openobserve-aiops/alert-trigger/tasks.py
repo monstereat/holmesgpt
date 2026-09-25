@@ -40,7 +40,7 @@ def claim_task(conn: Any, task_id: str) -> ClaimedTask | None:
                 """UPDATE tasks
                    SET status = 'running', attempt = attempt + 1,
                        started_at = now(), lease_expires_at = now() + (%s * interval '1 second'),
-                       updated_at = now()
+                       result = NULL, updated_at = now()
                    WHERE id = %s AND attempt < max_attempts AND available_at <= now()
                      AND (status IN ('queued', 'retrying')
                           OR (status = 'running' AND lease_expires_at < now()))
@@ -88,7 +88,14 @@ def complete_task(conn: Any, task: ClaimedTask, result: dict[str, Any]) -> bool:
             return True
 
 
-def fail_task(conn: Any, task: ClaimedTask, code: str, *, retryable: bool) -> str:
+def fail_task(
+    conn: Any,
+    task: ClaimedTask,
+    code: str,
+    *,
+    retryable: bool,
+    failure_result: dict[str, Any] | None = None,
+) -> str:
     """Persist a safe error code and either schedule bounded retry or terminate."""
     will_retry = retryable and task.attempt < task.max_attempts
     delay = retry_delay(task.attempt) if will_retry else 0
@@ -97,12 +104,20 @@ def fail_task(conn: Any, task: ClaimedTask, code: str, *, retryable: bool) -> st
     with conn.transaction():
         with conn.cursor() as cursor:
             cursor.execute(
-                """UPDATE tasks SET status = %s, error_code = %s,
+                """UPDATE tasks SET status = %s, error_code = %s, result = %s,
                    available_at = now() + (%s * interval '1 second'),
                    completed_at = CASE WHEN %s = 'failed' THEN now() ELSE NULL END,
                    lease_expires_at = NULL, updated_at = now()
                    WHERE id = %s AND status = 'running' AND attempt = %s""",
-                (next_status, code[:64], delay, next_status, task.task_id, task.attempt),
+                (
+                    next_status,
+                    code[:64],
+                    Jsonb(failure_result) if failure_result else None,
+                    delay,
+                    next_status,
+                    task.task_id,
+                    task.attempt,
+                ),
             )
             if cursor.rowcount != 1:
                 return "stale"

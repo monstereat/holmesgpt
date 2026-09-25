@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境优先：T000–T009 已部署；生产部署包和生产准入尚未完成。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。最新隔离评测有 20/20 精确案例证据查询命中、3/3 发布事件命中、0 个已识别外案 fixture 命中，但有 9 次成功搜索未同时精确过滤 run/case。模型诊断文字有未能从保存轨迹核实的查询陈述，`scoring` 仍为 `not_scored`，不能声明诊断准确率。Holmes 只能经受限的流列表/搜索端点访问 allowlist 流。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
+**本机 Docker 测试环境优先：T000–T009 已部署；生产部署包和生产准入尚未完成。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。最新隔离评测有 20/20 精确案例证据命中、3/3 发布事件命中、0 个未限定成功查询、0 个跨案例 fixture 命中和 0 个工具错误；报告 schema 1.3 通过验证。评测专用策略按服务端 run/case 上下文拒绝缺少精确条件或含 OR 的搜索；大小写无关头读取与字符串字面量边界均有回归测试。诊断评分仍为 `not_scored`，不能声明准确率。Holmes 只能经受限的流列表/搜索端点访问 allowlist 流。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
 
 ## 已完成并验证
 
@@ -40,6 +40,8 @@
 - 生产权限与回归修复：迁移命令在非 local 环境要求独立 `MIGRATION_DATABASE_URL`，不得回退到 API/worker 的 `DATABASE_URL`；本地 Compose 明确复用本机测试身份。隔离事故服务回归 **78 passed，1 warning**。同时修复合成评测 release event matcher 的未定义变量，以及 Holmes 仅有失败工具调用时未失败关闭的问题。
 - 简历证据增量：新增项目专属的简历表述与面试证据页，限定为本机 Docker 测试部署，列明可复核能力、78 项事故服务测试、20 案检索结果及尚不能声称的生产/准确率结论。
 - PostgreSQL 权限增量：新增无口令的 `aiops_migrator` / `aiops_runtime` PostgreSQL bootstrap 模板；隔离 PG16 测试库由 migrator 执行 0001–0005 schema 变更，runtime 对 users/incidents/tasks/audit_events 的写入和序列权限通过事务验证，runtime 建表被拒绝。当前 Compose 数据库仍用单一测试身份；托管数据库/现有 schema 的身份和 owner 迁移仍需平台适配与 staging 验收。
+- T006 live 复测与证据审计：依据 Holmes 本仓库 `OpenObserveFindTrace` 实现修复结果参数解析；find-trace 的工具结果将内部生成 SQL 放在 `params.sql`，而不是 `params.stream`。提取器现校验 allowlist stream、trace ID 格式及其与告警 trace 的一致性，并将失败调用脱敏证据持久到失败任务/评测报告，重试时清除旧结果。隔离 Compose **80 passed，1 warning**。最新 live 报告 schema 1.3 验证通过：20/20 当前 run/case 证据匹配、3/3 发布事件匹配、0 跨案 fixture 命中、0 病例级错误，另保留 5 条失败工具轨迹；15 次成功日志搜索未带完整精确 run+case 条件，根因评分 `not_scored`。报告 `/tmp/holmes-aiops-live-report-trace-audit-v1.3.json`，run ID `52de154d9c3747e59fa5035b1f98bc6f`。
+- 2026-09-26 T006 查询隔离闭环：评测请求将 run/case 与允许的 trace ID 作为服务端上下文传入 Holmes；OpenObserve 搜索强制要求精确 run/case AND 条件并拒绝 OR，Trace 查询限制在告警所带 trace ID。修复 ASGI 头名小写造成策略失效，以及 case ID 中 `-limit-` 被 SQL 子句正则误识别的问题。定向 OpenObserve 测试 **13 passed**；事故服务隔离回归 **80 passed，1 warning**。最终 DeepSeek live 报告 schema 1.3 通过：20/20 案例证据、3/3 release、0 个未限定成功搜索、0 跨案 fixture、0 工具错误；`scoring=not_scored`。报告 `/tmp/holmes-aiops-live-report-final.json`，run ID `18add25121ba4ccdb0955c783b7dafc8`。这只验证本地合成数据的检索和范围隔离，不代表 RCA 准确率或生产验收。
 - Runbook 增量：Holmes 的自定义技能目录现包含订单库存、数据库迁移不匹配和发布回归三份只读 Skill；评测用例引用相应 Skill。定向测试扫描通过，运行中的 Holmes 容器从实际挂载目录加载到 3 个 Skill。
 
 ## 待办
