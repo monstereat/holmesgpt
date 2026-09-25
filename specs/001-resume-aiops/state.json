@@ -39,6 +39,18 @@
     },
     "AC-06": {
       "description": "本地启动、确定性测试和根因回放可重复，mock/live 结果分开报告。"
+    },
+    "AC-07": {
+      "description": "生产身份、资源归属与角色授权覆盖数据查询、审批和执行入口，未授权请求无副作用。"
+    },
+    "AC-08": {
+      "description": "应用可按确认的平台部署，完成健康检查、密钥注入、升级回滚及数据库备份恢复演练。"
+    },
+    "AC-09": {
+      "description": "生产动作仅执行逐项白名单且经动作拥有方授权和审批的请求，支持幂等、审计、执行后验证和失败回退。"
+    },
+    "AC-10": {
+      "description": "生产发布、知识、聚类与故障评测按确认的提供方和阈值可重复验证，live 与 mock 结果清楚区分。"
     }
   },
   "tasks": {},
@@ -91,8 +103,32 @@
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-06."
+    },
+    {
+      "at": "2026-09-25T02:41:00Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-07."
+    },
+    {
+      "at": "2026-09-25T02:41:00Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-08."
+    },
+    {
+      "at": "2026-09-25T02:41:01Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-09."
+    },
+    {
+      "at": "2026-09-25T02:41:01Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-10."
     }
   ],
   "created_at": "2026-09-25T02:36:03Z",
-  "updated_at": "2026-09-25T02:36:03Z"
+  "updated_at": "2026-09-25T02:41:01Z"
 }
