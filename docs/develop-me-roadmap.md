@@ -4,7 +4,7 @@
 > 开源底座：HolmesGPT；集成 OpenObserve、前端监控 SDK、NestJS、OpenTelemetry，Keep 按需加入。  
 > 范围：先在当前电脑 Docker 测试环境围绕真实应用故障建立「采集 → 告警 → 调查 → 审批处置 → 验证 → 复盘」闭环；正式环境部署后续另行规划和授权；不自建日志数据库。
 
-> **当前验收状态（2026-09-25）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；工作台已在浏览器分别登录 operator/approver，走通独立审批的测试动作 ON→OFF 闭环，并保存审核合成复盘。Holmes API 健康不代表 Agent 调查通过：当前没有模型凭据，最近一次合成告警任务以 `holmes_unavailable` 安全失败，故 AC-04 与完整 live 验收仍未完成。没有部署到生产环境。
+> **当前验收状态（2026-09-25）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；工作台已在浏览器分别登录 operator/approver，走通独立审批的测试动作 ON→OFF 闭环，并保存审核合成复盘。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；复核报告含 20 案、40 条已确认可搜索的 OpenObserve 记录、20/20 当前 run/case 证据查询命中、3/3 发布事件命中和 0 个工具错误。根因评分仍为 `not_scored`，不能声称诊断准确率或生产准确性；没有部署到生产环境。
 
 ## 1. 功能边界
 
@@ -50,7 +50,7 @@
 - [x] `.github/workflows/develop-me-aiops.yml` 已提交独立工具集测试工作流定义。
 - [x] 本地 OpenObserve 验证：日志、前端错误流、Trace 均收到相同 Trace ID；生产凭据、RBAC 和查询兼容性仍待验。
 - [x] 浏览器 SDK → NestJS HTTP 500 → `app_logs` / `frontend_errors` / OpenTelemetry Trace 使用同一 Trace ID（真实浏览器 + 本机 OpenObserve 已验）。
-- [x] 告警 worker 已可调用本机 Holmes 非流式 API，隔离契约测试通过；本机真实模型调查仍待 `DEEPSEEK_API_KEY`。
+- [x] 告警 worker 已可调用本机 Holmes 非流式 API；DeepSeek live 调用与 20 案评测已运行，具体检索覆盖及工具错误见本文最新验收增量，根因诊断质量仍待人工 rubric 评分。
 - [x] 建立可回放的订单 HTTP 500 故障注入；调查录像是可选演示材料，不作为产品验收项。
 
 ## 3. P1：展示工程可靠性的功能
@@ -60,7 +60,7 @@
 - [x] **事故流程内存原型：** `examples/openobserve-aiops/incident_workflow.py` 实现状态转换、负责人、严重级别、幂等键、重复告警归并、审批事件和时间线；不执行处置命令。
 - [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox；本地测试身份与资源 RBAC；重启恢复、幂等及审计查询通过单测和 Compose 验收。数据库 schema/migration 仅应用到获授权的本机测试数据库；生产身份集成仍待规划。
 - [x] **内存 RCA 数据模型：** 已验证结论必须带 HTTPS 证据链接，未验证结论明确标为 assumption；原型只记录声明，不自动验证其真实性。
-- [ ] **真实 RCA 结果验收：** Holmes 调查 API、只读证据代理和带来源/查询信息的证据保存已实现；真实模型输出对日志/Trace/发布/Runbook 的引用与假设质量仍待 DeepSeek 凭据实测。
+- [ ] **真实 RCA 结果验收：** Holmes 调查 API、只读证据代理和带来源/查询信息的证据保存已实现，DeepSeek live 模型调用已实测；复核后的 20 案报告有 20/20 当前 run/case 证据查询命中、3/3 发布事件命中、0 个工具错误。真实模型输出的根因准确性仍待人工 rubric 评分，`not_scored` 不能等同于准确率通过。
 - [x] **本地调查 Skill：** 使用当前支持的 `custom_skill_paths`/`SKILL.md` 提供订单故障只读调查步骤，并通过 Holmes `scan_skill_directory` 验证解析；真实 CLI 调查及证据引用仍待模型凭据和 OpenObserve 查询权限。旧 Catalog 仅留作迁移参考。
 - [x] **本机持久复盘：** 事故详情提供影响、根因、恢复措施和行动项表单；approver/admin 可保存草稿或标记已审核，viewer/operator 只读；PostgreSQL 保存审核人/时间并将变更写入事故审计时间线（隔离 API 集成测试通过）。
 - [x] **内存审批原型：** Agent 只能提交白名单建议，审批经外部授权回调验证；原型不执行运维命令。
@@ -72,7 +72,7 @@
 
 ## 4. P2：后续扩展
 
-- [x] 建立 20 个结构化已知根因案例、本机 synthetic evidence seeder 和 mock/live 报告生成器；缺 key 的 live 安全门及 OpenObserve→Holmes 只读检索路径已测。**真实 Holmes live 检索覆盖率、诊断质量和误处置率尚未评测**，mock 结果不代表诊断能力。
+- [x] 建立 20 个结构化已知根因案例、本机 synthetic evidence seeder 和 mock/live 报告生成器；缺 key 的 live 安全门及 OpenObserve→Holmes 只读检索路径已测。真实 live 检索覆盖已按例记录；**根因诊断质量和误处置率尚未人工评分**，mock 结果不代表诊断能力。
 - [x] 本机接收器 5 分钟进程内去重：带 Trace 告警按告警名和 Trace ID 做幂等键，无 Trace 告警排除触发时间但保留计数差异（9 项接收器测试通过）。
 - [ ] Keep 集成或相似故障聚类；跨多个服务的共同根因分析。
 - [x] 本机单一 `set-chaos-mode` 测试动作经审批后执行，执行后状态核对、失败恢复和审计已验；通用运维动作模板库不在当前本机测试目标内。
@@ -261,3 +261,19 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 新增 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](../examples/openobserve-aiops/PRODUCTION-READINESS.md)，根据当前服务职责整理后续部署拓扑、必需配置输入、安全门槛、分阶段 staging 验收和 go/no-go 证据。
 - [x] 文档明确当前没有可执行生产 manifest；生产平台、身份提供方、域名/TLS、托管数据服务、OpenObserve RBAC、SLO/RPO/RTO 和动作 owner 均需负责人确认后再生成平台专属配置。
 - [x] 未配置生产凭据、迁移、部署或动作；生产上线仍需单独明确授权。
+
+## 2026-09-25 增量：20 案 live 证据索引等待与复测
+
+- [x] OpenObserve ingest 返回全量接受后，live seeder 按唯一 run ID 轮询 `_search`，确认所有记录已可搜索后才开始 Holmes 调查；等待最多 30 秒，超时或部分数据可见时提前失败。
+- [x] Seeder 定向测试 **16 passed**；本机真实 OpenObserve 两条记录 smoke test 检索到 2/2；20 案 live 报告通过 Draft 2020-12 schema 校验。
+- [x] 当时生成的 live 报告：20 案、40 条 synthetic 行、16/20 本轮病例证据匹配、1/3 release event 匹配、1 个 Holmes 工具错误。该报告后来发现计量器漏计了 SQL 投影未返回过滤列的结果，数字已被后续复核取代；`scoring` 为 `not_scored`，这不是诊断准确率结果。
+- [ ] 在把 live evaluation 用作发布门槛前，需人工建立根因诊断 rubric 并记录独立评分。
+- [x] 无效尝试（Holmes 容器未加载私有 DeepSeek Key，20/20 请求失败）已与有效 live 报告隔离，不纳入评测指标。
+- 结果文件：`/tmp/holmes-aiops-live-report-visibility-valid.json`；实现提交：`02a430bc6`。
+
+## 2026-09-25 复核：修正 live 检索覆盖计量
+
+- [x] 计量器现可识别精确 run/case SQL 范围内的非空查询结果，即使 SELECT 投影未返回过滤 ID 列；时间窗必须覆盖 seed 时间，release 匹配必须在相同 run/case 范围内。
+- [x] Seeder/client/evaluation 定向测试 **41 passed**；复核报告通过 Draft 2020-12 schema 校验：20/20 当前 run/case 证据查询、3/3 发布事件查询、0 工具错误。诊断评分仍为 `not_scored`。
+- [ ] 根因诊断质量仍需人工评分；生产平台、身份、网络、容量和回滚验收未完成。
+- 复核报告：`/tmp/holmes-aiops-live-report-scoped-run-reviewed.json`；原始 live 输出：`/tmp/holmes-aiops-live-report-scoped-run.json`。

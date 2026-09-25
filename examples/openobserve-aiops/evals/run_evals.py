@@ -17,9 +17,15 @@ from urllib.parse import urlsplit
 EXAMPLE = Path(__file__).resolve().parents[1]
 ALERT_TRIGGER = EXAMPLE / "alert-trigger"
 REPOSITORY_ROOT = EXAMPLE.parent.parent
+EVALUATION_ALERT_DELAY_US = 1_000_000
 sys.path.insert(0, str(ALERT_TRIGGER))
 
 from evaluation import build_report, has_evaluation_record  # noqa: E402
+
+
+def evaluation_alert_timestamp_us(seed_timestamp_us: int) -> int:
+    """Place the synthetic alert after its evidence for exclusive search end bounds."""
+    return seed_timestamp_us + EVALUATION_ALERT_DELAY_US
 
 
 def validate_local_holmes_url(base_url: str) -> str:
@@ -115,7 +121,7 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             "fixture_source": "synthetic_known_root_cause_case",
             "evaluation_case_id": case["id"],
             "evaluation_run_id": dataset["run_id"],
-            "evaluation_timestamp_us": dataset["timestamp_us"],
+            "evaluation_timestamp_us": evaluation_alert_timestamp_us(dataset["timestamp_us"]),
         }
         if case["id"] in contexts:
             summary["release_context"] = {
@@ -146,6 +152,7 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             case_evidence,
             run_id=dataset["run_id"],
             case_id=case["id"],
+            seed_timestamp_us=dataset["timestamp_us"],
         )
         results[case["id"]]["evaluation_release_event_match"] = (
             has_evaluation_record(
@@ -153,6 +160,7 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
                 run_id=dataset["run_id"],
                 case_id=case["id"],
                 event_type="release_deployed",
+                seed_timestamp_us=dataset["timestamp_us"],
             )
             if case["id"] in contexts else None
         )

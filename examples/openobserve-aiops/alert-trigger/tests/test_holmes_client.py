@@ -76,7 +76,12 @@ def test_synthetic_evaluation_instructions_require_internal_mode_flag():
     task = {
         "alert_name": "alert",
         "trace_ids": ["a" * 32],
-        "summary": {"fixture_source": "synthetic_known_root_cause_case", "evaluation_case_id": "case-1"},
+        "summary": {
+            "fixture_source": "synthetic_known_root_cause_case",
+            "evaluation_case_id": "case-1",
+            "evaluation_run_id": "b" * 32,
+            "evaluation_timestamp_us": 1_800_000_000_000_000,
+        },
     }
 
     normal_question = build_investigation_question(task)
@@ -84,6 +89,18 @@ def test_synthetic_evaluation_instructions_require_internal_mode_flag():
 
     assert "Treat these records as test fixtures" not in normal_question
     assert "Treat these records as test fixtures" in eval_question
+    assert '"evaluation_run_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' in eval_question
+    assert '"evaluation_case_id":"case-1"' in eval_question
+    assert '"search_window_start_unix_us":1799999940000000' in eval_question
+    assert "do not cite rows from any other run" in eval_question
+
+
+def test_synthetic_evaluation_requires_run_case_and_timestamp_anchors():
+    with pytest.raises(ValueError, match="requires valid run, case, and alert-time anchors"):
+        build_investigation_question(
+            {"alert_name": "alert", "trace_ids": ["a" * 32], "summary": {"evaluation_case_id": "case-1"}},
+            evaluation=True,
+        )
 
 
 def test_only_successful_allowlisted_openobserve_calls_become_verified_evidence():

@@ -48,6 +48,7 @@ def has_evaluation_record(
     run_id: str,
     case_id: str,
     event_type: str | None = None,
+    seed_timestamp_us: int | None = None,
 ) -> bool:
     pending: list[Any] = list(evidence)
     inspected = 0
@@ -61,10 +62,53 @@ def has_evaluation_record(
                 and (event_type is None or value.get("event_type") == event_type)
             ):
                 return True
+            if value.get("tool_name") == "openobserve_search_logs" and value.get("status") == "success":
+                params = value.get("params")
+                data = value.get("data")
+                sql = params.get("sql") if isinstance(params, dict) else None
+                hits = data.get("hits") if isinstance(data, dict) else None
+                start_time = params.get("start_time") if isinstance(params, dict) else None
+                end_time = params.get("end_time") if isinstance(params, dict) else None
+                if (
+                    isinstance(sql, str)
+                    and isinstance(hits, list)
+                    and hits
+                    and isinstance(start_time, int)
+                    and isinstance(end_time, int)
+                    and (seed_timestamp_us is None or start_time <= seed_timestamp_us < end_time)
+                    and _query_has_evaluation_scope(sql, run_id, case_id, event_type, hits)
+                ):
+                    return True
             pending.extend(value.values())
         elif isinstance(value, list):
             pending.extend(value)
     return False
+
+
+def _query_has_evaluation_scope(
+    sql: str,
+    run_id: str,
+    case_id: str,
+    event_type: str | None,
+    hits: list[Any],
+) -> bool:
+    normalized = re.sub(r'["`]', "", sql).lower()
+    if re.search(r"\bor\b", normalized):
+        return False
+    run_predicate = rf"evaluation_run_id\s*=\s*'{re.escape(run_id.lower())}'"
+    case_predicate = rf"evaluation_case_id\s*=\s*'{re.escape(case_id.lower())}'"
+    scoped = re.search(run_predicate + r"\s+and\s+" + case_predicate, normalized) or re.search(
+        case_predicate + r"\s+and\s+" + run_predicate, normalized
+    )
+    if not scoped:
+        return False
+    if event_type is None:
+        return True
+    event_predicate = rf"event_type\s*=\s*'{re.escape(event_type.lower())}'"
+    return bool(
+        re.search(event_predicate, normalized)
+        or any(isinstance(hit, dict) and hit.get("event_type") == event_type for hit in hits)
+    )
 
 
 def build_case_report(case: dict[str, Any], *, mode: str, live_result: dict[str, Any] | None = None) -> dict[str, Any]:

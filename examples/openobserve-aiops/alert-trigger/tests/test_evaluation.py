@@ -119,6 +119,45 @@ def test_has_evaluation_record_requires_matching_run_and_case_and_optional_event
     assert not has_evaluation_record(evidence, run_id="run-1", case_id="case-1", event_type="other")
 
 
+def test_has_evaluation_record_accepts_exact_scoped_search_when_projection_omits_ids():
+    evidence = [{
+        "tool_name": "openobserve_search_logs",
+        "status": "success",
+        "params": {
+            "sql": "SELECT _timestamp, event_type, message FROM app_logs WHERE evaluation_run_id = 'run-1' AND evaluation_case_id = 'case-1'",
+            "start_time": 900,
+            "end_time": 1100,
+        },
+        "data": {"hits": [{"event_type": "aiops_eval_evidence", "message": "fixture row"}]},
+    }]
+
+    assert has_evaluation_record(evidence, run_id="run-1", case_id="case-1", seed_timestamp_us=1000)
+    assert not has_evaluation_record(evidence, run_id="run-1", case_id="case-1", seed_timestamp_us=1100)
+    assert not has_evaluation_record(evidence, run_id="run-2", case_id="case-1", seed_timestamp_us=1000)
+    assert not has_evaluation_record(evidence, run_id="run-1", case_id="case-1", event_type="release_deployed")
+
+
+def test_has_evaluation_record_scopes_release_match_to_exact_run_and_case():
+    evidence = [{
+        "tool_name": "openobserve_search_logs",
+        "status": "success",
+        "params": {
+            "sql": "SELECT message FROM app_logs WHERE evaluation_run_id='run-1' AND evaluation_case_id='case-1' AND event_type='release_deployed'",
+            "start_time": 900,
+            "end_time": 1100,
+        },
+        "data": {"hits": [{"message": "release event"}]},
+    }]
+
+    assert has_evaluation_record(
+        evidence, run_id="run-1", case_id="case-1", event_type="release_deployed", seed_timestamp_us=1000
+    )
+    evidence[0]["params"]["sql"] = evidence[0]["params"]["sql"].replace("AND event_type", "OR event_type")
+    assert not has_evaluation_record(
+        evidence, run_id="run-1", case_id="case-1", event_type="release_deployed", seed_timestamp_us=1000
+    )
+
+
 def test_live_report_records_the_seeded_dataset_and_run_specific_trace_ids():
     corpus = cases()
     results = {

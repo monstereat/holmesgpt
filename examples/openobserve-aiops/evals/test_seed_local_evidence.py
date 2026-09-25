@@ -7,7 +7,7 @@ import yaml
 
 import seed_local_evidence as seed_evidence_module
 from seed_local_evidence import _validate_local_url, build_records, seed_local_evidence
-from run_evals import load_evaluation_contexts, validate_local_holmes_url
+from run_evals import evaluation_alert_timestamp_us, load_evaluation_contexts, validate_local_holmes_url
 from holmes_client import build_investigation_question
 
 
@@ -67,11 +67,18 @@ def test_live_context_loader_supplies_repository_runbook_and_release_metadata():
 
     question = build_investigation_question({
         "alert_name": CASE["alert"],
-        "summary": {"runbook_context": context["runbook_context"], "release_context": context},
+        "summary": {
+            "runbook_context": context["runbook_context"],
+            "release_context": context,
+            "evaluation_run_id": "b" * 32,
+            "evaluation_case_id": "order-database-deploy-mismatch",
+            "evaluation_timestamp_us": 1_800_000_000_000_000,
+        },
     }, evaluation=True)
     assert context["runbook_context"]["path"] in question
     assert "release_deployed" in question
     assert "do not infer a commit" in question
+    assert "exact evaluation_run_id AND evaluation_case_id" in question
 
 
 def test_compose_uses_holmes_and_litellm_environment_names_for_deepseek():
@@ -213,3 +220,7 @@ def test_search_visibility_waits_for_all_current_run_records(monkeypatch):
         "http://127.0.0.1:5080", "local-test", "not-a-real-secret", "c" * 32, 1_800_000_000_000_000, 2, opener
     )
     assert opener.calls == 2
+
+
+def test_evaluation_alert_occurs_after_seeded_evidence_for_exclusive_search_bounds():
+    assert evaluation_alert_timestamp_us(1_800_000_000_000_000) == 1_800_000_001_000_000
