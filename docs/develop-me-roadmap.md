@@ -223,3 +223,10 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 在 loopback 绑定的本机接收器上实测 Docker 网络 Webhook 返回 HTTP 202，`/bin/echo` 完成调度并保留 Trace ID。
 - [x] 修复 `GET /monitoring.js` 静态 SDK 路由；真实浏览器产生 HTTP 500 后，本机 OpenObserve 三种数据均以同一 Trace ID 命中。
 - [ ] 上述状态仍为内存原型，未具备服务端身份/RBAC、持久任务存储、进程重启恢复和生产执行器。
+
+## 2026-09-25 增量：评测报告参考答案与模型输出分离
+
+- [x] 报告 schema 1.2 将病例参考预期、参考不支持结论和参考安全建议命名为 `reference_*`，避免与 Holmes 的自由文本回答混淆；未解析的假设使用 `null`，不把空数组解释为模型“没有假设”。
+- [x] 根因评分仍保持 `not_scored`，直到采用可辩护的评审规则；mock 结果不声称模型准确率。
+- [x] 评测报告定向测试 **11 passed**；重生成的 20 例 mock 报告通过 Draft 2020-12 JSON Schema 校验。
+- [ ] DeepSeek live 调查和 20 例 live 评测仍需本机配置有效 `DEEPSEEK_API_KEY` 并显式确认外部模型调用。

@@ -31,6 +31,7 @@ def test_corpus_has_a_curated_cluster_for_every_case_and_extracts_trace_ids():
 
 def test_mock_report_preserves_fixture_provenance_without_claiming_model_results():
     report = build_report(cases(), mode="mock")
+    assert report["schema_version"] == "1.2.0"
     assert report["case_source"] == "synthetic_fixture"
     assert report["evaluation_run_id"] is None
     assert report["seeded_record_count"] is None
@@ -44,6 +45,10 @@ def test_mock_report_preserves_fixture_provenance_without_claiming_model_results
     }
     assert report["retrieval_coverage"] == {"case_evidence_matches": 0, "release_event_matches": 0}
     assert all(case["diagnosis"] is None for case in report["cases"])
+    assert all(case["assumptions"] is None for case in report["cases"])
+    assert all(case["reference_expected_findings"] == ["Synthetic finding"] for case in report["cases"])
+    assert all(case["reference_unsupported_claims"] == ["Synthetic unsupported claim"] for case in report["cases"])
+    assert all(case["reference_safe_next_step"] == "Review with the service owner." for case in report["cases"])
     assert all(case["evidence_source"] == "synthetic_fixture" for case in report["cases"])
     assert all(case["cluster_source"] == CLUSTER_TAXONOMY for case in report["cases"])
 
@@ -69,6 +74,10 @@ def test_live_report_separates_live_retrieval_from_synthetic_case_source():
     assert report["input"]["trace_ids"] == ["a" * 32]
     assert report["diagnosis"] == "Observed result"
     assert report["reference_diagnosis"] == case["root_cause"]
+    assert report["assumptions"] is None
+    assert report["reference_expected_findings"] == case["expected_findings"]
+    assert report["reference_unsupported_claims"] == case["unsupported_claims"]
+    assert report["reference_safe_next_step"] == case["safe_next_step"]
     assert report["scoring"] == "not_scored"
     assert report["evaluation_evidence_match"] is True
 

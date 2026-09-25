@@ -95,10 +95,10 @@ def build_case_report(case: dict[str, Any], *, mode: str, live_result: dict[str,
         "evaluation_release_event_match": result.get("evaluation_release_event_match") if is_live else None,
         "diagnosis": result.get("analysis") if is_live else None,
         "reference_diagnosis": case["root_cause"],
-        "expected_findings": case["expected_findings"],
-        "assumptions": [],
-        "unsupported_claims": case["unsupported_claims"],
-        "safe_next_step": case["safe_next_step"],
+        "reference_expected_findings": case["expected_findings"],
+        "assumptions": None,
+        "reference_unsupported_claims": case["unsupported_claims"],
+        "reference_safe_next_step": case["safe_next_step"],
         "cluster": cluster,
         "cluster_source": CLUSTER_TAXONOMY,
         "scoring": "not_scored",
@@ -114,7 +114,7 @@ def build_report(cases: list[dict[str, Any]], *, mode: str, results: dict[str, d
     evaluation_run_id = next((result.get("evaluation_run_id") for result in results.values() if result.get("evaluation_run_id")), None)
     seeded_record_count = next((result.get("seeded_record_count") for result in results.values() if result.get("evaluation_run_id") == evaluation_run_id), None)
     return {
-        "schema_version": "1.1.0",
+        "schema_version": "1.2.0",
         "mode": mode,
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
         "case_source": "synthetic_fixture",

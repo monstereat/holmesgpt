@@ -1,6 +1,6 @@
 # Known-root-cause evaluation
 
-`known_root_causes.json` contains 20 synthetic, bounded evidence bundles for the OpenObserve + HolmesGPT order-service demo. Each case records its source ID, alert input, evidence, reference diagnosis, expected findings, unsupported claims, and a safe next step. The cluster labels are a curated taxonomy of these fixtures, not measured model results. Report schema 1.1 adds exact-case evidence and release-event retrieval counts; diagnosis scoring remains `not_scored` until reviewed with a defensible rubric.
+`known_root_causes.json` contains 20 synthetic, bounded evidence bundles for the OpenObserve + HolmesGPT order-service demo. Each case records its source ID, alert input, evidence, reference diagnosis, expected findings, unsupported claims, and a safe next step. The cluster labels are a curated taxonomy of these fixtures, not measured model results. Report schema 1.2 separates all `reference_*` values from the Holmes response, while diagnosis scoring remains `not_scored` until reviewed with a defensible rubric.
 
 ## Run a mock report
 
@@ -10,7 +10,7 @@ From the repository root:
 python examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json
 ```
 
-Mock mode is deterministic fixture replay. It does not call Holmes or OpenObserve; `diagnosis` remains `null`, evidence is labeled `synthetic_fixture`, and scoring is `not_scored`. It does not measure model accuracy, evidence citation quality, false-remediation rate, or recovery time. The JSON output follows `report.schema.json`.
+Mock mode is deterministic fixture replay. It does not call Holmes or OpenObserve; `diagnosis` remains `null`, evidence is labeled `synthetic_fixture`, and scoring is `not_scored`. Report schema 1.2 names expected findings, unsupported claims, and safe next steps as `reference_*` fields so they cannot be mistaken for observed model output; `assumptions: null` means the free-text analysis has not been parsed into assumptions. The report does not measure model accuracy, evidence citation quality, false-remediation rate, or recovery time. The JSON output follows `report.schema.json`.
 
 Run corpus, duplicate-key, and fixture-link checks with:
 

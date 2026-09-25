@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:holmes-openobserve-evaluation-report:1.1.0",
+  "$id": "urn:holmes-openobserve-evaluation-report:1.2.0",
   "title": "Holmes OpenObserve evaluation report",
   "type": "object",
   "required": ["schema_version", "mode", "evaluated_at", "case_source", "evaluation_run_id", "seeded_record_count", "counts", "retrieval_coverage", "scoring", "cluster_taxonomy", "cases"],
   "properties": {
-    "schema_version": {"const": "1.1.0"},
+    "schema_version": {"const": "1.2.0"},
     "mode": {"enum": ["mock", "live"]},
     "evaluated_at": {"type": "string", "format": "date-time"},
     "case_source": {"const": "synthetic_fixture"},
@@ -40,7 +40,7 @@
       "maxItems": 20,
       "items": {
         "type": "object",
-        "required": ["case_id", "source", "mode", "input", "evidence", "evidence_source", "evidence_status", "evaluation_evidence_match", "evaluation_release_event_match", "diagnosis", "reference_diagnosis", "expected_findings", "assumptions", "unsupported_claims", "safe_next_step", "cluster", "cluster_source", "scoring", "error_code"],
+        "required": ["case_id", "source", "mode", "input", "evidence", "evidence_source", "evidence_status", "evaluation_evidence_match", "evaluation_release_event_match", "diagnosis", "reference_diagnosis", "reference_expected_findings", "assumptions", "reference_unsupported_claims", "reference_safe_next_step", "cluster", "cluster_source", "scoring", "error_code"],
         "properties": {
           "case_id": {"type": "string", "minLength": 1},
           "source": {"type": "string", "pattern": "^known_root_causes\\.json#"},
@@ -63,10 +63,10 @@
           "evaluation_release_event_match": {"type": ["boolean", "null"]},
           "diagnosis": {"type": ["string", "null"]},
           "reference_diagnosis": {"type": "string"},
-          "expected_findings": {"type": "array", "items": {"type": "string"}},
-          "assumptions": {"type": "array", "items": {"type": "string"}},
-          "unsupported_claims": {"type": "array", "items": {"type": "string"}},
-          "safe_next_step": {"type": "string"},
+          "reference_expected_findings": {"type": "array", "items": {"type": "string"}},
+          "assumptions": {"type": ["array", "null"], "items": {"type": "string"}},
+          "reference_unsupported_claims": {"type": "array", "items": {"type": "string"}},
+          "reference_safe_next_step": {"type": "string"},
           "cluster": {"type": "string"},
           "cluster_source": {"const": "curated_fixture_taxonomy"},
           "scoring": {"const": "not_scored"},

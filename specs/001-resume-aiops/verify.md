@@ -34,7 +34,7 @@
 - Live 评测预检：DeepSeek Key 缺失时 runner 在写入 OpenObserve 前拒绝执行；mock 报告断言 20 条、无模型诊断、`not_scored`。
 - 本机评测证据准备：OpenObserve 本轮实际接收 40 条 synthetic fixture 行；Holmes 容器经只读代理按本轮 trace 检索到匹配行。没有模型调用，不代表 RCA 已验证。
 - 评测/seeder/Holmes API 契约定向 pytest：**38 passed**；增加断言覆盖结构化 release event 字段、Runbook 文本及来源路径进入 live 调查指令、三份 Holmes Skills 可由 loader 扫描及 exact eval-record 计数。
-- 评测 mock 报告 schema 1.1 经 Draft 2020-12 validator 校验通过；报告输出逐案证据/release 检索覆盖，但仍将根因准确度标为 `not_scored`。
+- 评测 mock 报告 schema 1.2 显式区分 `reference_*` 答案字段，未解析假设使用 `null`；Draft 2020-12 validator 校验通过，11 项评测语料/报告测试通过。报告输出逐案证据/release 检索覆盖，根因准确度继续标为 `not_scored`。
 - 运行中的 Holmes 容器扫描实际挂载目录：发现 3 个项目只读 Skill（库存、数据库 schema/migration、发布回归）；未调用模型。
 
 ## 后续解阻条件
