@@ -1,6 +1,6 @@
 import pytest
 
-from evaluation import CLUSTER_BY_CASE, CLUSTER_TAXONOMY, build_case_report, build_report, trace_ids
+from evaluation import CLUSTER_BY_CASE, CLUSTER_TAXONOMY, build_case_report, build_report, has_evaluation_record, trace_ids
 
 
 def cases():
@@ -35,7 +35,14 @@ def test_mock_report_preserves_fixture_provenance_without_claiming_model_results
     assert report["evaluation_run_id"] is None
     assert report["seeded_record_count"] is None
     assert report["scoring"] == "not_scored"
-    assert report["counts"] == {"total": 20, "live_errors": 0}
+    assert report["counts"] == {
+        "total": 20,
+        "live_errors": 0,
+        "matching_case_evidence": 0,
+        "release_event_cases": 0,
+        "matching_release_events": 0,
+    }
+    assert report["retrieval_coverage"] == {"case_evidence_matches": 0, "release_event_matches": 0}
     assert all(case["diagnosis"] is None for case in report["cases"])
     assert all(case["evidence_source"] == "synthetic_fixture" for case in report["cases"])
     assert all(case["cluster_source"] == CLUSTER_TAXONOMY for case in report["cases"])
@@ -53,6 +60,8 @@ def test_live_report_separates_live_retrieval_from_synthetic_case_source():
             "evaluation_run_id": "run-123",
             "evaluation_trace_id": "a" * 32,
             "seeded_record_count": 40,
+            "evaluation_evidence_match": True,
+            "evaluation_release_event_match": None,
         },
     )
     assert report["source"] == "known_root_causes.json#order-inventory-negative-stock"
@@ -61,6 +70,44 @@ def test_live_report_separates_live_retrieval_from_synthetic_case_source():
     assert report["diagnosis"] == "Observed result"
     assert report["reference_diagnosis"] == case["root_cause"]
     assert report["scoring"] == "not_scored"
+    assert report["evaluation_evidence_match"] is True
+
+
+def test_report_counts_exact_case_and_release_retrieval_matches():
+    corpus = cases()
+    results = {
+        corpus[0]["id"]: {
+            "evidence_status": "verified",
+            "evidence": [],
+            "evaluation_evidence_match": True,
+            "evaluation_release_event_match": None,
+        },
+        corpus[1]["id"]: {
+            "evidence_status": "verified",
+            "evidence": [],
+            "evaluation_evidence_match": False,
+            "evaluation_release_event_match": True,
+        },
+    }
+
+    report = build_report(corpus, mode="live", results=results)
+
+    assert report["counts"]["matching_case_evidence"] == 1
+    assert report["counts"]["release_event_cases"] == 1
+    assert report["counts"]["matching_release_events"] == 1
+
+
+def test_has_evaluation_record_requires_matching_run_and_case_and_optional_event_type():
+    evidence = [{"data": {"hits": [
+        {"evaluation_run_id": "run-1", "evaluation_case_id": "case-1", "event_type": "aiops_eval_evidence"},
+        {"evaluation_run_id": "run-1", "evaluation_case_id": "case-1", "event_type": "release_deployed"},
+    ]}}]
+
+    assert has_evaluation_record(evidence, run_id="run-1", case_id="case-1")
+    assert has_evaluation_record(evidence, run_id="run-1", case_id="case-1", event_type="release_deployed")
+    assert not has_evaluation_record(evidence, run_id="run-2", case_id="case-1")
+    assert not has_evaluation_record(evidence, run_id="run-1", case_id="case-2")
+    assert not has_evaluation_record(evidence, run_id="run-1", case_id="case-1", event_type="other")
 
 
 def test_live_report_records_the_seeded_dataset_and_run_specific_trace_ids():

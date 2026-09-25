@@ -42,6 +42,31 @@ def trace_ids(case: dict[str, Any]) -> list[str]:
     return found
 
 
+def has_evaluation_record(
+    evidence: list[dict[str, Any]],
+    *,
+    run_id: str,
+    case_id: str,
+    event_type: str | None = None,
+) -> bool:
+    pending: list[Any] = list(evidence)
+    inspected = 0
+    while pending and inspected < 10_000:
+        value = pending.pop()
+        inspected += 1
+        if isinstance(value, dict):
+            if (
+                value.get("evaluation_run_id") == run_id
+                and value.get("evaluation_case_id") == case_id
+                and (event_type is None or value.get("event_type") == event_type)
+            ):
+                return True
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    return False
+
+
 def build_case_report(case: dict[str, Any], *, mode: str, live_result: dict[str, Any] | None = None) -> dict[str, Any]:
     if mode not in {"mock", "live"}:
         raise ValueError("mode must be mock or live")
@@ -66,6 +91,8 @@ def build_case_report(case: dict[str, Any], *, mode: str, live_result: dict[str,
         "evidence": result.get("evidence", []) if is_live else case["evidence"],
         "evidence_source": evidence_source,
         "evidence_status": result.get("evidence_status", "not_run") if is_live else "fixture_only",
+        "evaluation_evidence_match": result.get("evaluation_evidence_match") if is_live else None,
+        "evaluation_release_event_match": result.get("evaluation_release_event_match") if is_live else None,
         "diagnosis": result.get("analysis") if is_live else None,
         "reference_diagnosis": case["root_cause"],
         "expected_findings": case["expected_findings"],
@@ -87,7 +114,7 @@ def build_report(cases: list[dict[str, Any]], *, mode: str, results: dict[str, d
     evaluation_run_id = next((result.get("evaluation_run_id") for result in results.values() if result.get("evaluation_run_id")), None)
     seeded_record_count = next((result.get("seeded_record_count") for result in results.values() if result.get("evaluation_run_id") == evaluation_run_id), None)
     return {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "mode": mode,
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
         "case_source": "synthetic_fixture",
@@ -96,6 +123,13 @@ def build_report(cases: list[dict[str, Any]], *, mode: str, results: dict[str, d
         "counts": {
             "total": len(reports),
             "live_errors": sum(item["error_code"] is not None for item in reports),
+            "matching_case_evidence": sum(item["evaluation_evidence_match"] is True for item in reports),
+            "release_event_cases": sum(item["evaluation_release_event_match"] is not None for item in reports),
+            "matching_release_events": sum(item["evaluation_release_event_match"] is True for item in reports),
+        },
+        "retrieval_coverage": {
+            "case_evidence_matches": sum(item["evaluation_evidence_match"] is True for item in reports),
+            "release_event_matches": sum(item["evaluation_release_event_match"] is True for item in reports),
         },
         "scoring": "not_scored",
         "cluster_taxonomy": CLUSTER_TAXONOMY,

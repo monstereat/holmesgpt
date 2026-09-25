@@ -46,7 +46,8 @@
 - `docker compose ... config --quiet`、本机栈构建/启动和服务健康检查通过；Holmes `/healthz`、事故 API `/healthz`、OpenObserve `/healthz` 与订单服务返回 HTTP 200。
 - 隔离 Compose 测试 profile：42 passed，1 warning。
 - 浏览器实际打开 `http://localhost:8081/`，显示事故工作台登录表单且无浏览器 console error；本轮未在浏览器输入账号密码，审批、执行、复盘页面仍以 API/隔离集成测试验证，未记作手工 UI 全流程通过。
-- T006 live-eval 数据准备增量：定向 pytest **36 passed**；最新隔离 Compose 测试 profile **44 passed，1 warning**。Mock 报告检查 20 例、`not_scored`、无诊断；缺 DeepSeek Key 时在本机数据写入前退出。此前 OpenObserve 接收 40 条合成记录，Holmes 经只读代理按 trace 查询命中对应日志；没有 DeepSeek 模型调用。结构化发布事件和 Runbook prompt 上下文通过单测，尚未在当前 OpenObserve 卷追加新一轮数据或运行模型。
+- T006 live-eval 数据准备增量：定向 pytest **38 passed**；最新隔离 Compose 测试 profile **46 passed，1 warning**。Mock 报告检查 20 例、`not_scored`、无诊断；缺 DeepSeek Key 时在本机数据写入前退出。此前 OpenObserve 接收 40 条合成记录，Holmes 经只读代理按 trace 查询命中对应日志；没有 DeepSeek 模型调用。结构化发布事件和 Runbook prompt 上下文通过单测，尚未在当前 OpenObserve 卷追加新一轮数据或运行模型。
+- 评测报告 schema 升至 1.1：live 每例单独记录是否检索到相同 run/case 的 fixture 行以及 release event，顶层汇总匹配数；报告仍明确把根因诊断 accuracy 标记为 `not_scored`。mock 20 例报告已通过 Draft 2020-12 JSON Schema 校验。
 - Holmes 实际挂载的 `/etc/holmes/skills` 由容器内技能加载器识别到 3 个项目 Skill（库存故障、数据库 schema/migration 不匹配、发布回归）；无模型调用。
 - 复盘增量：隔离 Compose 测试 profile 42 passed，前端 `node --check` 通过；本机 API 登录后可读取现存事故复盘，operator 写入返回 403；测试数据库记录迁移版本 `0003_incident_retrospectives`。
 - 评测语料增量：20 例 mock 报告重生成，检查确认 `not_scored`、20 条病例且无模型诊断；语料/发布-Runbook fixture 校验 **3 passed**，重复 JSON 字段检测测试通过。

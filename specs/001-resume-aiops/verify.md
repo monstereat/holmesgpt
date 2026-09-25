@@ -20,7 +20,7 @@
 
 ## 验证结果
 
-- `docker compose ... --profile test run --build --rm incident-test`：**44 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
+- `docker compose ... --profile test run --build --rm incident-test`：**46 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
 - Compose 栈构建、配置校验和服务恢复成功。最近检查：OpenObserve `/healthz`、Holmes `/healthz`、incident API `/healthz`、订单服务根路径均返回 HTTP 200。
 - 本机告警/事故工作流：已创建 1 条 incident；无 Holmes 凭据的任务安全终止，错误码 `holmes_unavailable`。
 - 本机权限与动作工作流：operator 自审批返回 403；approver 批准后执行并核验 order-service 状态 ON，再完成批准恢复并核验状态 OFF。
@@ -32,7 +32,8 @@
 - 20 例评测语料：去重键和发布/Runbook 关联验证 **3 passed**；mock 报告重新生成 20 条，明确保持 `not_scored`，未运行 live 模型请求。
 - Live 评测预检：DeepSeek Key 缺失时 runner 在写入 OpenObserve 前拒绝执行；mock 报告断言 20 条、无模型诊断、`not_scored`。
 - 本机评测证据准备：OpenObserve 本轮实际接收 40 条 synthetic fixture 行；Holmes 容器经只读代理按本轮 trace 检索到匹配行。没有模型调用，不代表 RCA 已验证。
-- 评测/seeder/Holmes API 契约定向 pytest：**36 passed**；增加断言覆盖结构化 release event 字段、Runbook 文本及来源路径进入 live 调查指令，以及三份 Holmes Skills 可由 loader 扫描。
+- 评测/seeder/Holmes API 契约定向 pytest：**38 passed**；增加断言覆盖结构化 release event 字段、Runbook 文本及来源路径进入 live 调查指令、三份 Holmes Skills 可由 loader 扫描及 exact eval-record 计数。
+- 评测 mock 报告 schema 1.1 经 Draft 2020-12 validator 校验通过；报告输出逐案证据/release 检索覆盖，但仍将根因准确度标为 `not_scored`。
 - 运行中的 Holmes 容器扫描实际挂载目录：发现 3 个项目只读 Skill（库存、数据库 schema/migration、发布回归）；未调用模型。
 
 ## 后续解阻条件

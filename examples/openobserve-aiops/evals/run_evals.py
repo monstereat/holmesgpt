@@ -19,7 +19,7 @@ ALERT_TRIGGER = EXAMPLE / "alert-trigger"
 REPOSITORY_ROOT = EXAMPLE.parent.parent
 sys.path.insert(0, str(ALERT_TRIGGER))
 
-from evaluation import build_report  # noqa: E402
+from evaluation import build_report, has_evaluation_record  # noqa: E402
 
 
 def validate_local_holmes_url(base_url: str) -> str:
@@ -141,6 +141,21 @@ def run_live(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             # Store only a stable safe code, never upstream details.
             code = getattr(exc, "code", "evaluation_request_failed")
             results[case["id"]] = {"evidence": [], "evidence_status": "unavailable", "error_code": str(code)[:64]}
+        case_evidence = results[case["id"]].get("evidence", [])
+        results[case["id"]]["evaluation_evidence_match"] = has_evaluation_record(
+            case_evidence,
+            run_id=dataset["run_id"],
+            case_id=case["id"],
+        )
+        results[case["id"]]["evaluation_release_event_match"] = (
+            has_evaluation_record(
+                case_evidence,
+                run_id=dataset["run_id"],
+                case_id=case["id"],
+                event_type="release_deployed",
+            )
+            if case["id"] in contexts else None
+        )
         results[case["id"]].update({
             "evaluation_run_id": dataset["run_id"],
             "evaluation_trace_id": trace_id,

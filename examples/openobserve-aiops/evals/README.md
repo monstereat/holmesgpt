@@ -1,6 +1,6 @@
 # Known-root-cause evaluation
 
-`known_root_causes.json` contains 20 synthetic, bounded evidence bundles for the OpenObserve + HolmesGPT order-service demo. Each case records its source ID, alert input, evidence, reference diagnosis, expected findings, unsupported claims, and a safe next step. The cluster labels are a curated taxonomy of these fixtures, not measured model results.
+`known_root_causes.json` contains 20 synthetic, bounded evidence bundles for the OpenObserve + HolmesGPT order-service demo. Each case records its source ID, alert input, evidence, reference diagnosis, expected findings, unsupported claims, and a safe next step. The cluster labels are a curated taxonomy of these fixtures, not measured model results. Report schema 1.1 adds exact-case evidence and release-event retrieval counts; diagnosis scoring remains `not_scored` until reviewed with a defensible rubric.
 
 ## Run a mock report
 

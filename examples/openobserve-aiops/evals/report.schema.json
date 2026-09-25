@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:holmes-openobserve-evaluation-report:1.0.0",
+  "$id": "urn:holmes-openobserve-evaluation-report:1.1.0",
   "title": "Holmes OpenObserve evaluation report",
   "type": "object",
-  "required": ["schema_version", "mode", "evaluated_at", "case_source", "evaluation_run_id", "seeded_record_count", "counts", "scoring", "cluster_taxonomy", "cases"],
+  "required": ["schema_version", "mode", "evaluated_at", "case_source", "evaluation_run_id", "seeded_record_count", "counts", "retrieval_coverage", "scoring", "cluster_taxonomy", "cases"],
   "properties": {
-    "schema_version": {"const": "1.0.0"},
+    "schema_version": {"const": "1.1.0"},
     "mode": {"enum": ["mock", "live"]},
     "evaluated_at": {"type": "string", "format": "date-time"},
     "case_source": {"const": "synthetic_fixture"},
@@ -13,8 +13,23 @@
     "seeded_record_count": {"type": ["integer", "null"], "minimum": 1, "maximum": 100},
     "counts": {
       "type": "object",
-      "required": ["total", "live_errors"],
-      "properties": {"total": {"const": 20}, "live_errors": {"type": "integer", "minimum": 0, "maximum": 20}},
+      "required": ["total", "live_errors", "matching_case_evidence", "release_event_cases", "matching_release_events"],
+      "properties": {
+        "total": {"const": 20},
+        "live_errors": {"type": "integer", "minimum": 0, "maximum": 20},
+        "matching_case_evidence": {"type": "integer", "minimum": 0, "maximum": 20},
+        "release_event_cases": {"type": "integer", "minimum": 0, "maximum": 20},
+        "matching_release_events": {"type": "integer", "minimum": 0, "maximum": 20}
+      },
+      "additionalProperties": false
+    },
+    "retrieval_coverage": {
+      "type": "object",
+      "required": ["case_evidence_matches", "release_event_matches"],
+      "properties": {
+        "case_evidence_matches": {"type": "integer", "minimum": 0, "maximum": 20},
+        "release_event_matches": {"type": "integer", "minimum": 0, "maximum": 20}
+      },
       "additionalProperties": false
     },
     "scoring": {"const": "not_scored"},
@@ -25,7 +40,7 @@
       "maxItems": 20,
       "items": {
         "type": "object",
-        "required": ["case_id", "source", "mode", "input", "evidence", "evidence_source", "evidence_status", "diagnosis", "reference_diagnosis", "expected_findings", "assumptions", "unsupported_claims", "safe_next_step", "cluster", "cluster_source", "scoring", "error_code"],
+        "required": ["case_id", "source", "mode", "input", "evidence", "evidence_source", "evidence_status", "evaluation_evidence_match", "evaluation_release_event_match", "diagnosis", "reference_diagnosis", "expected_findings", "assumptions", "unsupported_claims", "safe_next_step", "cluster", "cluster_source", "scoring", "error_code"],
         "properties": {
           "case_id": {"type": "string", "minLength": 1},
           "source": {"type": "string", "pattern": "^known_root_causes\\.json#"},
@@ -44,6 +59,8 @@
           "evidence": {"type": "array"},
           "evidence_source": {"enum": ["synthetic_fixture", "live_openobserve"]},
           "evidence_status": {"enum": ["not_run", "fixture_only", "verified", "insufficient_data", "unavailable"]},
+          "evaluation_evidence_match": {"type": ["boolean", "null"]},
+          "evaluation_release_event_match": {"type": ["boolean", "null"]},
           "diagnosis": {"type": ["string", "null"]},
           "reference_diagnosis": {"type": "string"},
           "expected_findings": {"type": "array", "items": {"type": "string"}},
