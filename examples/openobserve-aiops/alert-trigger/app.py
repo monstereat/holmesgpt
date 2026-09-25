@@ -1,15 +1,21 @@
 """Authenticated webhook API and local database migration lifecycle."""
 
+import base64
+import hashlib
 import hmac
 import json
 import os
 import re
+import secrets
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 import psycopg
+from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from psycopg.types.json import Jsonb
@@ -20,8 +26,66 @@ from models import IncidentInput, Principal
 from store import create_incident
 from trigger import MAX_BODY_BYTES, normalize_alert
 from worker import start_outbox_dispatcher
+from identity import OIDCSettings, load_oidc_settings, principal_claims
 
 PUBLIC_PATH = Path(__file__).parent / "public"
+SESSION_COOKIE_NAME = "aiops_session"
+OIDC_STATE_COOKIE_NAME = "aiops_oidc_state"
+OIDC_SESSION_TTL_SECONDS = 900
+
+
+def _auth_mode() -> str:
+    runtime = os.getenv("AIOPS_ENV", "production")
+    default = "local" if runtime == "local" else "oidc"
+    mode = os.getenv("AIOPS_AUTH_MODE", default)
+    if mode not in {"local", "oidc"} or (mode == "local" and runtime != "local"):
+        raise RuntimeError("Local password authentication is only permitted when AIOPS_ENV=local")
+    return mode
+
+
+def _oidc_settings() -> OIDCSettings:
+    try:
+        return load_oidc_settings(dict(os.environ))
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from None
+
+
+def _oidc_client(settings: OIDCSettings | None = None):
+    settings = settings or _oidc_settings()
+    registry = OAuth()
+    registry.register(
+        name="workforce",
+        client_id=settings.client_id,
+        client_secret=settings.client_secret,
+        server_metadata_url=settings.metadata_url,
+        client_kwargs={"scope": " ".join(settings.scopes)},
+    )
+    return registry.create_client("workforce")
+
+
+async def _exchange_oidc_code(settings: OIDCSettings, metadata: dict[str, object], code: str, verifier: str):
+    async with AsyncOAuth2Client(settings.client_id, settings.client_secret) as client:
+        return await client.fetch_token(
+            str(metadata["token_endpoint"]),
+            grant_type="authorization_code",
+            code=code,
+            redirect_uri=settings.redirect_uri,
+            code_verifier=verifier,
+        )
+
+
+def _validate_auth_configuration() -> OIDCSettings | None:
+    mode = _auth_mode()
+    raw_users = _test_users_configuration()
+    if mode == "local":
+        return None
+    if raw_users:
+        raise RuntimeError("AIOPS_TEST_USERS_JSON cannot be used with OIDC authentication")
+    if len(os.getenv("SESSION_SIGNING_KEY", "")) < 32:
+        raise RuntimeError("SESSION_SIGNING_KEY must contain at least 32 bytes for OIDC authentication")
+    if os.getenv("AIOPS_ENV", "production") != "local" and os.getenv("SESSION_COOKIE_SECURE", "true").lower() != "true":
+        raise RuntimeError("SESSION_COOKIE_SECURE must be true for OIDC authentication")
+    return _oidc_settings()
 
 
 class LoginRequest(BaseModel):
@@ -114,14 +178,20 @@ def _test_users_configuration() -> str:
     return raw_users
 
 
-def _load_principal(authorization: str | None) -> Principal:
-    if not authorization or not authorization.startswith("Bearer "):
+def _load_principal(authorization: str | None, session_token: str | None = None) -> Principal:
+    token = session_token
+    oidc_mode = _auth_mode() == "oidc"
+    if oidc_mode and not session_token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not oidc_mode and authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
     key = os.getenv("SESSION_SIGNING_KEY", "")
     if len(key) < 32:
         raise HTTPException(status_code=503, detail="Session authentication is not configured")
     try:
-        token_principal = parse_session(authorization[7:], key)
+        token_principal = parse_session(token, key)
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid or expired session") from None
     with psycopg.connect(_database_url()) as conn:
@@ -160,9 +230,14 @@ def _require_demo_actions_enabled() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    raw_users = _test_users_configuration()
+    settings = _validate_auth_configuration()
+    if settings:
+        metadata = await _oidc_client(settings).load_server_metadata()
+        if metadata.get("issuer") != settings.issuer or "S256" not in metadata.get("code_challenge_methods_supported", []):
+            raise RuntimeError("OIDC discovery issuer or PKCE S256 capability is invalid")
     database_url = os.getenv("DATABASE_URL", "")
     if database_url:
+        raw_users = _test_users_configuration()
         if raw_users:
             _seed_test_users(database_url, raw_users)
         dispatcher = start_outbox_dispatcher()
@@ -175,6 +250,19 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Holmes AIOps Incident Service", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def protect_cookie_authenticated_mutations(request: Request, call_next):
+    unsafe_method = request.method in {"POST", "PUT", "PATCH", "DELETE"}
+    cookie_session = request.cookies.get(SESSION_COOKIE_NAME)
+    bearer_auth = request.headers.get("authorization", "")
+    if unsafe_method and cookie_session and (_auth_mode() == "oidc" or not bearer_auth):
+        expected_origin = os.getenv("AIOPS_PUBLIC_ORIGIN", "").rstrip("/")
+        origin = request.headers.get("origin", "").rstrip("/")
+        if not expected_origin or not origin or not hmac.compare_digest(origin, expected_origin):
+            return JSONResponse({"detail": "Request origin is not allowed"}, status_code=403)
+    return await call_next(request)
 
 
 @app.get("/healthz")
@@ -200,8 +288,141 @@ def workbench() -> FileResponse:
     return FileResponse(PUBLIC_PATH / "incidents.html")
 
 
+@app.get("/auth/mode")
+def auth_mode() -> dict[str, str]:
+    return {"mode": _auth_mode()}
+
+
+@app.get("/auth/login")
+async def oidc_login(request: Request):
+    if _auth_mode() != "oidc":
+        raise HTTPException(status_code=404, detail="OIDC login is not enabled")
+    settings = _oidc_settings()
+    client = _oidc_client(settings)
+    metadata = await client.load_server_metadata()
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(32)
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    authorization = await client.create_authorization_url(
+        redirect_uri=settings.redirect_uri,
+        scope=" ".join(settings.scopes),
+        state=state,
+        nonce=nonce,
+        code_challenge=challenge,
+        code_challenge_method="S256",
+    )
+    with psycopg.connect(_database_url()) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM oidc_login_transactions WHERE expires_at <= now()")
+            cursor.execute(
+                "INSERT INTO oidc_login_transactions (state_hash, code_verifier, nonce, expires_at) VALUES (%s, %s, %s, now() + interval '10 minutes')",
+                (hashlib.sha256(state.encode()).hexdigest(), verifier, nonce),
+            )
+    response = RedirectResponse(authorization["url"], status_code=302)
+    response.set_cookie(
+        OIDC_STATE_COOKIE_NAME,
+        state,
+        httponly=True,
+        secure=os.getenv("SESSION_COOKIE_SECURE", "true" if os.getenv("AIOPS_ENV", "production") != "local" else "false").lower() == "true",
+        samesite="lax",
+        max_age=600,
+        path="/auth/oidc/callback",
+    )
+    return response
+
+
+@app.get("/auth/oidc/callback")
+async def oidc_callback(request: Request):
+    if _auth_mode() != "oidc":
+        raise HTTPException(status_code=404, detail="OIDC login is not enabled")
+    settings = _oidc_settings()
+    state = request.query_params.get("state", "")
+    code = request.query_params.get("code", "")
+    state_cookie = request.cookies.get(OIDC_STATE_COOKIE_NAME, "")
+    if not state or not code or len(state) > 256 or not hmac.compare_digest(state, state_cookie):
+        raise HTTPException(status_code=401, detail="OIDC sign-in failed")
+    state_hash = hashlib.sha256(state.encode()).hexdigest()
+    try:
+        with psycopg.connect(_database_url()) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM oidc_login_transactions WHERE state_hash = %s AND expires_at > now() RETURNING code_verifier, nonce",
+                    (state_hash,),
+                )
+                transaction = cursor.fetchone()
+        if not transaction:
+            raise ValueError("OIDC transaction expired or was already used")
+        client = _oidc_client(settings)
+        metadata = await client.load_server_metadata()
+        token = await _exchange_oidc_code(settings, metadata, code, transaction[0])
+        claims = await client.parse_id_token(token, nonce=transaction[1])
+        if not claims:
+            raise ValueError("OIDC response has no verified identity claims")
+        issuer, subject, username, role, scopes = principal_claims(claims, settings)
+    except Exception:
+        raise HTTPException(status_code=401, detail="OIDC sign-in failed") from None
+
+    try:
+        with psycopg.connect(_database_url()) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO users (id, username, password_hash, role, resource_scopes, oidc_issuer, oidc_subject, active)
+                       VALUES (%s, %s, NULL, %s, %s, %s, %s, TRUE)
+                       ON CONFLICT (oidc_issuer, oidc_subject) DO UPDATE SET
+                           username = EXCLUDED.username, role = EXCLUDED.role,
+                           resource_scopes = EXCLUDED.resource_scopes
+                       RETURNING id, username, role, resource_scopes, active""",
+                    (str(uuid.uuid4()), username, role, scopes, issuer, subject),
+                )
+                user = cursor.fetchone()
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(status_code=403, detail="OIDC identity is already mapped to another user") from None
+    if not user or not user[4]:
+        raise HTTPException(status_code=403, detail="OIDC user is inactive")
+    principal = Principal(str(user[0]), user[1], user[2], tuple(user[3]))
+    session_token = create_session(
+        principal,
+        os.environ["SESSION_SIGNING_KEY"],
+        ttl_seconds=OIDC_SESSION_TTL_SECONDS,
+    )
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        session_token,
+        httponly=True,
+        secure=os.getenv("SESSION_COOKIE_SECURE", "true" if os.getenv("AIOPS_ENV", "production") != "local" else "false").lower() == "true",
+        samesite="lax",
+        max_age=OIDC_SESSION_TTL_SECONDS,
+        path="/",
+    )
+    response.delete_cookie(
+        OIDC_STATE_COOKIE_NAME,
+        httponly=True,
+        secure=os.getenv("SESSION_COOKIE_SECURE", "true" if os.getenv("AIOPS_ENV", "production") != "local" else "false").lower() == "true",
+        samesite="lax",
+        path="/auth/oidc/callback",
+    )
+    return response
+
+
+@app.post("/auth/logout")
+def logout(request: Request):
+    response = JSONResponse({"status": "logged_out"})
+    response.delete_cookie(
+        SESSION_COOKIE_NAME,
+        httponly=True,
+        secure=os.getenv("SESSION_COOKIE_SECURE", "true" if os.getenv("AIOPS_ENV", "production") != "local" else "false").lower() == "true",
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
 @app.post("/auth/login")
 def login(body: LoginRequest) -> dict[str, str]:
+    if _auth_mode() != "local":
+        raise HTTPException(status_code=404, detail="Password login is only available in the local environment")
     key = os.getenv("SESSION_SIGNING_KEY", "")
     if len(key) < 32:
         raise HTTPException(status_code=503, detail="Session authentication is not configured")
@@ -212,15 +433,15 @@ def login(body: LoginRequest) -> dict[str, str]:
                 (body.username,),
             )
             user = cursor.fetchone()
-    if not user or not verify_password(body.password, user[2]):
+    if not user or not user[2] or not verify_password(body.password, user[2]):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     token = create_session(Principal(str(user[0]), user[1], user[3], tuple(user[4])), key)
     return {"access_token": token, "token_type": "Bearer"}
 
 
 @app.get("/auth/me")
-def who_am_i(authorization: str | None = Header(default=None)) -> dict[str, object]:
-    principal = _load_principal(authorization)
+def who_am_i(request: Request, authorization: str | None = Header(default=None)) -> dict[str, object]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     return {
         "user_id": principal.user_id,
         "username": principal.username,
@@ -231,11 +452,12 @@ def who_am_i(authorization: str | None = Header(default=None)) -> dict[str, obje
 
 @app.get("/api/incidents")
 def list_incidents(
+    request: Request,
     status: str | None = Query(default=None, max_length=40),
     limit: int = Query(default=50, ge=1, le=100),
     authorization: str | None = Header(default=None),
 ) -> dict[str, object]:
-    principal = _load_principal(authorization)
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "incident:read", "order-service")
     if status and status not in {"open", "investigating", "awaiting_approval", "resolved", "closed"}:
         raise HTTPException(status_code=400, detail="Invalid incident status")
@@ -261,8 +483,8 @@ def list_incidents(
 
 
 @app.get("/api/incidents/{incident_id}")
-def get_incident(incident_id: str, authorization: str | None = Header(default=None)) -> dict[str, object]:
-    principal = _load_principal(authorization)
+def get_incident(incident_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, object]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "incident:read", "order-service")
     try:
         incident_uuid = str(uuid.UUID(incident_id))
@@ -320,8 +542,8 @@ def get_incident(incident_id: str, authorization: str | None = Header(default=No
 
 
 @app.get("/api/incidents/{incident_id}/retrospective")
-def get_retrospective(incident_id: str, authorization: str | None = Header(default=None)) -> dict[str, object]:
-    principal = _load_principal(authorization)
+def get_retrospective(incident_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, object]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "incident:read", "order-service")
     try:
         incident_uuid = str(uuid.UUID(incident_id))
@@ -358,9 +580,10 @@ def get_retrospective(incident_id: str, authorization: str | None = Header(defau
 def save_retrospective(
     incident_id: str,
     body: RetrospectiveRequest,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict[str, object]:
-    principal = _load_principal(authorization)
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "incident:review", "order-service")
     try:
         incident_uuid = str(uuid.UUID(incident_id))
@@ -394,12 +617,12 @@ def save_retrospective(
                     "INSERT INTO audit_events (incident_id, actor_id, event_type, details) VALUES (%s, %s, %s, %s)",
                     (incident_uuid, principal.user_id, f"retrospective.{status}", Jsonb({"status": status})),
                 )
-    return get_retrospective(incident_uuid, authorization)
+    return get_retrospective(incident_uuid, request, authorization)
 
 
 @app.post("/api/tasks/{task_id}/retry", status_code=202)
-def retry_task(task_id: str, authorization: str | None = Header(default=None)) -> dict[str, str]:
-    principal = _load_principal(authorization)
+def retry_task(task_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, str]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "task:retry", "order-service")
     try:
         task_uuid = str(uuid.UUID(task_id))
@@ -434,9 +657,10 @@ def retry_task(task_id: str, authorization: str | None = Header(default=None)) -
 def request_approval(
     incident_id: str,
     body: ApprovalRequest,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict[str, str]:
-    principal = _load_principal(authorization)
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "task:create", "order-service")
     _require_demo_actions_enabled()
     try:
@@ -472,9 +696,10 @@ def request_approval(
 def decide_approval(
     approval_id: str,
     body: ApprovalDecision,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict[str, str]:
-    principal = _load_principal(authorization)
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "approval:review", "order-service")
     try:
         approval_uuid = str(uuid.UUID(approval_id))
@@ -510,8 +735,8 @@ def decide_approval(
 
 
 @app.post("/api/approvals/{approval_id}/cancel")
-def cancel_approval(approval_id: str, authorization: str | None = Header(default=None)) -> dict[str, str]:
-    principal = _load_principal(authorization)
+def cancel_approval(approval_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, str]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "task:create", "order-service")
     try:
         approval_uuid = str(uuid.UUID(approval_id))
@@ -538,8 +763,8 @@ def cancel_approval(approval_id: str, authorization: str | None = Header(default
 
 
 @app.post("/api/approvals/{approval_id}/execute")
-def execute_approval(approval_id: str, authorization: str | None = Header(default=None)) -> dict[str, object]:
-    principal = _load_principal(authorization)
+def execute_approval(approval_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, object]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "task:create", "order-service")
     _require_demo_actions_enabled()
     try:

@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app import _require_demo_actions_enabled, _test_users_configuration, app, readyz
+from app import _auth_mode, _require_demo_actions_enabled, _test_users_configuration, app, readyz
 
 
 def test_test_user_seeding_requires_local_environment(monkeypatch):
@@ -25,6 +25,19 @@ def test_test_user_seeding_is_disabled_without_test_user_configuration(monkeypat
     monkeypatch.setenv("AIOPS_ENV", "production")
     monkeypatch.delenv("AIOPS_TEST_USERS_JSON", raising=False)
     assert _test_users_configuration() == ""
+
+
+def test_local_password_auth_is_rejected_outside_local_runtime(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.setenv("AIOPS_AUTH_MODE", "local")
+    with pytest.raises(RuntimeError, match="only permitted when AIOPS_ENV=local"):
+        _auth_mode()
+
+
+def test_oidc_is_the_default_auth_mode_outside_local_runtime(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.delenv("AIOPS_AUTH_MODE", raising=False)
+    assert _auth_mode() == "oidc"
 
 
 def test_demo_remediation_is_disabled_by_default(monkeypatch):

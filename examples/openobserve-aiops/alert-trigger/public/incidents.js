@@ -8,6 +8,8 @@
   const listState = document.getElementById("list-state");
   const table = document.getElementById("incident-table");
   const detail = document.getElementById("incident-detail");
+  const oidcLogin = document.getElementById("oidc-login");
+  let authMode = "local";
   let principal = null;
 
   async function api(path, options = {}) {
@@ -15,9 +17,10 @@
     if (token()) headers.set("Authorization", `Bearer ${token()}`);
     if (options.body) headers.set("Content-Type", "application/json");
     const response = await fetch(path, { ...options, headers });
-    if (response.status === 401 && token()) {
+    if (response.status === 401) {
+      const wasAuthenticated = Boolean(token()) || authMode === "oidc";
       sessionStorage.removeItem(tokenKey);
-      showLogin("登录已过期，请重新登录。");
+      if (wasAuthenticated) showLogin("登录已过期，请重新登录。");
       throw new Error("登录已过期");
     }
     const body = await response.json().catch(() => ({}));
@@ -274,11 +277,25 @@
   });
   document.getElementById("refresh").addEventListener("click", loadIncidents);
   document.getElementById("status-filter").addEventListener("change", loadIncidents);
-  document.getElementById("logout").addEventListener("click", () => {
+  oidcLogin.addEventListener("click", () => { window.location.assign("/auth/login"); });
+  document.getElementById("logout").addEventListener("click", async () => {
+    if (authMode === "oidc") await fetch("/auth/logout", { method: "POST" }).catch(() => {});
     sessionStorage.removeItem(tokenKey);
     principal = null;
     detail.replaceChildren(el("p", "选择一条事故查看调查结果和时间线。", "muted"));
     showLogin();
   });
-  if (token()) enterWorkbench();
+  fetch("/auth/mode")
+    .then((response) => response.json())
+    .then((config) => {
+      authMode = config.mode;
+      if (authMode === "oidc") {
+        document.getElementById("local-login-title").textContent = "组织账号登录";
+        document.getElementById("local-login-description").textContent = "使用组织身份提供方登录。";
+        document.getElementById("login-form").classList.add("hidden");
+        oidcLogin.classList.remove("hidden");
+      }
+      if (token() || authMode === "oidc") enterWorkbench();
+    })
+    .catch(() => showLogin("无法读取登录配置，请稍后重试。"));
 })();

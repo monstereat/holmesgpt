@@ -35,3 +35,11 @@ def test_roles_and_resource_scopes_are_both_required():
     assert authorize(approver, "approval:review", "order-service")
     with pytest.raises(PermissionError):
         require_permission(viewer, "approval:review", "order-service")
+
+
+def test_oidc_session_lifetime_is_bounded():
+    principal = Principal("u1", "user", "viewer", ("order-service",))
+    token = create_session(principal, "x" * 32, now=100, ttl_seconds=900)
+    assert parse_session(token, "x" * 32, now=999) == principal
+    with pytest.raises(ValueError, match="between 60 seconds and 8 hours"):
+        create_session(principal, "x" * 32, ttl_seconds=0)

@@ -44,18 +44,19 @@
     <header><h1>Holmes AIOps · 事故工作台</h1><span id="identity" class="muted"></span></header>
     <main>
       <section id="login-panel" class="card login">
-        <h2>登录本机测试环境</h2>
-        <p class="muted">请使用由本地环境配置的测试账号。</p>
+        <h2 id="local-login-title">登录本机测试环境</h2>
+        <p id="local-login-description" class="muted">请使用由本地环境配置的测试账号。</p>
         <form id="login-form">
           <label for="username">用户名</label><input id="username" name="username" autocomplete="username" required />
           <label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required />
           <p id="login-message" class="message" role="alert"></p>
           <button class="primary" type="submit">登录</button>
         </form>
+        <button id="oidc-login" class="primary hidden" type="button">使用组织账号登录</button>
       </section>
       <section id="workbench" class="hidden">
         <div class="toolbar">
-          <div><h2>事故</h2><span class="muted">本机测试项目 · order-service</span></div>
+          <div><h2>事故</h2><span class="muted">项目 · order-service</span></div>
           <div class="toolbar-actions">
             <select id="status-filter" aria-label="按状态筛选"><option value="">全部状态</option><option>open</option><option>investigating</option><option>awaiting_approval</option><option>resolved</option><option>closed</option></select>
             <button id="refresh">刷新</button><button id="logout">退出</button>

@@ -61,7 +61,15 @@ def _signing_key(key: str | bytes) -> bytes:
     return raw
 
 
-def create_session(principal: Principal, key: str | bytes, *, now: int | None = None) -> str:
+def create_session(
+    principal: Principal,
+    key: str | bytes,
+    *,
+    now: int | None = None,
+    ttl_seconds: int = SESSION_TTL_SECONDS,
+) -> str:
+    if isinstance(ttl_seconds, bool) or not 60 <= ttl_seconds <= SESSION_TTL_SECONDS:
+        raise ValueError("Session lifetime must be between 60 seconds and 8 hours")
     issued = int(time.time() if now is None else now)
     payload = {
         "sub": principal.user_id,
@@ -69,7 +77,7 @@ def create_session(principal: Principal, key: str | bytes, *, now: int | None = 
         "role": principal.role,
         "scopes": list(principal.resource_scopes),
         "iat": issued,
-        "exp": issued + SESSION_TTL_SECONDS,
+        "exp": issued + ttl_seconds,
     }
     body = _encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
     signature = hmac.new(_signing_key(key), body.encode(), hashlib.sha256).digest()
