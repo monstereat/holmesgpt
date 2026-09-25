@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import seed_local_evidence as seed_evidence_module
 from seed_local_evidence import _validate_local_url, build_records, seed_local_evidence
 from run_evals import load_evaluation_contexts, validate_local_holmes_url
 from holmes_client import build_investigation_question
@@ -117,7 +118,9 @@ def test_holmes_evaluation_accepts_local_api():
 
 def test_seed_local_evidence_uses_local_json_ingest_and_checks_accepted_count():
     class Response:
-        status = 200
+        def __init__(self, result):
+            self.status = 200
+            self.result = result
 
         def __enter__(self):
             return self
@@ -126,26 +129,35 @@ def test_seed_local_evidence_uses_local_json_ingest_and_checks_accepted_count():
             pass
 
         def read(self, _limit):
-            return json.dumps({"status": [{"successful": 2, "failed": 0}]}).encode()
+            return json.dumps(self.result).encode()
 
     class Opener:
-        request = None
+        requests = []
 
         def open(self, request, timeout):
-            self.request = request
-            assert timeout == 15
-            return Response()
+            self.requests.append(request)
+            if request.full_url.endswith("/app_logs/_json"):
+                assert timeout == 15
+                return Response({"status": [{"successful": 2, "failed": 0}]})
+            assert request.full_url == "http://127.0.0.1:5080/api/default/_search"
+            assert timeout == 10
+            return Response({"total": 2, "hits": []})
 
     opener = Opener()
     dataset = seed_local_evidence(
         [CASE], base_url="http://127.0.0.1:5080", username="local-test", password="not-a-real-secret", opener=opener
     )
 
-    assert opener.request.full_url == "http://127.0.0.1:5080/api/default/app_logs/_json"
-    records = json.loads(opener.request.data)
+    ingest_request, search_request = opener.requests
+    assert ingest_request.full_url == "http://127.0.0.1:5080/api/default/app_logs/_json"
+    records = json.loads(ingest_request.data)
     assert len(records) == dataset["record_count"] == 2
     assert dataset["trace_ids"][CASE["id"]] == records[0]["trace_id"]
     assert dataset["run_id"] == records[0]["evaluation_run_id"]
+    search = json.loads(search_request.data)
+    assert search_request.full_url == "http://127.0.0.1:5080/api/default/_search"
+    assert dataset["run_id"] in search["query"]["sql"]
+    assert search["query"]["size"] == 2
 
 
 def test_seed_local_evidence_rejects_partial_ingestion_response():
@@ -169,3 +181,35 @@ def test_seed_local_evidence_rejects_partial_ingestion_response():
         seed_local_evidence(
             [CASE], base_url="http://localhost:5080", username="local-test", password="not-a-real-secret", opener=Opener()
         )
+
+
+def test_search_visibility_waits_for_all_current_run_records(monkeypatch):
+    class Response:
+        def __init__(self, total):
+            self.total = total
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def read(self, _limit):
+            return json.dumps({"total": self.total}).encode()
+
+    class Opener:
+        totals = iter((0, 2))
+        calls = 0
+
+        def open(self, _request, timeout):
+            self.calls += 1
+            assert timeout == 10
+            return Response(next(self.totals))
+
+    monkeypatch.setattr(seed_evidence_module, "SEARCH_VISIBILITY_TIMEOUT_SECONDS", 1)
+    monkeypatch.setattr(seed_evidence_module, "SEARCH_VISIBILITY_POLL_SECONDS", 0)
+    opener = Opener()
+    seed_evidence_module._wait_for_search_visibility(
+        "http://127.0.0.1:5080", "local-test", "not-a-real-secret", "c" * 32, 1_800_000_000_000_000, 2, opener
+    )
+    assert opener.calls == 2

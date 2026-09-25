@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境优先：T000–T009 已部署，真实 Holmes 接入和 20 案 live 评测已跑通；诊断准确率尚未人工评分。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。20 案 live 报告含 20 条诊断、217 条证据、14/20 病例证据匹配、3/3 发布事件匹配、0 个调用错误，scoring 仍为 `not_scored`。Holmes 只能经受限的流列表/搜索端点访问 allowlist 流。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
+**本机 Docker 测试环境优先：T000–T009 已部署，真实 Holmes 接入和 20 案 live 评测已跑通；诊断准确率尚未人工评分。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。最近一次 live 报告有 20 案、40 条合成记录、16/20 病例证据匹配、1/3 发布事件匹配和 1 个 Holmes 工具错误；scoring 仍为 `not_scored`。新一轮评测会先等本轮记录全部可搜索再调用模型。Holmes 只能经受限的流列表/搜索端点访问 allowlist 流。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
 
 ## 已完成并验证
 
@@ -29,12 +29,14 @@
 - 生产准备增量：把 incident API 启动期 schema migration 拆成 `migration_runner.py` / `migrate.py` 一次性迁移命令；本机 Compose 的 `incident-migrate` 必须成功退出后 API 和 worker 才启动。测试身份仅在显式 `AIOPS_ENV=local` 时可注入，其他环境误配置会拒绝启动。演示 `set-chaos-mode` 处置默认关闭，本机 Compose 显式启用；关闭时 API 拒绝新建和执行演示动作。Incident API 增加 `/readyz` 检查 PostgreSQL，Compose 将其作为 API 容器健康探针；worker 健康探针要求 Celery 经 Redis 返回 `pong`，重建后的容器状态为 `healthy`。强制重建当前测试镜像后的隔离 Compose 测试 **54 passed，1 warning**；本机 migration 容器退出码 0，数据库登记 0001–0003，API `/healthz` 和 `/readyz` 返回成功。生产仍需目标平台 migration Job/release gate、独立低权限 migration 身份、正式身份联邦及队列/延迟告警。
 - 事故 worker 通过持久任务调用 DeepSeek 的端到端验证已完成；这证明任务链路和证据持久化可用，但不会替代诊断质量人工评分。
 - T006 增量：live runner 检查 DeepSeek 凭据、Holmes 本机 URL 与健康状态，再向本机 OpenObserve 写入唯一 run/trace ID 的合成语料并逐例调用 Holmes。真实 20 案运行已完成；发布上下文以结构化事件写入，Runbook 来源随请求传入。报告计分保持 `not_scored`，并分别核验病例证据与发布事件匹配。
+- T006 增量：本机 OpenObserve 返回全量 ingestion success 后，runner 再按唯一 run ID 等待 `_search` 查到预期全部行，最多等待 30 秒；超时、部分结果或响应异常会在调用 Holmes 前失败。定向 seeder 测试 16 passed；真实 2 行 OpenObserve smoke test 确认两行均可搜索。随后有效 20 案 DeepSeek 评测报告 schema 1.2 校验通过，40 条记录、16/20 病例证据匹配、1/3 发布事件匹配、1 个 `holmes_tool_error`（`order-database-deploy-mismatch`）；诊断评分为 `not_scored`，并非准确率结论。报告在本机 `/tmp/holmes-aiops-live-report-visibility-valid.json`。此前另一次 20 案尝试因 Holmes 容器未加载私有 DeepSeek Key 而 20/20 失败，属于配置错误运行，不计为评测结果。
 - Runbook 增量：Holmes 的自定义技能目录现包含订单库存、数据库迁移不匹配和发布回归三份只读 Skill；评测用例引用相应 Skill。定向测试扫描通过，运行中的 Holmes 容器从实际挂载目录加载到 3 个 Skill。
 
 ## 待办
 
 1. 用本机告警入口和持久任务 worker 完成一次真实 500 告警端到端调查，核对调查状态、工具证据和审计记录；不得把模型诊断文案直接当成根因准确性评分。
-2. 生产部署决策与分阶段验收见 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](examples/openobserve-aiops/PRODUCTION-READINESS.md)，其中平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍待负责人确认与单独授权。
+2. 分析本轮 live 报告中的 `order-database-deploy-mismatch` 工具错误、4 个未命中病例（含该工具错误病例）和 2 个未命中发布事件；人工评分前维持 `not_scored`。
+3. 生产部署决策与分阶段验收见 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](examples/openobserve-aiops/PRODUCTION-READINESS.md)，其中平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍待负责人确认与单独授权。
 
 ## 阻塞与授权门槛
 
@@ -61,6 +63,7 @@
 - `pg_dump`/`pg_restore` 恢复到单独 `aiops_restore_test` 数据库成功；恢复库含 1 条 incident，未覆盖活动库或移除数据卷。
 - T006 20 例 mock 报告和病例/runbook 引用测试已验证；mock 报告为 `not_scored`，不是 Holmes 诊断质量结果。
 - 20 案 live Holmes 评测已完成并校验：20 条诊断、217 条工具证据、14/20 案例证据匹配、3/3 发布事件匹配、0 个调用错误；`scoring` 保持 `not_scored`。实际告警 worker 也已通过：webhook 创建持久事故和任务，授权手动重试后任务以一次 attempt 完成，保存 13 条已验证证据并写入 5 条任务审计事件。本机 OpenObserve OSS 通过只读代理和网络隔离约束 Holmes，但不具备原生 RBAC。
+- 2026-09-25 T006 可搜索性回归：16 项 seeder 单测通过；本机 OpenObserve 两条 synthetic 行写入后均可通过 `_search` 检索。20 案 live 报告 JSON Schema 1.2 校验通过：20 案、40 条记录、16/20 本轮病例证据命中、1/3 release event 命中、1 个工具错误，`not_scored`。报告 `/tmp/holmes-aiops-live-report-visibility-valid.json`。
 
 ## 详细进度与验证记录
 
