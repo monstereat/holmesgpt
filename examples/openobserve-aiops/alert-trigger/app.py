@@ -21,7 +21,6 @@ from store import create_incident
 from trigger import MAX_BODY_BYTES, normalize_alert
 from worker import start_outbox_dispatcher
 
-MIGRATIONS_PATH = Path(__file__).parent / "migrations"
 PUBLIC_PATH = Path(__file__).parent / "public"
 
 
@@ -147,30 +146,10 @@ def _order_action_client() -> OrderActionClient:
         raise HTTPException(status_code=503, detail="Demo action service is not configured") from None
 
 
-def apply_migrations(database_url: str) -> None:
-    with psycopg.connect(database_url) as conn:
-        conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())")
-        for path in sorted(MIGRATIONS_PATH.glob("*.sql")):
-            version = path.stem
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT 1 FROM schema_migrations WHERE version = %s", (version,))
-                if cursor.fetchone():
-                    continue
-            script = path.read_text(encoding="utf-8").strip()
-            if script.upper().startswith("BEGIN;"):
-                script = script[6:].lstrip()
-            if script.upper().endswith("COMMIT;"):
-                script = script[:-7].rstrip()
-            with conn.transaction():
-                conn.execute(script, prepare=False)
-                conn.execute("INSERT INTO schema_migrations (version) VALUES (%s) ON CONFLICT DO NOTHING", (version,))
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     database_url = os.getenv("DATABASE_URL", "")
     if database_url:
-        apply_migrations(database_url)
         raw_users = os.getenv("AIOPS_TEST_USERS_JSON", "")
         if raw_users:
             _seed_test_users(database_url, raw_users)

@@ -75,7 +75,7 @@ Live 20-case evaluation seeds at most 100 synthetic evidence rows into the local
 
 ## Persistence and recovery
 
-PostgreSQL persists incidents, tasks, users, approvals, retrospectives, audit and outbox records in `aiops-postgres-data`. The incident API applies versioned SQL migrations at startup. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.
+PostgreSQL persists incidents, tasks, users, approvals, retrospectives, audit and outbox records in `aiops-postgres-data`. The one-shot `incident-migrate` service applies versioned SQL migrations before the API and worker start; the API processes never apply schema changes during startup. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.
 
 To verify a local backup and restore without overwriting the active database:
 

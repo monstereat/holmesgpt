@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 import psycopg
 import pytest
 
-from app import apply_migrations
+from migration_runner import apply_migrations
 from models import IncidentInput
 from store import create_incident, stable_fingerprint
 from tasks import claim_task, fail_task, retry_delay

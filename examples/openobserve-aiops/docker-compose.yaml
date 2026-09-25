@@ -157,6 +157,19 @@ services:
       timeout: 5s
       retries: 12
 
+  incident-migrate:
+    build:
+      context: ./alert-trigger
+      target: runtime
+    command: ["python", "migrate.py"]
+    environment:
+      DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
+    networks:
+      - app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   incident-api:
     build:
       context: ./alert-trigger
@@ -177,6 +190,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      incident-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       order-service:
@@ -204,6 +219,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      incident-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       holmes-api:

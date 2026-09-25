@@ -6,8 +6,9 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from app import app, apply_migrations
+from app import app
 from auth import hash_password
+from migration_runner import apply_migrations
 from models import IncidentInput
 from store import create_incident, stable_fingerprint
 
