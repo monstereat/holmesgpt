@@ -18,9 +18,10 @@ export ALERT_WEBHOOK_TOKEN="$(openssl rand -hex 32)"
 export ORDER_ACTION_TOKEN="$(openssl rand -hex 32)"
 export HOLMES_API_KEY="$(openssl rand -hex 32)"
 export SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
+export ADMIN_PASSWORD="$(openssl rand -hex 24)"
 export OPERATOR_PASSWORD="$(openssl rand -hex 24)"
 export APPROVER_PASSWORD="$(openssl rand -hex 24)"
-export AIOPS_TEST_USERS_JSON="$(python3 -c 'import json,os; print(json.dumps([{"username":"operator","password":os.environ["OPERATOR_PASSWORD"],"role":"operator","resource_scopes":["order-service"]},{"username":"approver","password":os.environ["APPROVER_PASSWORD"],"role":"approver","resource_scopes":["order-service"]}]))')"
+export AIOPS_TEST_USERS_JSON="$(python3 -c 'import json,os; print(json.dumps([{"username":"admin","password":os.environ["ADMIN_PASSWORD"],"role":"admin","resource_scopes":["order-service"]},{"username":"operator","password":os.environ["OPERATOR_PASSWORD"],"role":"operator","resource_scopes":["order-service"]},{"username":"approver","password":os.environ["APPROVER_PASSWORD"],"role":"approver","resource_scopes":["order-service"]}]))')"
 
 source "$HOME/.config/holmesgpt-aiops/deepseek.env"
 docker compose up -d --build
@@ -43,12 +44,14 @@ The model is selected through Holmes' `MODEL` environment variable, and LiteLLM 
 After startup:
 
 - Order-service demo: [http://localhost:8080](http://localhost:8080)
-- Holmes incident workbench: [http://localhost:8081](http://localhost:8081) (login with `operator` or `approver`)
+- Holmes incident workbench: [http://localhost:8081](http://localhost:8081) (local test logins: `admin`, `operator`, `approver`)
 - OpenObserve: [http://localhost:5080](http://localhost:5080)
 - Incident API liveness: `http://localhost:8081/healthz`; readiness: `http://localhost:8081/readyz`
 - Holmes API liveness: `http://localhost:5050/healthz`; readiness: `http://localhost:5050/readyz`
 
-The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action; Compose explicitly enables it with `AIOPS_DEMO_ACTIONS_ENABLED=true`. The action is disabled by default in every other environment, including for already approved requests. The separate `approver` can approve or reject it and edit/review incident retrospectives. The requester cannot approve their own request. Both accounts are local demo identities, not a production identity provider.
+The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action; Compose explicitly enables it with `AIOPS_DEMO_ACTIONS_ENABLED=true`. The action is disabled by default in every other environment, including for already approved requests. The separate `approver` can approve or reject it and edit/review incident retrospectives. The requester cannot approve their own request. All three accounts are local demo identities, not a production identity provider.
+
+The local `admin` can inspect application identity mappings and disable a user's workbench access. This does not change the user's identity-provider account; role and resource assignments remain controlled by OIDC group mappings. No local admin credential is committed.
 
 Check service state and liveness:
 

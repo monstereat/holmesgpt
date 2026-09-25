@@ -63,6 +63,11 @@
           </div>
         </div>
         <p id="page-message" class="message" role="status"></p>
+        <section id="user-admin" class="card hidden" aria-label="用户管理">
+          <div class="toolbar"><div><h2>用户访问</h2><span class="muted">仅查看身份映射并停用应用访问</span></div><button id="refresh-users" type="button">刷新用户</button></div>
+          <p id="user-admin-message" class="message" role="status"></p>
+          <table><thead><tr><th>用户名</th><th>角色</th><th>资源范围</th><th>状态</th><th>操作</th></tr></thead><tbody id="user-rows"></tbody></table>
+        </section>
         <div class="layout">
           <section class="card" aria-label="事故列表">
             <div id="list-state" class="muted">等待加载…</div>

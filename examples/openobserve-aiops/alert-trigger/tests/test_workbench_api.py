@@ -43,6 +43,8 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
         (str(uuid.uuid4()), "demo-operator", "operator-passphrase-123", "operator", ["order-service"]),
         (str(uuid.uuid4()), "demo-approver", "approver-passphrase-123", "approver", ["order-service"]),
         (str(uuid.uuid4()), "demo-outsider", "outsider-passphrase-123", "viewer", ["billing"]),
+        (str(uuid.uuid4()), "demo-admin", "admin-passphrase-123", "admin", ["order-service"]),
+        (str(uuid.uuid4()), "demo-admin-2", "admin2-passphrase-123", "admin", ["order-service"]),
     ]
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cursor:
@@ -64,6 +66,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             static_script = client.get("/incidents.js")
             assert static_script.status_code == 200
             assert "/retrospective" in static_script.text
+            assert "/api/users" in static_script.text
             assert "保存并标记已审核" in static_script.text
 
             def login(username, password):
@@ -90,6 +93,35 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
 
             outsider = login("demo-outsider", "outsider-passphrase-123")
             assert client.get("/api/incidents", headers=outsider).status_code == 403
+            assert client.get("/api/users", headers=viewer).status_code == 403
+
+            admin = login("demo-admin", "admin-passphrase-123")
+            admin_users = client.get("/api/users", headers=admin)
+            assert admin_users.status_code == 200
+            assert {user["username"] for user in admin_users.json()["items"]} >= {
+                "demo-viewer", "demo-admin", "demo-admin-2"
+            }
+            assert "password_hash" not in admin_users.text
+            admin_user_ids = {user["username"]: user["id"] for user in admin_users.json()["items"]}
+            assert client.post(f"/api/users/{uuid.uuid4()}/disable", headers=admin).status_code == 404
+            assert client.post(f"/api/users/{admin_user_ids['demo-admin']}/disable", headers=admin).status_code == 409
+
+            disabled_user = client.post(f"/api/users/{admin_user_ids['demo-outsider']}/disable", headers=admin)
+            assert disabled_user.status_code == 200
+            assert disabled_user.json()["status"] == "disabled"
+            assert client.get("/auth/me", headers=outsider).status_code == 401
+            assert client.get("/api/users", headers=admin).json()["items"]
+            with psycopg.connect(database_url) as conn:
+                event = conn.execute(
+                    "SELECT event_type FROM audit_events WHERE event_type = 'user.disabled' AND details->>'user_id' = %s",
+                    (admin_user_ids["demo-outsider"],),
+                ).fetchone()
+                assert event == ("user.disabled",)
+            assert client.post(f"/api/users/{admin_user_ids['demo-outsider']}/disable", headers=admin).json()["status"] == "already_disabled"
+
+            admin_2 = login("demo-admin-2", "admin2-passphrase-123")
+            assert client.post(f"/api/users/{admin_user_ids['demo-admin-2']}/disable", headers=admin).status_code == 200
+            assert client.get("/auth/me", headers=admin_2).status_code == 401
 
             operator = login("demo-operator", "operator-passphrase-123")
             approver = login("demo-approver", "approver-passphrase-123")
@@ -124,6 +156,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
         with psycopg.connect(database_url) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("DELETE FROM audit_events WHERE incident_id = %s", (incident["incident_id"],))
+                cursor.execute("DELETE FROM audit_events WHERE actor_id = ANY(%s::uuid[])", ([row[0] for row in users],))
                 cursor.execute("DELETE FROM outbox_events WHERE idempotency_key = %s", (f"investigate:{fingerprint}",))
                 cursor.execute("DELETE FROM tasks WHERE id = %s", (incident["task_id"],))
                 cursor.execute("DELETE FROM incidents WHERE id = %s", (incident["incident_id"],))

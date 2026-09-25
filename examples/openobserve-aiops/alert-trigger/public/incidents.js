@@ -9,6 +9,8 @@
   const table = document.getElementById("incident-table");
   const detail = document.getElementById("incident-detail");
   const oidcLogin = document.getElementById("oidc-login");
+  const userAdmin = document.getElementById("user-admin");
+  const userAdminMessage = document.getElementById("user-admin-message");
   let authMode = "local";
   let principal = null;
 
@@ -73,6 +75,44 @@
     } catch (error) {
       showError(pageMessage, error);
       listState.textContent = "事故列表加载失败。请重试。";
+    }
+  }
+
+  async function loadUsers() {
+    userAdminMessage.textContent = "";
+    try {
+      const result = await api("/api/users");
+      const rows = document.getElementById("user-rows");
+      rows.replaceChildren();
+      for (const user of result.items) {
+        const row = document.createElement("tr");
+        row.append(
+          el("td", user.username),
+          el("td", user.role),
+          el("td", (user.resource_scopes || []).join(", ") || "无"),
+          el("td", user.active ? "启用" : "已停用", "status"),
+        );
+        const action = el("td");
+        const button = el("button", user.active ? "停用" : "已停用");
+        button.type = "button";
+        button.disabled = !user.active || user.id === principal.user_id;
+        button.addEventListener("click", async () => {
+          if (!window.confirm(`停用 ${user.username} 的工作台访问？该操作不会移除其身份提供商账号。`)) return;
+          button.disabled = true;
+          try {
+            await api(`/api/users/${encodeURIComponent(user.id)}/disable`, { method: "POST" });
+            await loadUsers();
+          } catch (error) {
+            showError(userAdminMessage, error);
+            button.disabled = false;
+          }
+        });
+        action.append(button);
+        row.append(action);
+        rows.append(row);
+      }
+    } catch (error) {
+      showError(userAdminMessage, error);
     }
   }
 
@@ -252,6 +292,12 @@
       loginPanel.classList.add("hidden");
       workbench.classList.remove("hidden");
       document.getElementById("identity").textContent = `${principal.username} · ${principal.role}`;
+      if (principal.role === "admin") {
+        userAdmin.classList.remove("hidden");
+        await loadUsers();
+      } else {
+        userAdmin.classList.add("hidden");
+      }
       await loadIncidents();
     } catch (error) {
       if (token()) showLogin(error.message);
@@ -276,6 +322,7 @@
     finally { button.disabled = false; }
   });
   document.getElementById("refresh").addEventListener("click", loadIncidents);
+  document.getElementById("refresh-users").addEventListener("click", loadUsers);
   document.getElementById("status-filter").addEventListener("change", loadIncidents);
   oidcLogin.addEventListener("click", () => { window.location.assign("/auth/login"); });
   document.getElementById("logout").addEventListener("click", async () => {

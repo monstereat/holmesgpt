@@ -439,6 +439,66 @@ def login(body: LoginRequest) -> dict[str, str]:
     return {"access_token": token, "token_type": "Bearer"}
 
 
+@app.get("/api/users")
+def list_users(request: Request, authorization: str | None = Header(default=None)) -> dict[str, list[dict[str, object]]]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
+    _authorize(principal, "user:manage", "order-service")
+    with psycopg.connect(_database_url()) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, username, role, resource_scopes, active, created_at FROM users ORDER BY username"
+            )
+            rows = cursor.fetchall()
+    return {
+        "items": [
+            {
+                "id": str(row[0]),
+                "username": row[1],
+                "role": row[2],
+                "resource_scopes": list(row[3]),
+                "active": row[4],
+                "created_at": row[5].isoformat(),
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.post("/api/users/{user_id}/disable")
+def disable_user(user_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, str]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
+    _authorize(principal, "user:manage", "order-service")
+    try:
+        user_uuid = str(uuid.UUID(user_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="User not found") from None
+    if user_uuid == principal.user_id:
+        raise HTTPException(status_code=409, detail="You cannot disable your own account")
+
+    with psycopg.connect(_database_url()) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id FROM users WHERE role = 'admin' AND active = TRUE ORDER BY id FOR UPDATE")
+                active_admin_ids = cursor.fetchall()
+                cursor.execute(
+                    "SELECT id, username, role, active FROM users WHERE id = %s FOR UPDATE",
+                    (user_uuid,),
+                )
+                user = cursor.fetchone()
+                if not user:
+                    raise HTTPException(status_code=404, detail="User not found")
+                if not user[3]:
+                    return {"user_id": user_uuid, "status": "already_disabled"}
+                if user[2] == "admin" and len(active_admin_ids) <= 1:
+                    raise HTTPException(status_code=409, detail="The last active administrator cannot be disabled")
+                cursor.execute("UPDATE users SET active = FALSE WHERE id = %s", (user_uuid,))
+                cursor.execute(
+                    "INSERT INTO audit_events (actor_id, event_type, details) VALUES (%s, 'user.disabled', %s)",
+                    (principal.user_id, Jsonb({"user_id": user_uuid, "username": user[1]})),
+                )
+    return {"user_id": user_uuid, "status": "disabled"}
+
+
 @app.get("/auth/me")
 def who_am_i(request: Request, authorization: str | None = Header(default=None)) -> dict[str, object]:
     principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
