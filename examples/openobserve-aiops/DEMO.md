@@ -1,183 +1,55 @@
-# OpenObserve AIOps Demo：订单 HTTP 500 调查闭环
+# 本机 AIOps 演示：告警、调查、审批和测试处置
 
-启动 OpenObserve、NestJS 订单服务和告警接收器。三个容器属于同一个 Docker Compose 项目。
-演示链路为：浏览器异常及 Trace ID → 后端 Trace/日志 → OpenObserve 告警 →
-调查接收器。当前本地已验证数据采集和告警传递；真实 HolmesGPT 调查仍待验证。
+本流程仅操作当前机器上的 Docker 测试环境。先按 [`README.md`](README.md) 启动 Compose 并配置本地账户。浏览器入口为订单 demo `http://localhost:8080`、事故工作台 `http://localhost:8081`、OpenObserve `http://localhost:5080`。
 
-## 快速开始
+## 1. 验证订单遥测
 
-```bash
-cd examples/openobserve-aiops
+1. 在订单 demo 创建一个正常订单。
+2. 在 OpenObserve 查询 `app_logs`，确认订单服务日志和 Trace ID 已写入。
+3. 确认浏览器侧错误进入 `frontend_errors`，并与服务端 Trace 使用同一 Trace ID。
 
-# OpenObserve root 密码只放在当前 shell 环境，不写入仓库或 .env
-export ZO_ROOT_USER_PASSWORD="$(openssl rand -hex 24)"
-export ALERT_WEBHOOK_TOKEN="$(openssl rand -hex 32)"
+## 2. 创建本地故障
 
-# 启动 OpenObserve 和订单服务（控制台: http://localhost:5080；用户名默认 demo@example.test）
-docker compose up -d --build
+1. 在工作台以 `operator` 登录，选中一条事故后申请 `set-chaos-mode` 测试动作，并选择启用。
+2. 以独立的 `approver` 账户登录，批准该申请。申请人不能批准自己的动作。
+3. 回到 `operator` 账户执行已批准动作。工作台会调用 order-service 的固定内部接口、读取实际状态并记录审计结果。
+4. 在订单 demo 创建订单，确认请求失败；在浏览器和 OpenObserve 中用同一 Trace ID 查看错误关联。
 
-# 前端 demo 页: http://localhost:8080
-open http://localhost:8080
-```
-
-## 故障注入演示（回放脚本）
-
-1. 正常模式点「创建订单」→ 成功（release v1.0.0）。
-2. 切到坏发布（模拟 500）：
-
-   ```bash
-   export RELEASE_VERSION=v1.0.1
-   export CHAOS_MODE=on
-   docker compose up -d --build order-service
-   ```
-
-3. 再点「创建订单」→ HTTP 500；前端 SDK 上报错误 + trace_id 到 `frontend_errors` 流。
-4. 可先发送带签名的发布事件（下节），再由 OpenObserve 告警按下方配置将 webhook 发到主机上的
-   `http://host.docker.internal:8081/`；告警接收器调用 `holmes ask` 调查，并检索同一时间窗口的发布记录。
-   调查结果会输出到运行接收器的终端。
-5. 回到正常发布验证恢复：
-
-   ```bash
-   export CHAOS_MODE=off
-   docker compose up -d --build order-service
-   ```
-
-## OpenObserve 侧配置（控制台一次性操作）
-
-当前本机演示实例已创建 `AIOps Demo - Order Service` 仪表盘、错误告警模板、
-`holmes_local_demo` Webhook 目标和 `http_500_trace_investigation` SQL 告警。以下步骤用于
-新建实例时复现配置。告警已触发并将明确的 `trace_id` 传给本机接收器；本次检查用 `/bin/echo`
-替代 Holmes CLI，因此没有声称真实 Holmes 调查已跑通。
-
-本地演示 Compose 对 OpenObserve 开启 `ZO_SKIP_SSRF_CHECKS`，允许私有 Docker 网络
-访问主机 webhook；仅供本地演示，生产环境不要设置。
-
-## 本地模拟 CI 发布事件
-
-订单服务提供 `POST /internal/releases`，接受规范化的发布事件并写入 OpenObserve 的 `app_logs`，
-用于按告警时间关联服务、版本、commit 和变更文件。请求须使用运行时环境变量
-`RELEASE_WEBHOOK_SECRET` 对原始 JSON 请求体计算 HMAC-SHA256；未配置密钥时端点返回 503，
-签名错误返回 401。示例事件会忽略未列入白名单的额外字段，不接收凭据、操作者邮箱等元数据。
-
-以下命令生成临时本地密钥并发送一条演示发布事件；在同一个终端会话中依次运行，不要把真实密钥写入仓库：
+若暂时没有真实 OpenObserve Alert 配置，可在当前 shell 设置同一 webhook token 后发送一个本地测试告警。trace ID 应替换为第 4 步实际观测到的 32 位十六进制 ID：
 
 ```bash
-export RELEASE_WEBHOOK_SECRET="$(openssl rand -hex 32)"
-docker compose up -d --build order-service
-
-deployed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-payload="$(printf '{"service":"order-service","version":"v1.0.1","commit_sha":"abcdef0123456789","changed_files":["src/orders.ts","src/inventory.ts"],"deployed_at":"%s"}' "$deployed_at")"
-signature="$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$RELEASE_WEBHOOK_SECRET" | awk '{print $2}')"
-curl -X POST http://localhost:8080/internal/releases \
+curl -fsS http://127.0.0.1:8081/webhooks/openobserve \
+  -H "X-Alert-Token: $ALERT_WEBHOOK_TOKEN" \
   -H 'Content-Type: application/json' \
-  -H "X-Release-Signature: sha256=$signature" \
-  --data "$payload"
+  --data '{"alert_name":"OrderCreateFailure","trace_id":"0123456789abcdef0123456789abcdef","alert_count":1}'
 ```
 
-成功响应表示演示服务已接收该事件；日志仍经过当前进程内的批量缓冲，不能视为持久队列或生产 webhook。真实 Git/CI 需配置对应的安全凭据并映射为上述字段；当前仓库没有配置或连接任何 GitHub/GitLab/Jenkins 发布流水线。
+要连接 OpenObserve 原生告警，在 Alert Destination 使用内部地址 `http://incident-api:8081/webhooks/openobserve`，配置 `X-Alert-Token`，并使用字段 `alert_name`、`trace_id`、`alert_count`、`alert_trigger_time_str`。不要把 token 放进请求体或前端。
 
-1. 在 **Management → Templates** 新建 Webhook 模板：
+## 3. 查看调查状态和证据
 
-   ```json
-   {"alert_name":"{alert_name}","trace_id":"{trace_id}","err_count":"{alert_count}","alert_trigger_time_str":"{alert_trigger_time_str}"}
-   ```
+工作台的事故详情展示任务状态、Trace ID、Holmes 结论、经过验证的 OpenObserve 工具结果及审计事件。只有 Holmes 成功调用允许的 `app_logs` / `frontend_errors` 工具并返回可接受结果时，证据才会标为已验证。
 
-2. 在 **Management → Alert Destinations** 新建 Webhook：
-   - URL：`http://host.docker.internal:8081/`
-   - Header：`X-Alert-Token`，值与运行告警接收器时的 `ALERT_WEBHOOK_TOKEN` 相同。
-   - 选择上一步的模板。
-3. 在 `app_logs` 流创建 SQL 告警：
-   - 查询：`SELECT trace_id, COUNT(*) AS err_count FROM "app_logs" WHERE level = 'error' AND trace_id != '' GROUP BY trace_id`
-   - SQL 输出包含 `trace_id` 和 `err_count`；模板用 `{trace_id}` 传递 Trace ID，`{alert_count}` 表示告警查询命中行数。
-   - 频率 1 分钟；当查询结果行数大于 0 时触发；目的地选择刚创建的 Webhook。
-4. 创建一个包含 `app_logs` 错误数量时间线的仪表盘，用 1 分钟时间桶查看故障注入结果。
+Live 调查需要 Holmes 可用模型密钥、内部 `HOLMES_API_KEY` 和 OpenObserve 专用只读账户。未设置这些值时任务会记录安全错误状态；不要用 `evals/run_evals.py --mode mock` 的 fixture 结果替代 live 验收。mock 与 live 的区别及成本确认见 [`evals/README.md`](evals/README.md)。
 
-## 告警接收器容器
+## 4. 恢复演示服务
 
-告警接收器随 Compose 一起启动，端口只绑定到 `127.0.0.1:8081`。Compose 使用
-`ALERT_WEBHOOK_TOKEN` 环境变量鉴权；本地 OpenObserve Webhook Destination 的
-`X-Alert-Token` 必须设置为同一个值。不要把真实 token 写入仓库或 `.env`。
+用 `operator` 为关闭 chaos mode 再申请一次测试动作，由 `approver` 单独批准，再执行。确认 order-service 状态为 `off`，然后创建一个正常订单。
 
-容器内默认 `HOLMES_BIN=/bin/echo`，用于验证 Webhook 接收和任务调度；它不代表真实 Holmes 调查。
-接入真实 Holmes 前，需要在接收器运行环境安装/配置 Holmes CLI，并向 OpenObserve 查询授予只读权限。
-接收器拒绝缺少/错误 token、
-无效 JSON 和未显式放在 `trace_id` 字段的值；摘要只保留数字计数与合法 ISO 时间，并把告警名/元数据视为不可信输入；
-同一 Trace 告警 5 分钟内按告警名和 Trace ID 去重，不受触发时间或计数变化影响；无 Trace 告警按告警名和计数去重，最多并发启动 2 次调查。
-任务状态只保存在进程内，进程重启会丢失；这不是生产任务队列或事故中心。
-Webhook 响应中的 `task_id` 可用于查询调查状态和关联 Trace：
-在查询命令所在终端也设置同一个 `ALERT_WEBHOOK_TOKEN` 环境变量。
+工作台对测试动作执行前会复核操作者、资源、参数和审批；执行后读取 order-service 实际状态。如果验证失败会尝试恢复执行前状态并留下审计记录。它不对其他容器、主机或真实业务资源执行操作。
+
+## 5. 容器与数据恢复
 
 ```bash
-curl -H "X-Alert-Token: $ALERT_WEBHOOK_TOKEN" \
-  "http://localhost:8081/tasks/<task_id>"
+docker compose ps
+docker compose restart incident-api incident-worker redis
 ```
 
-接收器最多保留 1000 条任务记录、最长 1 小时；完成结果接口也要求同一 token。该 token 不应发给浏览器或非可信调用方。
-Webhook 同时返回由告警名和 Trace/摘要计算的本地 `alert_id` 指纹；可用它反向查找关联任务和 Trace：
+PostgreSQL 是事故状态和 outbox 的持久化来源；worker 重启后会恢复可重试任务。隔离的 API/worker/PostgreSQL 测试运行方式以及不覆盖活动库的 `pg_dump`/`pg_restore` 演练见 [`README.md`](README.md)。保留当前 named volumes；不要用 `docker compose down -v` 清理演示数据。
 
-```bash
-curl -H "X-Alert-Token: $ALERT_WEBHOOK_TOKEN" \
-  "http://localhost:8081/alerts/<alert_id>"
-```
+## 演示边界
 
-这个指纹不是 OpenObserve 的原生告警 ID，也不包含发布版本；告警与发布的完整双向查询仍待持久化事故中心接入。
-
-## HolmesGPT 侧配置
-
-本机 `~/.holmes/config.yaml`：
-
-```yaml
-toolsets:
-  openobserve:
-    enabled: true
-    config:
-      api_url: "http://localhost:5080"   # Demo root 账户；生产使用独立只读服务账户
-      organization: "default"
-      username: "demo@example.test"
-      password: "{{ env.OPENOBSERVE_SERVICE_TOKEN }}"
-      allowed_streams: ["app_logs", "frontend_errors"]
-      max_rows: 100
-custom_skill_paths:
-  - "/absolute/path/to/holmesgpt/examples/openobserve-aiops/skills/"
-```
-
-仓库提供 Holmes Skill `examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md`；将上面的路径替换为本机仓库绝对路径。它只指导检索和证据整理，不包含可执行处置授权。旧的 `runbooks/catalog.json` 仅作为迁移参考，不配置给当前 Holmes。
-
-配置真实 Holmes CLI 后，`alert-trigger` 会以如下形式调用：`holmes ask "<告警上下文 + trace_id 调查指令>"`。当前 Compose 默认使用 `/bin/echo`，只验证任务调度。
-
-## 数据流与字段规范
-
-| 流 | 写入方 | 关键字段 |
-| --- | --- | --- |
-| `app_logs` | order-service（批量 `_json`） | `trace_id`, `span_id`, `level`, `message`, `service`, `release`, `route` |
-| `frontend_errors` | order-service 代前端写入 | `trace_id`, `message`, `stack`, `route`, `user_agent` |
-| traces 索引 | OTel OTLP HTTP | W3C 标准（service.name=order-service） |
-
-- Trace 串联：前端 SDK 生成 32 位 trace_id 注入 `traceparent`，NestJS 自动埋点延续同一 trace；
-  日志批量写入时从 active span 取 `trace_id`，三类数据可在同一 trace 下对齐。
-- 凭据安全：浏览器零凭据；ingest 与查询账户分离；生产要求见
-  `holmes/plugins/toolsets/openobserve/SECURITY.md`。
-- 浏览器 SDK 会过滤凭据样式字段、邮箱和 URL 查询参数，并支持采样；Demo 采样率为 100%。
-  生产使用前仍需按组织的数据治理规范审查脱敏规则并配置采样率。
-- 当前告警接收器是内存态 Demo，不保存完整任务状态，也不具备生产级队列、事故审批或处置能力。
-- Compose 将 OpenObserve、订单服务和告警接收器作为 `holmesgpt-aiops-goal` 项目的三个服务统一管理；接收器容器重启后内存任务状态会丢失。
-
-## 本地构建（不用 Docker）
-
-```bash
-cd demo/order-service
-npm install
-npm run build
-OPENOBSERVE_URL=http://localhost:5080 node dist/main.js
-```
-
-## 状态
-
-- [x] demo 服务、极简 SDK、告警触发器、docker-compose 提交
-- [x] 本机 OpenObserve 验证（订单日志、前端错误、Trace 同一 trace_id；SQL 告警触发并传递 Trace ID）
-- [x] 增加 Holmes 自定义 Skill，覆盖同 Trace 日志、发布事件只读关联和证据/假设标注；已通过 Holmes `scan_skill_directory` 解析；真实 CLI 调查仍待验证
-- [x] 本地浏览器实际运行 SDK，HTTP 500 后订单日志、前端错误和 Trace 命中同一 trace_id
-- [x] 本地规范化发布 webhook 原型：HMAC-SHA256 校验，限量字段写入 `app_logs`，调查提示要求在告警时间附近查找发布事件；CI 平台真实接入仍待配置
-- [ ] 生产 OpenObserve 凭据/流权限验证
-- [ ] 使用真实 Holmes CLI 完成告警调查；当前已用 `/bin/echo` 验证调度路径
-- [ ] 调查录像（asciinema/视频）
+- Compose、服务状态、审批和测试动作仅用于本机 Docker 测试环境。
+- 发布/Runbook 评测上下文是带来源标识的 synthetic fixture；没有实际 Git/CI 集成，也不声称发布数据来自生产。
+- 缺少模型或 OpenObserve 只读凭据时，live Holmes 验收仍未完成。
+- 正式环境的身份、凭据管理、网络/TLS、SLO、保留策略、备份目标和动作授权须另行设计；本演示不连接正式环境。

@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境优先：Spec/Plan 已批准，按用户要求直接编码。** 用户已明确先部署到当前电脑 Docker 测试环境，后续再上正式环境。本目标不连接/部署正式环境，也不执行真实生产操作。T000–T006 已实现并完成各自的定向验证；同一 Compose 栈部署、故障恢复演练和完整端到端验收在 T007。
+**本机 Docker 测试环境优先：T000–T007 实施已落地，整体验收仍不完整。** 当前本机 Compose 栈正在运行，事故服务、队列、Holmes API 和订单 demo 均已启动。真实 Holmes 调查因缺少模型凭据和 OpenObserve 专用只读账户失败关闭；AC-04/live 诊断验收保持阻塞。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
 
 ## 已完成并验证
 
@@ -10,32 +10,41 @@
 - 本地 Compose 编排 OpenObserve、订单服务和告警接收器；浏览器错误、NestJS 日志与 Trace 可用 Trace ID 关联。
 - 告警鉴权、进程内去重/任务查询、签名发布事件原型及事故流程内存模型已有定向测试。
 - 20 个合成根因证据样本及结构校验已提交；它们尚未用于 Holmes 诊断质量评测。
-- 最近本地验收：三个 Compose 服务健康；告警接收器 9 项测试通过；Webhook 返回 202，`/bin/echo` 调度任务到达 completed。
 - T000：order-service 新增仅限 `set-chaos-mode` 的内部测试动作接口；服务端验证 token、资源、参数和幂等键；4 项定向 Node 测试通过，TypeScript build 通过。
 
-## 当前进行中
+## 实施状态与验证
 
 - `specs/001-resume-aiops/` 的 Spec 已获用户确认并通过独立审查；Plan/Tasks 已按用户要求直接批准。数据库迁移获授权仅作用于本机 Docker 测试库。
 - T001：事故/任务/审批/审计/outbox PostgreSQL schema、稳定指纹与事务写入、带资源范围的测试角色授权、口令哈希与签名会话已完成；一次性本机 PostgreSQL 集成测试验证迁移、重复事件去重及 outbox 失败回滚。
 - T002：Webhook 认证和边界校验后事务创建事故/任务/outbox；Celery worker 有原子 claim、租约、退避重试和失败终态，dispatcher 周期重投队列中丢失的任务并回收过期租约；`trigger.py` 不再调用 Holmes CLI 或 `/bin/echo`。隔离 PostgreSQL 全套测试 21 passed；无数据库时 3 passed、4 个数据库集成项安全跳过。Compose 数据卷和 Redis 联调待 T007。
 - T003：Holmes 非流式 `/api/chat` 客户端、状态码与工具结果校验、限定流范围的证据映射和敏感值脱敏已完成；14 项契约测试通过。该结果来自模拟响应，未代表 live Holmes/OpenObserve 验收。
 - T004：工作台提供本地登录、服务端角色/资源校验、事故/任务/Trace/证据/审批/审计详情和受限任务重试。一次性本机 PostgreSQL 集成测试 2 passed。
-- T005 实现已完成，正在执行范围门禁：工作台可申请/批准/拒绝/取消及执行测试动作；operator 与 approver 分权，执行前复验审批和固定白名单，调用 order-service owner 接口并核对实际状态，失败时恢复原状态并审计。一次性本机 PostgreSQL 集成测试 4 passed；`node --check` 和 Compose 配置校验通过。
+- T005：工作台可申请/批准/拒绝/取消及执行测试动作；operator 与 approver 分权，执行前复验审批和固定白名单，调用 order-service owner 接口并核对实际状态，失败时恢复原状态并审计。一次性本机 PostgreSQL 集成测试 4 passed；`node --check` 和 Compose 配置校验通过。
 - T006：评测 runner 可生成 20 例 mock/live 结构化报告；mock 不生成模型诊断且标记 `not_scored`，live 请求需显式 `--confirm-live`，病例来源与实时 OpenObserve 证据分别标记。三条 synthetic 发布上下文准确引用病例证据并关联 Runbook。Docker 内部单测 4 passed，离线 mock 报告生成 20 例通过，病例/runbook 关联测试通过；未运行 live 请求。
-- 当前任务：T007，同一 Compose project 部署、重启/数据恢复演练和完整端到端验收。Holmes live 调查需模型和 OpenObserve 只读凭据；缺少凭据时 AC-04 保持 blocked。
+- T007：Holmes、事故 API/worker、PostgreSQL、Redis、OpenObserve 和 order-service 已在一个 Compose project 运行；42 项隔离测试通过。已实测告警→持久化任务、权限分离审批、demo 动作执行/回滚、API/worker/Redis/PostgreSQL 重启恢复及独立数据库备份/恢复。最近一次真实告警因无模型密钥和 OpenObserve 只读凭据，以 `holmes_unavailable` 安全失败；AC-04 和 live 整体验收未通过。
 
 ## 待办
 
-1. 在本机 Docker Compose 中组合 Holmes API、事故 API/worker、PostgreSQL、Redis、OpenObserve 与 order-service。
-2. 验收容器健康、Webhook→调查队列、审批→受限 demo 动作、服务重启/outbox 恢复及隔离数据库备份恢复。
-3. 有模型与 OpenObserve 只读凭据时执行 live Holmes 验收；没有凭据时如实保留 AC-04 阻塞状态。
-4. 完成测试环境演示文档并列明正式环境迁移待确认项；正式部署、真实数据迁移和生产处置不属于当前执行范围。
+1. 提供有效模型凭据、Holmes API key 和 OpenObserve 只读账户/流白名单后，重新跑一条真实 500 告警调查，核对工具结果和证据链接。
+2. 按 demo 手册重复验证工作台登录、不同角色审批、动作执行/恢复与复盘记录。
+3. live 调查验收后再运行完整验收；生产平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍需单独设计与授权。
 
 ## 阻塞与授权门槛
 
 - 本机测试 PostgreSQL schema/migration 已获用户明确授权；授权不包含正式数据库或任何生产数据。
 - 真实 Holmes/模型验收需要模型凭据、OpenObserve 地址及只读账户/流白名单。
+- 本机 Docker 服务已运行；每次从新 shell 管理 Compose 前需加载本机私有运行变量文件 `/tmp/holmesgpt-aiops-test-runtime.sh`（权限 0600）。该临时文件不在仓库中，系统清理 `/tmp` 后需重新生成配置。
 - 当前授权的部署目标是本机 Docker 测试环境。正式部署、生产数据迁移或生产处置需后续分别明确授权；“后续会上正式的”不等于当前授权。
+
+## 最近验证（2026-09-25）
+
+- `docker compose ... config --quiet`、本机栈构建/启动和服务健康检查通过；Holmes `/healthz`、事故 API `/healthz`、OpenObserve `/healthz` 与订单服务返回 HTTP 200。
+- 隔离 Compose 测试 profile：42 passed，1 warning。
+- 订单 HTTP webhook 创建持久 incident/task；operator 自审批返回 403，approver 批准后执行状态 ON，再经批准恢复 OFF；最后实测状态为 OFF。
+- API、worker、Redis、PostgreSQL 重启后服务恢复，已创建 incident 仍在，最新调查任务安全失败码为 `holmes_unavailable`。
+- `pg_dump`/`pg_restore` 恢复到单独 `aiops_restore_test` 数据库成功；恢复库含 1 条 incident，未覆盖活动库或移除数据卷。
+- T006 20 例 mock 报告和病例/runbook 引用测试已验证；mock 报告为 `not_scored`，不是 Holmes 诊断质量结果。
+- live Holmes/RCA 尚未验收：缺少模型凭据和 OpenObserve 专用只读账户；不能将 API 健康或 mock 报告视作该项通过。
 
 ## 详细进度与验证记录
 

@@ -1,0 +1,32 @@
+# T000–T007 本机验收记录
+
+日期：2026-09-25
+目标环境：当前电脑 Docker Compose 测试环境
+整体状态：**未完成 live 验收**。本机业务栈和隔离测试通过；Holmes 的真实模型调查仍缺少外部凭据。
+
+| 验收项 | 结果 | 证据与限制 |
+| --- | --- | --- |
+| AC-01 告警安全接收和幂等 | 通过 | 事故服务测试通过；本机 HTTP Webhook 创建持久事故/任务，告警鉴权和事务写入由 T001/T002 定向测试覆盖。 |
+| AC-02 跨重启恢复 | 通过 | API、worker、Redis、PostgreSQL 重启后服务恢复；已创建 incident 仍存在；outbox/租约恢复由 T002 测试覆盖。 |
+| AC-03 有界重试和明确终态 | 通过（mock/故障路径） | Holmes 客户端/worker 的瞬时错误、超时、永久失败与脱敏由定向测试覆盖；本机缺外部配置时任务终态为 `failed:holmes_unavailable`。 |
+| AC-04 Holmes 只读调查和证据 | **阻塞** | 未提供有效 `MODEL_API_KEY` 和 OpenObserve 专用只读用户/token。真实请求未产生有效诊断证据；健康检查和 mock 不作为通过证据。 |
+| AC-05 事故工作台 | 部分验证 | 本机浏览器已加载登录页；incident API 登录、事故/任务/审批接口由定向测试覆盖。未在浏览器中登录后逐项手工走查完整事故/审批页面，因此不记为完整浏览器验收。入口 `http://localhost:8081/`。 |
+| AC-06 测试身份、角色、资源授权 | 通过 | operator 与 approver 分开；operator 自审批实测返回 HTTP 403；认证/权限矩阵测试通过。 |
+| AC-07 仅限 demo 的受控动作 | 通过（本机演示动作） | operator 请求动作、approver 批准后 order-service 状态 ON；获批恢复后状态 OFF。动作 owner 验证授权、固定资源和幂等键；测试涵盖拒绝、验证和回退路径。 |
+| AC-08 本机部署、恢复和重复演示 | 通过（测试环境） | Holmes、incident API/worker、PostgreSQL、Redis、OpenObserve、order-service 在同一 Compose project 运行；健康端点均返回 200。隔离 `aiops_restore_test` 的 pg_dump/pg_restore 成功，活动数据库与 volume 未覆盖/删除。 |
+| AC-09 发布和知识上下文关联 | 通过（fixture/mock） | 三条本地发布/Runbook fixture 有来源标记并关联已知根因案例；真实 Git/CI 发布源仍未接入。 |
+| AC-10 20 例可重复评测 | 通过（mock 数据产物，不代表诊断质量） | 20 例 mock JSON 报告和结构/关联测试通过；mock 不调用 Holmes/OpenObserve，诊断为空且 `not_scored`。Live 评测需凭据和显式确认，未运行。 |
+| AC-11 正式环境边界 | 通过（文档） | README、DEMO 和路线图明确列出迁移前待确认项；未配置或声称已完成正式部署。 |
+
+## 验证结果
+
+- `docker compose ... --profile test run --rm incident-test`：**42 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
+- Compose 栈构建、配置校验和服务恢复成功。最近检查：OpenObserve `/healthz`、Holmes `/healthz`、incident API `/healthz`、订单服务根路径均返回 HTTP 200。
+- 本机告警/事故工作流：已创建 1 条 incident；无 Holmes 凭据的任务安全终止，错误码 `holmes_unavailable`。
+- 本机权限与动作工作流：operator 自审批返回 403；approver 批准后执行并核验 order-service 状态 ON，再完成批准恢复并核验状态 OFF。
+- PostgreSQL 备份恢复到独立数据库成功；恢复库 `incidents` 行数为 1。备份 `/tmp/aiops-test.dump` 和恢复数据库保留供检查。
+- Holmes/OpenObserve live RCA 和 live 20 例评测没有通过，不得把本机 API 健康、合成 fixture 或 mock 报告描述为 live 结果。
+
+## 后续解阻条件
+
+在本机运行变量中提供有效模型 API key、Holmes API key，以及只读 OpenObserve 服务账户/token 和明确的流白名单后，重跑真实订单 HTTP 500 告警，核对工具调用结果、Trace/日志证据链接和诊断假设；随后按 `examples/openobserve-aiops/evals/README.md` 显式运行 live 评测。此记录未授权正式环境部署、数据迁移或真实生产动作。

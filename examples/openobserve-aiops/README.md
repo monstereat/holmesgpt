@@ -1,48 +1,94 @@
-# OpenObserve + HolmesGPT AI Ops demo
+# HolmesGPT OpenObserve AIOps demo
 
-This demo keeps HolmesGPT's existing Python/FastAPI investigation API and OpenObserve toolset. A separate Python incident service owns webhook intake, PostgreSQL incident/task state, the outbox and local user authorization. Redis/Celery transports investigation work. The NestJS order service remains a telemetry-producing demo and the only owner of its isolated test action.
+This project keeps HolmesGPT's existing Python/FastAPI investigation API (`server.py`) and OpenObserve toolset. A separate Python incident service owns authenticated alert intake, PostgreSQL state, Redis/Celery dispatch, approvals, audit history and the workbench. The NestJS order service emits telemetry and owns its narrowly scoped local test action. It does not expose a Docker socket or arbitrary shell execution.
 
-The incident worker calls Holmes through the existing non-streaming `POST /api/chat` API. Holmes makes read-only OpenObserve queries using a dedicated service account. The incident API treats the alert name and metadata as untrusted values, and model prose alone is never stored as verified evidence.
+## Local Docker test stack
 
-## Read-only OpenObserve configuration
-
-Use a dedicated OpenObserve service account with read-only permissions for `app_logs` and `frontend_errors`. Copy [`holmes-config/config.yaml.example`](holmes-config/config.yaml.example) into the local Holmes configuration directory mounted by Compose, then provide the runtime model and OpenObserve credentials through the local environment. The example sets the server-side `allowed_streams` list as an additional query boundary.
-
-Do not commit real credentials or place the model key in the incident service. `HOLMES_API_KEY` authenticates the incident service to Holmes; `MODEL_API_KEY` and `OPENOBSERVE_SERVICE_TOKEN` are consumed only by Holmes.
-
-The OpenObserve toolset is read-only at the application layer. Server-side OpenObserve RBAC is the authoritative access boundary. Keep application logs free of credentials and sensitive PII before ingestion.
-
-## Investigation flow
-
-1. The demo order service emits an error log and trace when its local chaos mode is enabled.
-2. An authenticated OpenObserve webhook creates one incident, investigation task and outbox record in a single PostgreSQL transaction.
-3. The dispatcher places the task on Redis/Celery. Database task state prevents duplicate messages from claiming the same active or completed work; outbox reconciliation recovers lost messages and expired worker leases.
-4. The worker sends a bounded, non-streaming request to Holmes `/api/chat`. Holmes queries only the configured read-only OpenObserve streams.
-5. The worker stores bounded successful tool results as evidence. Tool errors, missing calls and unavailable data remain explicit; unverified model statements do not become verified facts.
-
-Holmes `/api/chat` does not accept an idempotency key. A timeout followed by retry can repeat the model call and its cost, while the incident service still keeps one task record and one final result.
-
-## Status and boundaries
-
-- The order-service has a token-protected `set-chaos-mode` action used only by the local demo; it has no Docker socket or host write access.
-- PostgreSQL stores incident, task, test user, approval, audit and outbox records. The test-only user and role implementation is not a production identity provider.
-- Release events written to `app_logs` are local fixtures, not a live Git/CI integration or release registry.
-- The Holmes skill at [`skills/order-service-inventory-failure/SKILL.md`](skills/order-service-inventory-failure/SKILL.md) guides bounded read-only trace, log and release correlation. It never authorizes remediation.
-- Compose service wiring, workbench, approval/action workflow and recovery walkthrough are completed in later roadmap tasks. A running Compose stack, live model investigation, production identity provider, production deployment and production remediation are not claimed here.
-- Live Holmes acceptance requires the local operator to provide a model key, a Holmes API key, and a dedicated OpenObserve read-only account with stream permissions. Without these, the live investigation acceptance criterion remains blocked.
-
-## Tests
-
-The incident service has an isolated Docker `test` target. To exercise PostgreSQL integration cases, set `AIOPS_TEST_DATABASE_URL` to a disposable local test database only; tests reject non-local database hosts.
+Run from this directory. Compose binds browser/API ports to `127.0.0.1` and keeps PostgreSQL and Redis on the private Compose network. Do not use this demo configuration as a production deployment.
 
 ```bash
-docker build --target test -t aiops-incident:test alert-trigger
-docker run --rm aiops-incident:test python -m pytest -q tests
+export ZO_ROOT_USER_EMAIL="${ZO_ROOT_USER_EMAIL:-demo@example.test}"
+export ZO_ROOT_USER_PASSWORD="$(openssl rand -hex 24)"
+export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+export ALERT_WEBHOOK_TOKEN="$(openssl rand -hex 32)"
+export ORDER_ACTION_TOKEN="$(openssl rand -hex 32)"
+export HOLMES_API_KEY="$(openssl rand -hex 32)"
+export SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
+export OPERATOR_PASSWORD="$(openssl rand -hex 24)"
+export APPROVER_PASSWORD="$(openssl rand -hex 24)"
+export AIOPS_TEST_USERS_JSON="$(python3 -c 'import json,os; print(json.dumps([{"username":"operator","password":os.environ["OPERATOR_PASSWORD"],"role":"operator","resource_scopes":["order-service"]},{"username":"approver","password":os.environ["APPROVER_PASSWORD"],"role":"approver","resource_scopes":["order-service"]}]))')"
+
+docker compose up -d --build
 ```
 
-The OpenObserve toolset tests remain part of the root Holmes test suite:
+Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. `MODEL_API_KEY` is optional for starting the stack; a model request needs a valid key.
+
+The Holmes container reads a read-only config file. By default it mounts the committed template `holmes-config/config.yaml.example`; to use a local config copy, set `HOLMES_CONFIG_FILE` to its absolute path before `docker compose up`. Do not commit credentials. Configure Holmes with a dedicated OpenObserve account that can read only `app_logs` and `frontend_errors`, and set `OPENOBSERVE_SERVICE_USER` and `OPENOBSERVE_SERVICE_TOKEN`. Do not substitute the OpenObserve root password for this account. Without model credentials and the read-only account, Holmes/API health can be checked but a live investigation is not accepted.
+
+After startup:
+
+- Order-service demo: [http://localhost:8080](http://localhost:8080)
+- Holmes incident workbench: [http://localhost:8081](http://localhost:8081) (login with `operator` or `approver`)
+- OpenObserve: [http://localhost:5080](http://localhost:5080)
+- Holmes API liveness: `http://localhost:5050/healthz`; readiness: `http://localhost:5050/readyz`
+
+The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action. The separate `approver` can approve or reject it. The requester cannot approve their own request. Both accounts are local demo identities, not a production identity provider.
+
+Check service state and liveness:
 
 ```bash
-poetry install --with dev
-poetry run pytest -q tests/plugins/toolsets/openobserve
+docker compose ps
+curl -fsS http://127.0.0.1:5080/healthz
+curl -fsS http://127.0.0.1:5050/healthz
+curl -fsS http://127.0.0.1:8081/healthz
+curl -fsS http://127.0.0.1:8080/
 ```
+
+OpenObserve's image has no shell-based health probe, so its endpoint is checked from the host. Holmes `/healthz` is liveness; `/readyz` reflects model readiness and can fail when no model is configured.
+
+## Alert routing and end-to-end walkthrough
+
+In OpenObserve, configure the alert destination to call `http://incident-api:8081/webhooks/openobserve` over the Compose network and send `X-Alert-Token` with the same `ALERT_WEBHOOK_TOKEN`. Use the bounded alert template shown in [`DEMO.md`](DEMO.md). Existing local OpenObserve destinations may still point to `host.docker.internal:8081`; update them if you want traffic to stay on the Compose network.
+
+1. Enable order-service chaos mode from the demo page or the approved workbench action; send a test order and confirm its trace/logs appear in OpenObserve.
+2. Trigger the OpenObserve alert. The incident API validates the token and payload, then atomically writes an incident, task and outbox event to PostgreSQL.
+3. Redis/Celery delivers the task. The worker calls the Holmes API; successful allowlisted OpenObserve tool results are saved as evidence. The incident workbench shows task status, trace, findings, evidence and audit timeline.
+4. In the workbench, use the operator account to request a test action. Sign in separately as approver to approve/reject. The operator can then execute an approved action; the service rechecks authorization, verifies the resulting order-service state and audits any rollback.
+5. Return the demo order-service to normal mode and confirm a new order succeeds.
+
+Live investigation requires all three of: a valid `MODEL_API_KEY`, a `HOLMES_API_KEY`, and a dedicated OpenObserve read-only account with access to the allowlisted streams. Without those, investigation tasks fail with a safe error and acceptance remains blocked; mock reports do not replace this requirement. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
+
+## Persistence and recovery
+
+PostgreSQL persists incidents, tasks, users, approvals, audit and outbox records in `aiops-postgres-data`. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.
+
+To verify a local backup and restore without overwriting the active database:
+
+```bash
+docker compose exec -T postgres pg_dump -U aiops -Fc aiops > /tmp/aiops-test.dump
+docker compose exec postgres createdb -U aiops aiops_restore_test
+docker compose exec -T postgres pg_restore --no-owner -U aiops -d aiops_restore_test < /tmp/aiops-test.dump
+docker compose exec postgres psql -U aiops -d aiops_restore_test -c 'SELECT count(*) FROM incidents;'
+```
+
+The restore target is a separate database for inspection. These steps intentionally do not delete the backup, restore database, or named volumes. Do not run `docker compose down -v` unless you intend to destroy all local demo data.
+
+## Tests and evaluation
+
+Run service tests against an isolated, ephemeral PostgreSQL instance (Compose starts it with a temporary filesystem):
+
+```bash
+docker compose --profile test run --rm incident-test
+```
+
+Generate a deterministic report for the 20 synthetic root-cause cases:
+
+```bash
+python3 evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json
+```
+
+Mock mode does not call Holmes or OpenObserve; the diagnosis field is empty and scoring is `not_scored`. A live evaluation can send up to 20 model requests and requires explicit `--confirm-live`; see [`evals/README.md`](evals/README.md). The case source remains synthetic even when retrieved evidence is live.
+
+## Test-to-production boundary
+
+This Compose stack is a local test environment. Before preparing a separate production design, confirm the deployment platform and network/TLS boundary, external identity provider and tenant model, secret management, data retention/compliance, capacity/SLO, backup policy, OpenObserve service-account permissions, model provider/cost controls, CI/release source, action owners and allowed production actions. No production credentials, migration, deployment or remediation are configured or claimed here.

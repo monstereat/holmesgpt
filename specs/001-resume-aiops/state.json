@@ -2,9 +2,9 @@
   "schema_version": 2,
   "change_id": "001-resume-aiops",
   "mode": "roadmap",
-  "status": "executing",
-  "current_task": null,
-  "waiting_for": null,
+  "status": "blocked",
+  "current_task": "T007",
+  "waiting_for": "在本机运行环境配置 MODEL_API_KEY、HOLMES_API_KEY 和 OpenObserve 专用只读用户/token 与流白名单后，恢复 T007 并重跑一条真实 500 告警调查及 live 评测。",
   "artifacts": {
     "spec": "specs/001-resume-aiops/spec.md",
     "plan": "specs/001-resume-aiops/plan.md",
@@ -373,12 +373,19 @@
         "specs/001-resume-aiops/verify.md"
       ],
       "commands": [
-        "docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build",
-        "docker compose -f examples/openobserve-aiops/docker-compose.yaml exec incident-api python -m pytest -q tests",
-        "python examples/openobserve-aiops/evals/run_evals.py --mode mock"
+        "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build",
+        "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test",
+        "python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json"
       ],
-      "status": "pending",
-      "check_ids": []
+      "status": "in_progress",
+      "check_ids": [],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T007.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/001-resume-aiops/**"
+        ]
+      }
     }
   },
   "checks": [
@@ -755,6 +762,126 @@
         ],
         "diff_sha256": "354f12e7b169d734ee617c06307c294821534b1da1f97e301f798257bc647d86"
       }
+    },
+    {
+      "id": "T007-compose-stack",
+      "type": "command",
+      "kind": "integration",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-08"
+      ],
+      "command": "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:52:54Z",
+      "duration_ms": 1504,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T007-compose-stack.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T007-compose-stack.stderr.log",
+      "git": {
+        "head": "4ed99353ebcfe619897671e1bfeafe6bd3fcedd7",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/DEMO.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "specs/001-resume-aiops/state.json",
+          "specs/001-resume-aiops/tasks.md"
+        ],
+        "diff_sha256": "1642a30e2211073905b5db9df86363cc7ad24ecd503434d83c1e0a8e06cc8f05"
+      }
+    },
+    {
+      "id": "T007-compose-tests",
+      "type": "command",
+      "kind": "test",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-05",
+        "AC-06",
+        "AC-07"
+      ],
+      "command": "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:53:03Z",
+      "duration_ms": 10758,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T007-compose-tests.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T007-compose-tests.stderr.log",
+      "git": {
+        "head": "4ed99353ebcfe619897671e1bfeafe6bd3fcedd7",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/DEMO.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "specs/001-resume-aiops/state.json",
+          "specs/001-resume-aiops/tasks.md"
+        ],
+        "diff_sha256": "4d5a4629f0e3b385b025090a8ccc9258b49ef2913fe69208598897ba7180ce08"
+      }
+    },
+    {
+      "id": "T007-mock-evaluation",
+      "type": "command",
+      "kind": "test",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-09",
+        "AC-10"
+      ],
+      "command": "python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:53:19Z",
+      "duration_ms": 41,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T007-mock-evaluation.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T007-mock-evaluation.stderr.log",
+      "git": {
+        "head": "4ed99353ebcfe619897671e1bfeafe6bd3fcedd7",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/DEMO.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "specs/001-resume-aiops/state.json",
+          "specs/001-resume-aiops/tasks.md"
+        ],
+        "diff_sha256": "6f01164aa21d2d632748cbb3b72a05757b83ae174b6ead665e97044a9b4e2753"
+      }
+    },
+    {
+      "id": "T007-AC04-live-blocked",
+      "type": "observation",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-04"
+      ],
+      "observer": "Codex",
+      "evidence": "本机真实告警任务记录为 failed:holmes_unavailable。运行环境未提供有效 MODEL_API_KEY 和 OpenObserve 专用只读账户/token，因此没有 Holmes live 诊断或可核对工具证据；healthcheck 和 mock 不能替代。",
+      "result": "fail",
+      "at": "2026-09-25T04:53:44Z"
+    },
+    {
+      "id": "T007-AC11-boundary-docs",
+      "type": "observation",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-11"
+      ],
+      "observer": "Codex",
+      "evidence": "examples/openobserve-aiops/README.md、DEMO.md、ROADMAP.md 和 docs/develop-me-roadmap.md 已声明本机测试部署、正式环境待确认项及未授权范围；未声称已部署生产。",
+      "result": "pass",
+      "at": "2026-09-25T04:53:44Z"
     }
   ],
   "events": [
@@ -1057,8 +1184,50 @@
       "action": "complete_task",
       "status": "executing",
       "note": "Completed T006 with T006-evaluation-verified-final."
+    },
+    {
+      "at": "2026-09-25T04:26:57Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T007."
+    },
+    {
+      "at": "2026-09-25T04:52:56Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T007-compose-stack: pass (source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build)"
+    },
+    {
+      "at": "2026-09-25T04:53:13Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T007-compose-tests: pass (source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test)"
+    },
+    {
+      "at": "2026-09-25T04:53:19Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T007-mock-evaluation: pass (python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json)"
+    },
+    {
+      "at": "2026-09-25T04:53:44Z",
+      "action": "record_observation",
+      "status": "executing",
+      "note": "T007-AC04-live-blocked: fail by Codex"
+    },
+    {
+      "at": "2026-09-25T04:53:44Z",
+      "action": "record_observation",
+      "status": "executing",
+      "note": "T007-AC11-boundary-docs: pass by Codex"
+    },
+    {
+      "at": "2026-09-25T04:53:44Z",
+      "action": "block",
+      "status": "blocked",
+      "note": "T007 的 Compose、隔离测试、恢复演练和文档已完成；整体验收仍依赖真实 Holmes 调查。当前未提供有效模型凭据与 OpenObserve 专用只读凭据，AC-04 尚无 live 证据，依 Spec 必须保持 incomplete。"
     }
   ],
   "created_at": "2026-09-25T03:20:15Z",
-  "updated_at": "2026-09-25T04:23:33Z"
+  "updated_at": "2026-09-25T04:53:44Z"
 }

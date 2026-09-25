@@ -1,0 +1,36 @@
+{
+  "base_commit": "4ed99353ebcfe619897671e1bfeafe6bd3fcedd7",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T007.json",
+  "new_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/DEMO.md",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/docker-compose.yaml"
+  ],
+  "modified_preexisting_files": [
+    "docs/develop-me-roadmap.md"
+  ],
+  "touched_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/DEMO.md",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/docker-compose.yaml",
+    "docs/develop-me-roadmap.md"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/docker-compose.yaml",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/DEMO.md",
+    "examples/openobserve-aiops/evals/README.md",
+    "ROADMAP.md",
+    "docs/develop-me-roadmap.md",
+    "specs/001-resume-aiops/verify.md",
+    "specs/001-resume-aiops/**"
+  ],
+  "internal_patterns": [
+    "specs/001-resume-aiops/**",
+    "specs/001-resume-aiops/scope-baseline-T007.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

@@ -20,6 +20,78 @@ services:
     volumes:
       - oo-data:/data
 
+  postgres:
+    image: postgres:16.6-alpine
+    environment:
+      POSTGRES_DB: aiops
+      POSTGRES_USER: aiops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}
+    volumes:
+      - aiops-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiops -d aiops"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  postgres-test:
+    profiles: ["test"]
+    image: postgres:16.6-alpine
+    environment:
+      POSTGRES_DB: aiops_test
+      POSTGRES_USER: aiops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}
+    networks:
+      test-isolated:
+        aliases:
+          - postgres
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiops -d aiops_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.2-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - aiops-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  holmes-api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    entrypoint: ["python", "-u", "server.py"]
+    environment:
+      HOLMES_HOST: 0.0.0.0
+      HOLMES_PORT: "5050"
+      HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
+      HOLMES_MODEL: ${HOLMES_MODEL:-anthropic/claude-sonnet-4-5-20250929}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      OPENOBSERVE_SERVICE_USER: ${OPENOBSERVE_SERVICE_USER:-}
+      OPENOBSERVE_SERVICE_TOKEN: ${OPENOBSERVE_SERVICE_TOKEN:-}
+    volumes:
+      - ${HOLMES_CONFIG_FILE:-./holmes-config/config.yaml.example}:/root/.holmes/config.yaml:ro
+      - ./skills:/etc/holmes/skills:ro
+    ports:
+      - "127.0.0.1:5050:5050"
+    depends_on:
+      openobserve:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
   order-service:
     build: ./demo/order-service
     environment:
@@ -37,16 +109,84 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
-      - openobserve
+      openobserve:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
-  alert-trigger:
-    build: ./alert-trigger
+  incident-api:
+    build:
+      context: ./alert-trigger
+      target: runtime
     environment:
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:?Export ALERT_WEBHOOK_TOKEN before starting the local demo}
+      DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
+      REDIS_URL: redis://redis:6379/0
+      HOLMES_API_URL: http://holmes-api:5050
+      HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
+      HOLMES_TIMEOUT_SECONDS: ${HOLMES_TIMEOUT_SECONDS:-900}
+      SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:?Export SESSION_SIGNING_KEY before starting the local demo}
+      AIOPS_TEST_USERS_JSON: ${AIOPS_TEST_USERS_JSON:?Export AIOPS_TEST_USERS_JSON with local test accounts before starting the local demo}
       ORDER_SERVICE_URL: http://order-service:8080
       ORDER_ACTION_SERVICE_TOKEN: ${ORDER_ACTION_TOKEN:?Export ORDER_ACTION_TOKEN before starting the local demo}
     ports:
       - "127.0.0.1:8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      holmes-api:
+        condition: service_started
+      order-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  incident-worker:
+    build:
+      context: ./alert-trigger
+      target: runtime
+    command: ["celery", "-A", "worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    environment:
+      DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
+      REDIS_URL: redis://redis:6379/0
+      HOLMES_API_URL: http://holmes-api:5050
+      HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
+      HOLMES_TIMEOUT_SECONDS: ${HOLMES_TIMEOUT_SECONDS:-900}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      holmes-api:
+        condition: service_started
+
+  incident-test:
+    profiles: ["test"]
+    build:
+      context: ./alert-trigger
+      target: test
+    command: ["python", "-m", "pytest", "-q", "tests"]
+    environment:
+      AIOPS_TEST_DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops_test
+    networks:
+      - test-isolated
+    depends_on:
+      postgres-test:
+        condition: service_healthy
 
 volumes:
   oo-data:
+  aiops-postgres-data:
+  aiops-redis-data:
+
+networks:
+  test-isolated:
+    internal: true
