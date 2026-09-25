@@ -114,3 +114,5 @@ Mock mode does not call Holmes or OpenObserve; the diagnosis field is empty and 
 ## Test-to-production boundary
 
 This Compose stack is a local test environment. Before preparing a separate production design, confirm the deployment platform and network/TLS boundary, external identity provider and tenant model, secret management, data retention/compliance, capacity/SLO, backup policy, OpenObserve service-account permissions, model provider/cost controls, CI/release source, action owners and allowed production actions. No production credentials, migration, deployment or remediation are configured or claimed here.
+
+The platform-neutral production decisions, deployment configuration gates, staged acceptance plan, and current open decisions are tracked in [`PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md). It is preparation guidance, not an executable production manifest.

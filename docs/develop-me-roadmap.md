@@ -4,7 +4,7 @@
 > 开源底座：HolmesGPT；集成 OpenObserve、前端监控 SDK、NestJS、OpenTelemetry，Keep 按需加入。  
 > 范围：先在当前电脑 Docker 测试环境围绕真实应用故障建立「采集 → 告警 → 调查 → 审批处置 → 验证 → 复盘」闭环；正式环境部署后续另行规划和授权；不自建日志数据库。
 
-> **当前验收状态（2026-09-25）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；测试动作完成审批、执行和回滚验证，事故复盘已持久化并提供审核表单。Holmes API 健康不代表 Agent 调查通过：当前没有模型凭据，最近一次真实告警任务以 `holmes_unavailable` 安全失败，故 AC-04 与完整 live 验收仍未完成。没有部署到生产环境。
+> **当前验收状态（2026-09-25）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务正在同一个 Docker Compose project 运行。重启后事故/任务数据仍在，隔离测试库恢复成功；工作台已在浏览器分别登录 operator/approver，走通独立审批的测试动作 ON→OFF 闭环，并保存审核合成复盘。Holmes API 健康不代表 Agent 调查通过：当前没有模型凭据，最近一次合成告警任务以 `holmes_unavailable` 安全失败，故 AC-04 与完整 live 验收仍未完成。没有部署到生产环境。
 
 ## 1. 功能边界
 
@@ -248,3 +248,16 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 实测 `requests.Session` 从环境读取代理后，连接到了本机代理端口而非 URL 校验所得的 loopback 测试服务，绕过 pinned adapter。`fetch_webpage` 禁止继承环境代理和 `.netrc`，继续通过 IP-pinned adapter 直连；仍支持 `REQUESTS_CA_BUNDLE`/`CURL_CA_BUNDLE`。
 - [x] SSRF 测试增加代理环境覆盖；`tests/plugins/toolsets/test_internet_ssrf.py` **41 passed**。
 - [x] 全仓非 LLM 回归最终结果：**3861 passed、160 skipped、0 failed、119 warnings**。
+
+## 2026-09-25 增量：浏览器工作台角色与处置闭环验收
+
+- [x] 本机浏览器分别登录 operator 和 approver；operator 可发起测试动作但不能审批，approver 可审批但不显示执行按钮，operator 在批准后执行。
+- [x] 对新建的本机合成事故实际走通 `set-chaos-mode:on` 独立审批和执行；order-service owner 验证 OFF→ON，再独立审批并执行 OFF，验证 ON→OFF。
+- [x] operator 页面不显示复盘编辑/审核按钮；approver 保存并审核复盘，工作台显示审核人和状态，审计时间线写入 `retrospective.reviewed`。复盘明确记录没有 DeepSeek Key、没有真实 RCA，不把合成验收写成业务根因。
+- [x] 工作台展示合成告警的三次调查尝试与 `holmes_unavailable` 终态；完整真实 Holmes 调查和 live 评测仍未完成。
+
+## 2026-09-25 增量：正式环境准备与验收方案
+
+- [x] 新增 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](../examples/openobserve-aiops/PRODUCTION-READINESS.md)，根据当前服务职责整理后续部署拓扑、必需配置输入、安全门槛、分阶段 staging 验收和 go/no-go 证据。
+- [x] 文档明确当前没有可执行生产 manifest；生产平台、身份提供方、域名/TLS、托管数据服务、OpenObserve RBAC、SLO/RPO/RTO 和动作 owner 均需负责人确认后再生成平台专属配置。
+- [x] 未配置生产凭据、迁移、部署或动作；生产上线仍需单独明确授权。

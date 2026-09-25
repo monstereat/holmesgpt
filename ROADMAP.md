@@ -18,12 +18,13 @@
 - T001：事故/任务/审批/审计/outbox PostgreSQL schema、稳定指纹与事务写入、带资源范围的测试角色授权、口令哈希与签名会话已完成；一次性本机 PostgreSQL 集成测试验证迁移、重复事件去重及 outbox 失败回滚。
 - T002：Webhook 认证和边界校验后事务创建事故/任务/outbox；Celery worker 有原子 claim、租约、退避重试和失败终态，dispatcher 周期重投队列中丢失的任务并回收过期租约；`trigger.py` 不再调用 Holmes CLI 或 `/bin/echo`。隔离 PostgreSQL 全套测试 21 passed；无数据库时 3 passed、4 个数据库集成项安全跳过。Compose 数据卷和 Redis 联调待 T007。
 - T003：Holmes 非流式 `/api/chat` 客户端、状态码与工具结果校验、限定流范围的证据映射和敏感值脱敏已完成；14 项契约测试通过。该结果来自模拟响应，未代表 live Holmes/OpenObserve 验收。
-- T004：工作台提供本地登录、服务端角色/资源校验、事故/任务/Trace/证据/审批/审计详情和受限任务重试。一次性本机 PostgreSQL 集成测试 2 passed。
-- T005：工作台可申请/批准/拒绝/取消及执行测试动作；operator 与 approver 分权，执行前复验审批和固定白名单，调用 order-service owner 接口并核对实际状态，失败时恢复原状态并审计。一次性本机 PostgreSQL 集成测试 4 passed；`node --check` 和 Compose 配置校验通过。
+- T004：工作台提供本地登录、服务端角色/资源校验、事故/任务/Trace/证据/审批/审计详情和受限任务重试。一次性本机 PostgreSQL 集成测试 2 passed；浏览器手工登录 operator 与 approver 并检查角色差异。
+- T005：工作台可申请/批准/拒绝/取消及执行测试动作；operator 与 approver 分权，执行前复验审批和固定白名单，调用 order-service owner 接口并核对实际状态，失败时恢复原状态并审计。一次性本机 PostgreSQL 集成测试 4 passed；`node --check` 和 Compose 配置校验通过；浏览器走通独立审批的 ON→OFF 动作闭环并核对审计记录。
 - T006：评测 runner 可生成 20 例 mock/live 结构化报告；mock 不生成模型诊断且标记 `not_scored`，live 请求需显式 `--confirm-live`，病例来源与实时 OpenObserve 证据分别标记。三条 synthetic 发布上下文准确引用病例证据并关联 Runbook。离线报告已重新生成 20 例，保持 `not_scored`；语料和上下文测试 3 passed，JSON loader 拒绝重复字段。当前缺模型 key，尚未发送 Holmes 模型请求。
 - T007：Holmes、事故 API/worker、PostgreSQL、Redis、OpenObserve 和 order-service 已在一个 Compose project 运行；隔离测试基线 42 项通过，最新全套 Compose profile 46 项通过。已实测告警→持久化任务、权限分离审批、demo 动作执行/回滚、API/worker/Redis/PostgreSQL 重启恢复及独立数据库备份/恢复。Holmes 默认已改为 `deepseek/deepseek-flash`，LiteLLM 识别该模型且支持工具调用，Compose 重建及配置校验通过；尚未提供 API Key，真实告警仍以 `holmes_unavailable` 安全失败。OpenObserve OSS 无服务端 RBAC，AC-04/live 整体验收未通过。
 - T008：加入固定上游、独立 Basic Auth、仅 streams/search 两条路由、SQLGlot ClickHouse AST、流 allowlist、单小时查询窗、超时/行数/请求和响应大小上限；Holmes 未加入 OpenObserve 或 telemetry 网络。11 项代理策略单测通过。Holmes 容器无法解析 OpenObserve 服务名，通过代理可见 2 条 allowlist 流并实际查询到日志。本机 OpenObserve UI 仍只绑定 loopback。
 - T009：新增本机迁移 `0003_incident_retrospectives` 和按事故持久化的复盘 API/工作台表单；approver/admin 可保存影响、根因、恢复措施、行动项并标记审核，viewer/operator 只能读取。审核保存写入 audit timeline；隔离测试 42 passed，运行中的本机测试数据库已应用迁移，HTTP 登录/读取/越权写入 smoke check 通过，前端脚本语法检查通过。
+- 生产准备：新增平台无关的 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](examples/openobserve-aiops/PRODUCTION-READINESS.md)，列出平台/身份/密钥/网络/数据服务等待确认输入、部署配置安全门槛、staging 验收和 go/no-go 证据。尚无可执行的生产 manifest，正式部署与生产操作仍不在当前授权范围。
 - 真实 Holmes 模型调查尚未完成：DeepSeek API Key 未设置，不能声称 live RCA 或端到端事故任务通过。
 - T006 增量：live runner 先检查 DeepSeek 凭据、Holmes 本机 URL 与健康状态，再向本机 OpenObserve `app_logs` 写入带唯一 run/trace ID 的合成语料并逐例调用 Holmes；缺 DeepSeek Key 时在遥测写入前拒绝运行。三例发布上下文会作为结构化 `release_deployed` 事件写入，关联的 repository Runbook 与来源路径会随对应调查请求传入。seeder/context 单测已通过；实际模型验证仍待 API Key。
 - Runbook 增量：Holmes 的自定义技能目录现包含订单库存、数据库迁移不匹配和发布回归三份只读 Skill；评测用例引用相应 Skill。定向测试扫描通过，运行中的 Holmes 容器从实际挂载目录加载到 3 个 Skill。
@@ -31,8 +32,7 @@
 ## 待办
 
 1. 在本机私有运行环境设置有效 `DEEPSEEK_API_KEY` 后，触发真实 500 告警并核对 Holmes 工具调用、持久证据和诊断结果；再运行 20 例 live 评测。密钥不要发送到聊天或写入仓库。
-2. 在浏览器按 demo 手册走查工作台登录、不同角色审批、动作执行/恢复与复盘表单；后端 API 权限和复盘写入已在隔离数据库验证。
-3. live 调查验收后再运行完整验收；生产平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍需单独设计与授权。
+2. live 调查验收后再运行完整验收；生产部署决策与分阶段验收见 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](examples/openobserve-aiops/PRODUCTION-READINESS.md)，其中列出的平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍待负责人确认与单独授权。
 
 ## 阻塞与授权门槛
 
@@ -45,7 +45,7 @@
 
 - `docker compose ... config --quiet`、本机栈构建/启动和服务健康检查通过；Holmes `/healthz`、事故 API `/healthz`、OpenObserve `/healthz` 与订单服务返回 HTTP 200。
 - 隔离 Compose 测试 profile：42 passed，1 warning。
-- 浏览器实际打开 `http://localhost:8081/`，显示事故工作台登录表单且无浏览器 console error；本轮未在浏览器输入账号密码，审批、执行、复盘页面仍以 API/隔离集成测试验证，未记作手工 UI 全流程通过。
+- 浏览器手工验收 `http://localhost:8081/`：分别以 operator 和 approver 登录；operator 发起演示动作，approver 批准，operator 执行并由 owner 核验 OFF→ON；随后申请并批准恢复，由 operator 执行且核验 ON→OFF。approver 成功保存并审核合成事故复盘，审计时间线记录两次审批、动作验证和复盘审核；复盘明确标记真实模型调查未执行，未编造根因。operator 页面不显示复盘写入/审核按钮，approver 页面显示；浏览器 console 无 error。合成告警对应调查因缺 Key 安全结束为 `holmes_unavailable`。
 - T006 live-eval 数据准备增量：定向 pytest **38 passed**；最新隔离 Compose 测试 profile **46 passed，1 warning**。Mock 报告检查 20 例、`not_scored`、无诊断；缺 DeepSeek Key 时在本机数据写入前退出。此前 OpenObserve 接收 40 条合成记录，Holmes 经只读代理按 trace 查询命中对应日志；没有 DeepSeek 模型调用。结构化发布事件和 Runbook prompt 上下文通过单测，尚未在当前 OpenObserve 卷追加新一轮数据或运行模型。
 - 评测报告 schema 升至 1.1：live 每例单独记录是否检索到相同 run/case 的 fixture 行以及 release event，顶层汇总匹配数；报告仍明确把根因诊断 accuracy 标记为 `not_scored`。mock 20 例报告已通过 Draft 2020-12 JSON Schema 校验。
 - 评测报告 schema 升至 1.2：参考预期、参考不支持结论和参考安全建议使用 `reference_*` 字段；未从自由文本分析提取的 assumptions 为 `null`，不再用空数组暗示“没有假设”。评测定向测试 **11 passed**，20 例 mock 报告通过 Draft 2020-12 Schema 校验；重建 Compose 测试镜像后隔离测试 **46 passed，1 warning**。这仍不提供诊断评分，`not_scored` 保持。
