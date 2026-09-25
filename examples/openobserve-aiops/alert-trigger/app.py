@@ -12,7 +12,9 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from psycopg.types.json import Jsonb
 
+from action_client import ActionServiceError, OrderActionClient
 from auth import ROLE_PERMISSIONS, create_session, hash_password, parse_session, require_permission, verify_password
 from models import IncidentInput, Principal
 from store import create_incident
@@ -26,6 +28,20 @@ PUBLIC_PATH = Path(__file__).parent / "public"
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=1024)
+
+
+class ApprovalRequest(BaseModel):
+    action: str = Field(pattern="^set-chaos-mode$")
+    resource: str = Field(pattern="^order-service$")
+    enabled: bool
+
+    model_config = {"extra": "forbid"}
+
+
+class ApprovalDecision(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")
+
+    model_config = {"extra": "forbid"}
 
 
 def _seed_test_users(database_url: str, raw_users: str) -> None:
@@ -102,6 +118,16 @@ def _authorize(principal, permission: str, resource: str) -> None:
         require_permission(principal, permission, resource)
     except PermissionError:
         raise HTTPException(status_code=403, detail="Forbidden") from None
+
+
+def _order_action_client() -> OrderActionClient:
+    try:
+        return OrderActionClient(
+            os.getenv("ORDER_SERVICE_URL", "http://order-service:8080"),
+            os.getenv("ORDER_ACTION_SERVICE_TOKEN", ""),
+        )
+    except ValueError:
+        raise HTTPException(status_code=503, detail="Demo action service is not configured") from None
 
 
 def apply_migrations(database_url: str) -> None:
@@ -305,7 +331,210 @@ def retry_task(task_id: str, authorization: str | None = Header(default=None)) -
     return {"task_id": task_uuid, "status": "queued"}
 
 
-app.mount("/", StaticFiles(directory=str(PUBLIC_PATH), html=True), name="workbench")
+@app.post("/api/incidents/{incident_id}/approvals", status_code=201)
+def request_approval(
+    incident_id: str,
+    body: ApprovalRequest,
+    authorization: str | None = Header(default=None),
+) -> dict[str, str]:
+    principal = _load_principal(authorization)
+    _authorize(principal, "task:create", "order-service")
+    try:
+        incident_uuid = str(uuid.UUID(incident_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Incident not found") from None
+    approval_id = str(uuid.uuid4())
+    parameters = {"action": body.action, "resource": body.resource, "enabled": body.enabled}
+    action_key = f"{body.action}:{'on' if body.enabled else 'off'}"
+    try:
+        with psycopg.connect(_database_url()) as conn:
+            with conn.transaction():
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT id FROM incidents WHERE id = %s FOR UPDATE", (incident_uuid,))
+                    if not cursor.fetchone():
+                        raise HTTPException(status_code=404, detail="Incident not found")
+                    cursor.execute(
+                        """INSERT INTO approvals (id, incident_id, action_id, requested_by, parameters)
+                           VALUES (%s, %s, %s, %s, %s)""",
+                        (approval_id, incident_uuid, action_key, principal.user_id, Jsonb(parameters)),
+                    )
+                    cursor.execute(
+                        """INSERT INTO audit_events (incident_id, actor_id, event_type, details)
+                           VALUES (%s, %s, 'approval.requested', %s)""",
+                        (incident_uuid, principal.user_id, Jsonb({"approval_id": approval_id, **parameters})),
+                    )
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(status_code=409, detail="An approval for this action already exists") from None
+    return {"approval_id": approval_id, "status": "pending"}
+
+
+@app.post("/api/approvals/{approval_id}/decision")
+def decide_approval(
+    approval_id: str,
+    body: ApprovalDecision,
+    authorization: str | None = Header(default=None),
+) -> dict[str, str]:
+    principal = _load_principal(authorization)
+    _authorize(principal, "approval:review", "order-service")
+    try:
+        approval_uuid = str(uuid.UUID(approval_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Approval not found") from None
+    with psycopg.connect(_database_url()) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT incident_id, requested_by, status FROM approvals WHERE id = %s FOR UPDATE",
+                    (approval_uuid,),
+                )
+                approval = cursor.fetchone()
+                if not approval:
+                    raise HTTPException(status_code=404, detail="Approval not found")
+                incident_id, requested_by, status = approval
+                if status != "pending":
+                    raise HTTPException(status_code=409, detail="Approval is no longer pending")
+                if str(requested_by) == principal.user_id:
+                    raise HTTPException(status_code=403, detail="Requester cannot review their own approval")
+                decision_status = "approved" if body.decision == "approve" else "rejected"
+                event_type = f"approval.{decision_status}"
+                cursor.execute(
+                    "UPDATE approvals SET status = %s, reviewed_by = %s, reviewed_at = now() WHERE id = %s",
+                    (decision_status, principal.user_id, approval_uuid),
+                )
+                cursor.execute(
+                    """INSERT INTO audit_events (incident_id, actor_id, event_type, details)
+                       VALUES (%s, %s, %s, %s)""",
+                    (incident_id, principal.user_id, event_type, Jsonb({"approval_id": approval_uuid})),
+                )
+    return {"approval_id": approval_uuid, "status": decision_status}
+
+
+@app.post("/api/approvals/{approval_id}/cancel")
+def cancel_approval(approval_id: str, authorization: str | None = Header(default=None)) -> dict[str, str]:
+    principal = _load_principal(authorization)
+    _authorize(principal, "task:create", "order-service")
+    try:
+        approval_uuid = str(uuid.UUID(approval_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Approval not found") from None
+    with psycopg.connect(_database_url()) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT incident_id, requested_by, status FROM approvals WHERE id = %s FOR UPDATE", (approval_uuid,))
+                approval = cursor.fetchone()
+                if not approval:
+                    raise HTTPException(status_code=404, detail="Approval not found")
+                incident_id, requested_by, status = approval
+                if status != "pending":
+                    raise HTTPException(status_code=409, detail="Approval is no longer pending")
+                if str(requested_by) != principal.user_id and principal.role != "admin":
+                    raise HTTPException(status_code=403, detail="Only the requester or admin can cancel this approval")
+                cursor.execute("UPDATE approvals SET status = 'cancelled' WHERE id = %s", (approval_uuid,))
+                cursor.execute(
+                    "INSERT INTO audit_events (incident_id, actor_id, event_type, details) VALUES (%s, %s, 'approval.cancelled', %s)",
+                    (incident_id, principal.user_id, Jsonb({"approval_id": approval_uuid})),
+                )
+    return {"approval_id": approval_uuid, "status": "cancelled"}
+
+
+@app.post("/api/approvals/{approval_id}/execute")
+def execute_approval(approval_id: str, authorization: str | None = Header(default=None)) -> dict[str, object]:
+    principal = _load_principal(authorization)
+    _authorize(principal, "task:create", "order-service")
+    try:
+        approval_uuid = str(uuid.UUID(approval_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Approval not found") from None
+
+    execution_error: str | None = None
+    response: dict[str, object] | None = None
+    with psycopg.connect(_database_url()) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """SELECT incident_id, action_id, status, requested_by, reviewed_by, parameters
+                       FROM approvals WHERE id = %s FOR UPDATE""",
+                    (approval_uuid,),
+                )
+                approval = cursor.fetchone()
+                if not approval:
+                    raise HTTPException(status_code=404, detail="Approval not found")
+                incident_id, action_id, status, requested_by, reviewed_by, parameters = approval
+                if status != "approved":
+                    raise HTTPException(status_code=409, detail="Approval must be approved before execution")
+                if not reviewed_by or str(reviewed_by) == str(requested_by):
+                    raise HTTPException(status_code=409, detail="Approval does not have an independent reviewer")
+                if not isinstance(parameters, dict) or (
+                    action_id != f"set-chaos-mode:{'on' if parameters.get('enabled') else 'off'}"
+                    or set(parameters) != {"action", "resource", "enabled"}
+                    or parameters.get("action") != "set-chaos-mode"
+                    or parameters.get("resource") != "order-service"
+                    or not isinstance(parameters.get("enabled"), bool)
+                ):
+                    raise HTTPException(status_code=400, detail="Approval action is outside the test allowlist")
+
+                owner = _order_action_client()
+                desired = "on" if parameters["enabled"] else "off"
+                before = None
+                after = None
+                try:
+                    before = owner.state()
+                    owner.set_chaos_mode(parameters["enabled"], approval_uuid)
+                    after = owner.state()
+                    verified = after.get("chaos_mode") == desired
+                except ActionServiceError as exc:
+                    try:
+                        after = owner.state()
+                    except ActionServiceError:
+                        after = None
+                    if after and after.get("chaos_mode") == desired:
+                        execution_error = None
+                        verified = True
+                    else:
+                        execution_error = exc.code
+                        verified = False
+
+                rolled_back = False
+                rollback_error = None
+                if execution_error is None and not verified:
+                    try:
+                        if not before or before.get("resource") != "order-service":
+                            raise ActionServiceError("action_before_state_unavailable")
+                        previous_enabled = before["chaos_mode"] == "on"
+                        owner.set_chaos_mode(previous_enabled, f"{approval_uuid}:rollback")
+                        rollback_state = owner.state()
+                        rolled_back = rollback_state.get("chaos_mode") == before["chaos_mode"]
+                        if not rolled_back:
+                            rollback_error = "rollback_state_not_restored"
+                    except ActionServiceError as exc:
+                        rollback_error = exc.code
+
+                if execution_error:
+                    event_type = "action.failed"
+                    audit_details = {"approval_id": approval_uuid, "error_code": execution_error}
+                elif verified:
+                    event_type = "action.verified"
+                    audit_details = {"approval_id": approval_uuid, "resource": "order-service", "action": action_id, "before_chaos_mode": before.get("chaos_mode") if before else None, "chaos_mode": desired}
+                    cursor.execute("UPDATE approvals SET status = 'executed' WHERE id = %s", (approval_uuid,))
+                else:
+                    event_type = "action.rollback_completed" if rolled_back else "action.rollback_failed"
+                    audit_details = {"approval_id": approval_uuid, "resource": "order-service", "action": action_id, "before_chaos_mode": before.get("chaos_mode") if before else None, "rolled_back": rolled_back, "error_code": rollback_error or "verification_failed"}
+                    cursor.execute("UPDATE approvals SET status = 'executed' WHERE id = %s", (approval_uuid,))
+                cursor.execute(
+                    "INSERT INTO audit_events (incident_id, actor_id, event_type, details) VALUES (%s, %s, %s, %s)",
+                    (incident_id, principal.user_id, event_type, Jsonb(audit_details)),
+                )
+                if execution_error is None and verified:
+                    response = {"approval_id": approval_uuid, "status": "executed", "verified": True, "chaos_mode": desired}
+                elif execution_error is None:
+                    response = {"approval_id": approval_uuid, "status": "executed", "verified": False, "rolled_back": rolled_back}
+
+    if execution_error:
+        raise HTTPException(status_code=502, detail="Demo action owner could not confirm execution")
+    if response and response["verified"] is False:
+        message = "Action verification failed and the original state was restored" if response["rolled_back"] else "Action verification failed and rollback could not be confirmed"
+        raise HTTPException(status_code=502, detail=message)
+    return response or {"approval_id": approval_uuid, "status": "executed", "verified": False}
 
 
 @app.post("/webhooks/openobserve", status_code=202)
@@ -342,3 +571,6 @@ async def openobserve_webhook(request: Request) -> dict[str, object]:
         "task_id": result["task_id"],
         "trace_ids": traces,
     }
+
+
+app.mount("/", StaticFiles(directory=str(PUBLIC_PATH), html=True), name="workbench")

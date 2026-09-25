@@ -118,7 +118,65 @@
 
       const approvals = document.createElement("section");
       approvals.append(el("h3", "审批"));
-      approvals.append(el("p", incident.approvals.length ? JSON.stringify(incident.approvals) : "暂无审批记录。", "muted"));
+      const canOperate = ["operator", "admin"].includes(principal.role);
+      const existingActions = new Set(incident.approvals.map((approval) => approval.action_id));
+      if (canOperate) {
+        for (const [enabled, actionKey, label] of [
+          [true, "set-chaos-mode:on", "请求开启演示故障"],
+          [false, "set-chaos-mode:off", "请求关闭演示故障"],
+        ]) {
+          if (!existingActions.has(actionKey)) {
+            const request = el("button", label);
+            request.className = "primary";
+            request.style.margin = "8px 8px 4px 0";
+            request.addEventListener("click", async () => {
+              request.disabled = true;
+              try {
+                await api(`/api/incidents/${encodeURIComponent(id)}/approvals`, {
+                  method: "POST",
+                  body: JSON.stringify({ action: "set-chaos-mode", resource: "order-service", enabled }),
+                });
+                await loadIncident(id);
+              } catch (error) { showError(pageMessage, error); request.disabled = false; }
+            });
+            approvals.append(request);
+          }
+        }
+      }
+      if (!incident.approvals.length) approvals.append(el("p", "暂无审批记录。", "muted"));
+      for (const approval of incident.approvals) {
+        const row = document.createElement("div");
+        row.className = "task";
+        row.append(el("span", `${approval.action_id} · ${approval.status} · 申请人 ${approval.requested_by}`));
+        const runApprovalAction = async (button, path, body) => {
+          button.disabled = true;
+          pageMessage.textContent = "";
+          try {
+            await api(path, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) });
+            await loadIncident(id);
+          } catch (error) { showError(pageMessage, error); button.disabled = false; }
+        };
+        if (approval.status === "pending" && ["approver", "admin"].includes(principal.role) && approval.requested_by !== principal.user_id) {
+          const approve = el("button", "批准");
+          approve.addEventListener("click", () => runApprovalAction(approve, `/api/approvals/${encodeURIComponent(approval.id)}/decision`, { decision: "approve" }));
+          const reject = el("button", "拒绝");
+          reject.style.marginLeft = "6px";
+          reject.addEventListener("click", () => runApprovalAction(reject, `/api/approvals/${encodeURIComponent(approval.id)}/decision`, { decision: "reject" }));
+          row.append(approve, reject);
+        }
+        if (approval.status === "pending" && canOperate && (approval.requested_by === principal.user_id || principal.role === "admin")) {
+          const cancel = el("button", "取消");
+          cancel.addEventListener("click", () => runApprovalAction(cancel, `/api/approvals/${encodeURIComponent(approval.id)}/cancel`));
+          row.append(cancel);
+        }
+        if (approval.status === "approved" && canOperate) {
+          const execute = el("button", "执行测试动作");
+          execute.className = "primary";
+          execute.addEventListener("click", () => runApprovalAction(execute, `/api/approvals/${encodeURIComponent(approval.id)}/execute`));
+          row.append(execute);
+        }
+        approvals.append(row);
+      }
       detail.append(approvals);
 
       const timeline = document.createElement("section");

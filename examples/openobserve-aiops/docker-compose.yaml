@@ -31,6 +31,7 @@ services:
       CHAOS_MODE: ${CHAOS_MODE:-off}
       # Optional local CI release webhook authentication. Never commit a real secret.
       RELEASE_WEBHOOK_SECRET: ${RELEASE_WEBHOOK_SECRET:-}
+      ORDER_ACTION_TOKEN: ${ORDER_ACTION_TOKEN:?Export ORDER_ACTION_TOKEN before starting the local demo}
       OTEL_SERVICE_NAME: order-service
       RELEASE_VERSION: ${RELEASE_VERSION:-v1.0.0}
     ports:
@@ -42,8 +43,8 @@ services:
     build: ./alert-trigger
     environment:
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:?Export ALERT_WEBHOOK_TOKEN before starting the local demo}
-      # Demo container has no Holmes installation; this validates webhook scheduling only.
-      HOLMES_BIN: ${HOLMES_BIN:-/bin/echo}
+      ORDER_SERVICE_URL: http://order-service:8080
+      ORDER_ACTION_SERVICE_TOKEN: ${ORDER_ACTION_TOKEN:?Export ORDER_ACTION_TOKEN before starting the local demo}
     ports:
       - "127.0.0.1:8081:8081"
 
