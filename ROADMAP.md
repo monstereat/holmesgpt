@@ -48,7 +48,7 @@
 - 浏览器实际打开 `http://localhost:8081/`，显示事故工作台登录表单且无浏览器 console error；本轮未在浏览器输入账号密码，审批、执行、复盘页面仍以 API/隔离集成测试验证，未记作手工 UI 全流程通过。
 - T006 live-eval 数据准备增量：定向 pytest **38 passed**；最新隔离 Compose 测试 profile **46 passed，1 warning**。Mock 报告检查 20 例、`not_scored`、无诊断；缺 DeepSeek Key 时在本机数据写入前退出。此前 OpenObserve 接收 40 条合成记录，Holmes 经只读代理按 trace 查询命中对应日志；没有 DeepSeek 模型调用。结构化发布事件和 Runbook prompt 上下文通过单测，尚未在当前 OpenObserve 卷追加新一轮数据或运行模型。
 - 评测报告 schema 升至 1.1：live 每例单独记录是否检索到相同 run/case 的 fixture 行以及 release event，顶层汇总匹配数；报告仍明确把根因诊断 accuracy 标记为 `not_scored`。mock 20 例报告已通过 Draft 2020-12 JSON Schema 校验。
-- 评测报告 schema 升至 1.2：参考预期、参考不支持结论和参考安全建议使用 `reference_*` 字段；未从自由文本分析提取的 assumptions 为 `null`，不再用空数组暗示“没有假设”。评测定向测试 **11 passed**，20 例 mock 报告通过 Draft 2020-12 Schema 校验。这仍不提供诊断评分，`not_scored` 保持。
+- 评测报告 schema 升至 1.2：参考预期、参考不支持结论和参考安全建议使用 `reference_*` 字段；未从自由文本分析提取的 assumptions 为 `null`，不再用空数组暗示“没有假设”。评测定向测试 **11 passed**，20 例 mock 报告通过 Draft 2020-12 Schema 校验；重建 Compose 测试镜像后隔离测试 **46 passed，1 warning**。这仍不提供诊断评分，`not_scored` 保持。
 - Holmes 实际挂载的 `/etc/holmes/skills` 由容器内技能加载器识别到 3 个项目 Skill（库存故障、数据库 schema/migration 不匹配、发布回归）；无模型调用。
 - 全仓非 LLM 回归最新重跑：**3858 passed、160 skipped、2 failed**。此次修复了超大工具结果错误摘要超过长度阈值的问题（定向工具限制测试 **11 passed**）；目前仍有一项 SSRF 测试返回 HTTP 502、另一项交互渲染测试未出现 `(error)` 标记，因此全仓套件仍未全绿。AIOps 定向测试 **39 passed**，Compose 隔离测试 **46 passed，1 warning**。
 - 复盘增量：隔离 Compose 测试 profile 42 passed，前端 `node --check` 通过；本机 API 登录后可读取现存事故复盘，operator 写入返回 403；测试数据库记录迁移版本 `0003_incident_retrospectives`。

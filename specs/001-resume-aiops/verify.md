@@ -20,7 +20,7 @@
 
 ## 验证结果
 
-- `docker compose ... --profile test run --build --rm incident-test`：**46 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
+- 最近的 `docker compose ... --profile test run --build --rm incident-test`（含 schema 1.2 后代码）：**46 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
 - 全仓非 LLM 回归修复后重跑：**3858 passed, 160 skipped, 2 failed, 118 warnings**。超大工具结果错误摘要的预览长度问题已修复且其定向测试 11 passed；仍有 SSRF 测试返回 HTTP 502及交互渲染测试缺少 `(error)` 标记。AIOps 定向测试 **39 passed**；本项目 Compose 测试为 **46 passed, 1 warning**，全仓套件仍未全绿。
 - Compose 栈构建、配置校验和服务恢复成功。最近检查：OpenObserve `/healthz`、Holmes `/healthz`、incident API `/healthz`、订单服务根路径均返回 HTTP 200。
 - 本机告警/事故工作流：已创建 1 条 incident；无 Holmes 凭据的任务安全终止，错误码 `holmes_unavailable`。
