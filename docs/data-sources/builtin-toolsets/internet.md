@@ -40,10 +40,11 @@ guards every request:
   configured credentials cannot leak to an arbitrary host the model picks.
 
 The internal-IP block always runs (the host is resolved and checked before any request is
-made). The connection *pin* additionally protects direct connections against DNS rebinding;
-when an outbound HTTP(S) proxy is configured, the proxy performs its own resolution, so the
-pin cannot apply to that hop — set `allowed_hosts` if you need to constrain what a proxied
-deployment can reach.
+made). The connection is pinned to the validated address. To preserve this guarantee,
+`fetch_webpage` does not inherit `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` settings (including
+their lowercase forms) or `.netrc` credentials; it connects directly to the validated IP.
+Custom TLS trust bundles from
+`REQUESTS_CA_BUNDLE` or `CURL_CA_BUNDLE` are still honored.
 
 ### Timeout Configuration
 

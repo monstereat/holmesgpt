@@ -242,3 +242,9 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 双栏 TUI 将 `(error)` 标记移至工具标签之前，窄栏宽度下不会被右侧裁剪；`tests/test_interactive.py` **67 passed**。
 - [x] 全仓非 LLM 回归 **3859 passed、160 skipped、1 failed**；此前记录的交互错误标记失败已消失。
 - [ ] 唯一剩余全仓失败是 `test_pinned_adapter_connects_to_validated_ip` 请求返回 HTTP 502。
+
+## 2026-09-25 增量：代理环境下的 SSRF IP pinning
+
+- [x] 实测 `requests.Session` 从环境读取代理后，连接到了本机代理端口而非 URL 校验所得的 loopback 测试服务，绕过 pinned adapter。`fetch_webpage` 禁止继承环境代理和 `.netrc`，继续通过 IP-pinned adapter 直连；仍支持 `REQUESTS_CA_BUNDLE`/`CURL_CA_BUNDLE`。
+- [x] SSRF 测试增加代理环境覆盖；`tests/plugins/toolsets/test_internet_ssrf.py` **41 passed**。
+- [x] 全仓非 LLM 回归最终结果：**3861 passed、160 skipped、0 failed、119 warnings**。

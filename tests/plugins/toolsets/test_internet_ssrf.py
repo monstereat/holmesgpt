@@ -281,6 +281,7 @@ def test_pinned_adapter_connects_to_validated_ip(responses):
         # Let the real socket through (responses would otherwise intercept it).
         responses.add_passthru("http://internal.example.test")
         session = requests.Session()
+        session.trust_env = False
         adapter = build_pinned_adapter("127.0.0.1")
         session.mount("http://", adapter)
         resp = session.get(f"http://internal.example.test:{port}/x", timeout=5)
@@ -292,3 +293,64 @@ def test_pinned_adapter_connects_to_validated_ip(responses):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_scrape_bypasses_environment_proxy_to_preserve_ip_pinning(
+    monkeypatch, responses
+):
+    target_received = {}
+    proxy_requests = []
+
+    class TargetHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            target_received["peer"] = self.connection.getpeername()[0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"pinned-ok")
+
+        def log_message(self, *args):
+            pass
+
+    class ProxyHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            proxy_requests.append(self.path)
+            self.send_response(502)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    target = socketserver.TCPServer(("127.0.0.1", 0), TargetHandler)
+    proxy = socketserver.TCPServer(("127.0.0.1", 0), ProxyHandler)
+    threads = [
+        threading.Thread(target=server.serve_forever, daemon=True)
+        for server in (target, proxy)
+    ]
+    for thread in threads:
+        thread.start()
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        return [(2, 1, 6, "", ("127.0.0.1", port))]
+
+    monkeypatch.setattr(ssrf.socket, "getaddrinfo", fake_getaddrinfo)
+    proxy_url = f"http://127.0.0.1:{proxy.server_address[1]}"
+    monkeypatch.setenv("http_proxy", proxy_url)
+    monkeypatch.setenv("HTTP_PROXY", proxy_url)
+    monkeypatch.setenv("no_proxy", "")
+    monkeypatch.setenv("NO_PROXY", "")
+    responses.add_passthru("http://internal.example.test")
+    try:
+        content, mime_type = scrape(
+            f"http://internal.example.test:{target.server_address[1]}/x",
+            {},
+            allowed_hosts=["internal.example.test"],
+        )
+        assert content == "pinned-ok"
+        assert mime_type == "text/plain"
+        assert target_received["peer"] == "127.0.0.1"
+        assert proxy_requests == []
+    finally:
+        for server in (target, proxy):
+            server.shutdown()
+            server.server_close()

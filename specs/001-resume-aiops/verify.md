@@ -21,7 +21,7 @@
 ## 验证结果
 
 - 最近的 `docker compose ... --profile test run --build --rm incident-test`（含 schema 1.2 后代码）：**46 passed, 1 warning**；测试使用临时 Postgres 文件系统和隔离 Docker 网络。
-- 全仓非 LLM 回归最新重跑：**3859 passed, 160 skipped, 1 failed, 118 warnings**。交互 renderer 窄栏错误标记已修复（交互测试文件 67 passed）；超大工具结果摘要定向测试 11 passed。唯一剩余失败为 `test_pinned_adapter_connects_to_validated_ip` 返回 HTTP 502。AIOps 定向测试 **39 passed**；本项目 Compose 测试为 **46 passed, 1 warning**，全仓套件仍未全绿。
+- 全仓非 LLM 回归修复代理绕行后重跑：**3861 passed, 160 skipped, 0 failed, 119 warnings**。Internet Toolset 在应用层禁用环境代理和 `.netrc`，并保留 `REQUESTS_CA_BUNDLE`/`CURL_CA_BUNDLE`；SSRF pinning 与代理环境回归测试通过。AIOps 定向测试 **39 passed**；本项目 Compose 测试为 **46 passed, 1 warning**。live Holmes 调查仍因缺少 DeepSeek Key 未验收。
 - Compose 栈构建、配置校验和服务恢复成功。最近检查：OpenObserve `/healthz`、Holmes `/healthz`、incident API `/healthz`、订单服务根路径均返回 HTTP 200。
 - 本机告警/事故工作流：已创建 1 条 incident；无 Holmes 凭据的任务安全终止，错误码 `holmes_unavailable`。
 - 本机权限与动作工作流：operator 自审批返回 403；approver 批准后执行并核验 order-service 状态 ON，再完成批准恢复并核验状态 OFF。

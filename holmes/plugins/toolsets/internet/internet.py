@@ -137,6 +137,16 @@ def scrape(
                 return error_message, None
 
             session = requests.Session()
+            # requests otherwise honors HTTP(S)_PROXY from the environment and
+            # sends the request to that proxy instead of the validated IP.
+            # That bypasses the pinned adapter and can also attach ambient
+            # .netrc credentials to model-selected hosts.
+            session.trust_env = False
+            session.verify = (
+                os.environ.get("REQUESTS_CA_BUNDLE")
+                or os.environ.get("CURL_CA_BUNDLE")
+                or True
+            )
             adapter = build_pinned_adapter(validated_ips[0])
             session.mount("http://", adapter)
             session.mount("https://", adapter)
