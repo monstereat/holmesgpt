@@ -1,0 +1,145 @@
+"""Celery delivery plus PostgreSQL outbox reconciliation."""
+
+from __future__ import annotations
+
+import logging
+import os
+import threading
+from typing import Any
+
+import psycopg
+from celery import Celery
+
+from tasks import (
+    ClaimedTask,
+    PermanentTaskError,
+    RetryableTaskError,
+    claim_task,
+    complete_task,
+    fail_task,
+)
+
+logger = logging.getLogger("holmes_aiops.worker")
+celery_app = Celery("holmes_aiops", broker=os.getenv("REDIS_URL", "redis://redis:6379/0"))
+celery_app.conf.update(
+    task_ignore_result=True,
+    broker_connection_retry_on_startup=True,
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
+    task_reject_on_worker_lost=True,
+)
+
+
+def _dispatch_once(database_url: str, sender: Any, *, interval_seconds: int = 20, batch_size: int = 20) -> int:
+    sent = 0
+    with psycopg.connect(database_url) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """WITH recovered AS (
+                           UPDATE tasks SET status = 'retrying', available_at = now(),
+                               error_code = 'worker_lease_expired', lease_expires_at = NULL,
+                               updated_at = now()
+                           WHERE status = 'running' AND lease_expires_at < now()
+                             AND attempt < max_attempts
+                           RETURNING incident_id, id
+                       )
+                       INSERT INTO audit_events (incident_id, task_id, event_type)
+                       SELECT incident_id, id, 'task.lease_expired' FROM recovered"""
+                )
+                cursor.execute(
+                    """WITH exhausted AS (
+                           UPDATE tasks SET status = 'failed', completed_at = now(),
+                               error_code = 'attempt_budget_exhausted', lease_expires_at = NULL,
+                               updated_at = now()
+                           WHERE status = 'running' AND lease_expires_at < now()
+                             AND attempt >= max_attempts
+                           RETURNING incident_id, id
+                       )
+                       INSERT INTO audit_events (incident_id, task_id, event_type, details)
+                       SELECT incident_id, id, 'task.failed', '{"error_code":"attempt_budget_exhausted"}'::jsonb
+                       FROM exhausted"""
+                )
+                cursor.execute(
+                    """SELECT o.id, o.payload->>'task_id'
+                       FROM outbox_events o
+                       JOIN tasks t ON t.id = (o.payload->>'task_id')::uuid
+                       WHERE o.event_type = 'investigation.requested'
+                         AND t.status IN ('queued', 'retrying')
+                         AND t.available_at <= now()
+                         AND (o.last_enqueued_at IS NULL
+                              OR o.last_enqueued_at < now() - (%s * interval '1 second'))
+                       ORDER BY o.created_at
+                       LIMIT %s FOR UPDATE OF o SKIP LOCKED""",
+                    (interval_seconds, batch_size),
+                )
+                rows = cursor.fetchall()
+                for outbox_id, task_id in rows:
+                    sender("holmes_aiops.investigate", args=[task_id], task_id=str(outbox_id))
+                    cursor.execute(
+                        """UPDATE outbox_events
+                           SET last_enqueued_at = now(), delivery_attempts = delivery_attempts + 1,
+                               published_at = COALESCE(published_at, now())
+                           WHERE id = %s""",
+                        (outbox_id,),
+                    )
+                    sent += 1
+    return sent
+
+
+class OutboxDispatcher:
+    def __init__(self, database_url: str, sender: Any = None, interval_seconds: int = 2):
+        self.database_url = database_url
+        self.sender = sender or celery_app.send_task
+        self.interval_seconds = interval_seconds
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="outbox-dispatcher", daemon=True)
+
+    def start(self) -> "OutboxDispatcher":
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=5)
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                _dispatch_once(self.database_url, self.sender)
+            except Exception:  # Do not log broker/database details that may contain credentials.
+                logger.warning("Outbox dispatch failed; pending events will be retried")
+            self._stop.wait(self.interval_seconds)
+
+
+def start_outbox_dispatcher() -> OutboxDispatcher:
+    return OutboxDispatcher(os.environ["DATABASE_URL"]).start()
+
+
+def run_investigation(_task: ClaimedTask) -> dict[str, Any]:
+    """T003 replaces this fail-closed placeholder with the Holmes API client."""
+    raise PermanentTaskError("investigation_not_configured")
+
+
+@celery_app.task(name="holmes_aiops.investigate")
+def investigate_task(task_id: str) -> str:
+    database_url = os.getenv("DATABASE_URL", "")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is required by the worker")
+    with psycopg.connect(database_url) as conn:
+        task = claim_task(conn, task_id)
+    if task is None:
+        return "ignored"
+    try:
+        result = run_investigation(task)
+    except RetryableTaskError as exc:
+        with psycopg.connect(database_url) as conn:
+            return fail_task(conn, task, exc.code, retryable=True)
+    except PermanentTaskError as exc:
+        with psycopg.connect(database_url) as conn:
+            return fail_task(conn, task, exc.code, retryable=False)
+    except Exception:
+        with psycopg.connect(database_url) as conn:
+            return fail_task(conn, task, "internal_error", retryable=False)
+    with psycopg.connect(database_url) as conn:
+        return "completed" if complete_task(conn, task, result) else "stale"

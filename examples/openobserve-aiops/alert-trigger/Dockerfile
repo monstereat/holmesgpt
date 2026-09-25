@@ -15,5 +15,6 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8081"]
 FROM base AS test
 RUN pip install --no-cache-dir -r requirements-test.txt
 COPY . .
+RUN chown -R app:app /app
 USER app
 CMD ["python", "-m", "pytest", "-q"]
