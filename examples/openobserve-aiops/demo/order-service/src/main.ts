@@ -11,7 +11,7 @@
  * Start with `node dist/main.js` (runs otel.ts first via main.js import order).
  */
 import "./otel"; // must be first
-import { execSync } from "node:child_process";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import "reflect-metadata";
@@ -20,8 +20,10 @@ import { NestFactory } from "@nestjs/core";
 import {
   Body,
   BadRequestException,
+  ConflictException,
   Controller,
   Header,
+  Headers,
   Logger,
   Module,
   Post,
@@ -43,6 +45,7 @@ const OO_PASSWORD = process.env.OPENOBSERVE_PASSWORD || "";
 const RELEASE = process.env.RELEASE_VERSION || "v1.0.0";
 const CHAOS = (process.env.CHAOS_MODE || "off").toLowerCase() === "on";
 const RELEASE_WEBHOOK_SECRET = process.env.RELEASE_WEBHOOK_SECRET || "";
+const ORDER_ACTION_TOKEN = process.env.ORDER_ACTION_TOKEN || "";
 
 const ingester = new OpenObserveIngester(OO_URL, OO_ORG, OO_USER, OO_PASSWORD);
 
@@ -80,6 +83,11 @@ function emitLog(
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
+  private chaosMode = CHAOS;
+  private readonly testActions = new Map<
+    string,
+    { fingerprint: string; result: Record<string, unknown> }
+  >();
 
   create(order: { sku: string; quantity: number; userId: string }): Record<string, unknown> {
     emitLog("info", "order create requested", {
@@ -89,7 +97,7 @@ export class OrdersService {
       user_id: order.userId,
     });
 
-    if (CHAOS) {
+    if (this.chaosMode) {
       // Simulated bad release: inventory lookup throws and the request 500s.
       const err = new Error(
         `inventory lookup failed for sku=${order.sku}: connection refused (simulated bad release ${RELEASE})`,
@@ -155,7 +163,81 @@ export class OrdersService {
   }
 
   demoState(): { release: string; chaos_mode: string } {
-    return { release: RELEASE, chaos_mode: CHAOS ? "on" : "off" };
+    return { release: RELEASE, chaos_mode: this.chaosMode ? "on" : "off" };
+  }
+
+  applyTestAction(
+    token: string | undefined,
+    idempotencyKey: string | undefined,
+    body: unknown,
+  ): Record<string, unknown> {
+    if (!ORDER_ACTION_TOKEN) {
+      throw new ServiceUnavailableException();
+    }
+    if (!token || !this.matchesToken(token, ORDER_ACTION_TOKEN)) {
+      throw new UnauthorizedException();
+    }
+    if (!idempotencyKey || idempotencyKey.length > 128) {
+      throw new BadRequestException("A valid Idempotency-Key is required");
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new BadRequestException("Action body must be an object");
+    }
+
+    const action = body as Record<string, unknown>;
+    if (
+      Object.keys(action).some((key) => !["action", "resource", "enabled"].includes(key))
+      || action.action !== "set-chaos-mode"
+      || action.resource !== "order-service"
+      || typeof action.enabled !== "boolean"
+    ) {
+      throw new BadRequestException("Unsupported test action or parameters");
+    }
+
+    const fingerprint = JSON.stringify({
+      action: action.action,
+      resource: action.resource,
+      enabled: action.enabled,
+    });
+    const previous = this.testActions.get(idempotencyKey);
+    if (previous) {
+      if (previous.fingerprint !== fingerprint) {
+        throw new ConflictException("Idempotency-Key was already used for another action");
+      }
+      return { ...previous.result, duplicate: true };
+    }
+
+    this.chaosMode = action.enabled;
+    const result = {
+      accepted: true,
+      action_id: idempotencyKey,
+      action: "set-chaos-mode",
+      resource: "order-service",
+      chaos_mode: this.chaosMode ? "on" : "off",
+      duplicate: false,
+    };
+    this.testActions.set(idempotencyKey, { fingerprint, result });
+    if (this.testActions.size > 1000) {
+      const oldestKey = this.testActions.keys().next().value;
+      if (oldestKey) this.testActions.delete(oldestKey);
+    }
+    return result;
+  }
+
+  testActionState(token: string | undefined): Record<string, string> {
+    if (!ORDER_ACTION_TOKEN) {
+      throw new ServiceUnavailableException();
+    }
+    if (!token || !this.matchesToken(token, ORDER_ACTION_TOKEN)) {
+      throw new UnauthorizedException();
+    }
+    return { resource: "order-service", chaos_mode: this.chaosMode ? "on" : "off" };
+  }
+
+  private matchesToken(candidate: string, expected: string): boolean {
+    const candidateDigest = createHash("sha256").update(candidate).digest();
+    const expectedDigest = createHash("sha256").update(expected).digest();
+    return timingSafeEqual(candidateDigest, expectedDigest);
   }
 
   flush(): Promise<void> {
@@ -164,7 +246,7 @@ export class OrdersService {
 }
 
 @Controller()
-class DemoController {
+export class DemoController {
   constructor(private readonly orders: OrdersService) {}
 
   @Get("/")
@@ -181,6 +263,22 @@ class DemoController {
   @Get("/internal/demo-state")
   demoState(): { release: string; chaos_mode: string } {
     return this.orders.demoState();
+  }
+
+  @Post("/internal/test-actions")
+  testAction(
+    @Headers("x-order-action-token") token: string | undefined,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
+    @Body() body: unknown,
+  ): Record<string, unknown> {
+    return this.orders.applyTestAction(token, idempotencyKey, body);
+  }
+
+  @Get("/internal/test-actions/state")
+  testActionState(
+    @Headers("x-order-action-token") token: string | undefined,
+  ): Record<string, string> {
+    return this.orders.testActionState(token);
   }
 
   @Post("/orders")
@@ -266,10 +364,11 @@ async function bootstrap(): Promise<void> {
   process.on("SIGTERM", () => {
     ingester.flush().finally(() => process.exit(0));
   });
-  void execSync; // keep import tree-shake safe
 }
 
-bootstrap().catch((err) => {
-  process.stderr.write(`bootstrap failed: ${String(err)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  bootstrap().catch((err) => {
+    process.stderr.write(`bootstrap failed: ${String(err)}\n`);
+    process.exit(1);
+  });
+}
