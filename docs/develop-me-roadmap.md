@@ -171,6 +171,12 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 20 例 mock JSON 报告生成且标记 `not_scored`；这不表示 Holmes 诊断准确率通过。
 - [ ] 最近真实告警调查因 `holmes_unavailable` 失败关闭；配置模型 API 与 OpenObserve 只读凭据后才能完成 AC-04 和 live 验收。
 
+## 2026-09-25 增量：Holmes 切换 DeepSeek
+
+- [x] 本机 Compose 默认模型切换为 `deepseek/deepseek-flash`，`DEEPSEEK_API_KEY` 仅映射到 Holmes 容器现有的 `MODEL_API_KEY` 配置；模型可被仓库当前 LiteLLM 版本识别并支持 function calling。
+- [x] Compose 配置校验和本机 Holmes 镜像重建通过；API liveness 返回 healthy。当前 API Key 未配置，因此这不是一次真实模型调用或 live RCA 验收。
+- [ ] 提供有效 DeepSeek API Key，并为 OpenObserve OSS 增加服务端强制的只读策略（代理或支持 RBAC 的发行版）后，再完成真实调查验收。OSS 原生账号不具备服务端 RBAC。
+
 ## 2026-09-25 增量：事故原型和告警输入边界
 
 - [x] 事故内存原型记录 owner、severity、idempotency key、重复告警事件、审批决策、证据/假设分类及恢复时间；证据 URL 会剔除片段并脱敏常见凭据查询参数；复盘可录入影响范围和改进项，字段齐备时进入待复核；13 项流程测试通过。

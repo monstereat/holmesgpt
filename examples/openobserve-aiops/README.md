@@ -21,9 +21,19 @@ export AIOPS_TEST_USERS_JSON="$(python3 -c 'import json,os; print(json.dumps([{"
 docker compose up -d --build
 ```
 
-Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. `MODEL_API_KEY` is optional for starting the stack; a model request needs a valid key.
+Keep these values in the current shell or a password manager. The incident service hashes the two account passwords before storing them. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; `DEEPSEEK_API_KEY` is optional for starting the services but required for live model calls. To add it without writing it to the repository, source the private runtime file, then enter it silently in the same shell before recreating Holmes:
 
-The Holmes container reads a read-only config file. By default it mounts the committed template `holmes-config/config.yaml.example`; to use a local config copy, set `HOLMES_CONFIG_FILE` to its absolute path before `docker compose up`. Do not commit credentials. Configure Holmes with a dedicated OpenObserve account that can read only `app_logs` and `frontend_errors`, and set `OPENOBSERVE_SERVICE_USER` and `OPENOBSERVE_SERVICE_TOKEN`. Do not substitute the OpenObserve root password for this account. Without model credentials and the read-only account, Holmes/API health can be checked but a live investigation is not accepted.
+```bash
+source /tmp/holmesgpt-aiops-test-runtime.sh
+read -s 'DEEPSEEK_API_KEY?DeepSeek API key: '
+export DEEPSEEK_API_KEY
+printf '\n'
+docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --force-recreate holmes-api
+```
+
+DeepSeek's API key is passed only to the Holmes container; do not commit or log it.
+
+The Holmes container reads a read-only config file. By default it mounts the committed template `holmes-config/config.yaml.example`; to use a local config copy, set `HOLMES_CONFIG_FILE` to its absolute path before `docker compose up`. Do not commit credentials. The current OpenObserve open-source image does not enforce user/role RBAC; `allowed_streams` and the Holmes Toolset constrain the agent's configured queries but do not make its credentials a server-enforced read-only identity. Treat this instance as test-only and do not put unrelated telemetry in it. A separate policy proxy or an OpenObserve edition with RBAC is required for server-enforced read-only access.
 
 After startup:
 
@@ -56,7 +66,7 @@ In OpenObserve, configure the alert destination to call `http://incident-api:808
 4. In the workbench, use the operator account to request a test action. Sign in separately as approver to approve/reject. The operator can then execute an approved action; the service rechecks authorization, verifies the resulting order-service state and audits any rollback.
 5. Return the demo order-service to normal mode and confirm a new order succeeds.
 
-Live investigation requires all three of: a valid `MODEL_API_KEY`, a `HOLMES_API_KEY`, and a dedicated OpenObserve read-only account with access to the allowlisted streams. Without those, investigation tasks fail with a safe error and acceptance remains blocked; mock reports do not replace this requirement. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
+Live investigation requires a valid `DEEPSEEK_API_KEY` and the local `HOLMES_API_KEY`. Set `DEEPSEEK_API_KEY` in the same shell before recreating `holmes-api`; never send it through the incident API or put it in this repository. Without a model key, investigation tasks fail with a safe error and live acceptance remains blocked; mock reports do not replace this requirement. The bundled OpenObserve OSS image also lacks server-enforced user/role RBAC, so its native credentials do not meet the dedicated read-only-account acceptance criterion; use an RBAC edition or add a scoped policy proxy before treating live access as least-privilege. Holmes has no request idempotency key, so a retry after an ambiguous timeout may repeat a model call and its cost, while the incident service keeps one task record.
 
 ## Persistence and recovery
 

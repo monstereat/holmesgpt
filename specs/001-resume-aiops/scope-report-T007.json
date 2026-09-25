@@ -18,13 +18,13 @@
     "docs/develop-me-roadmap.md"
   ],
   "allow_patterns": [
+    "examples/openobserve-aiops/DEMO.md",
     "examples/openobserve-aiops/docker-compose.yaml",
     "examples/openobserve-aiops/README.md",
-    "examples/openobserve-aiops/DEMO.md",
-    "examples/openobserve-aiops/evals/README.md",
     "ROADMAP.md",
     "docs/develop-me-roadmap.md",
     "specs/001-resume-aiops/verify.md",
+    "specs/001-resume-aiops/state.json",
     "specs/001-resume-aiops/**"
   ],
   "internal_patterns": [

@@ -73,8 +73,8 @@ services:
       HOLMES_HOST: 0.0.0.0
       HOLMES_PORT: "5050"
       HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
-      HOLMES_MODEL: ${HOLMES_MODEL:-anthropic/claude-sonnet-4-5-20250929}
-      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      HOLMES_MODEL: ${HOLMES_MODEL:-deepseek/deepseek-flash}
+      MODEL_API_KEY: ${DEEPSEEK_API_KEY:-${MODEL_API_KEY:-}}
       OPENOBSERVE_SERVICE_USER: ${OPENOBSERVE_SERVICE_USER:-}
       OPENOBSERVE_SERVICE_TOKEN: ${OPENOBSERVE_SERVICE_TOKEN:-}
     volumes:

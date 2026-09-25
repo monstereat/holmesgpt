@@ -2,9 +2,9 @@
   "schema_version": 2,
   "change_id": "001-resume-aiops",
   "mode": "roadmap",
-  "status": "blocked",
+  "status": "executing",
   "current_task": "T007",
-  "waiting_for": "在本机运行环境配置 MODEL_API_KEY、HOLMES_API_KEY 和 OpenObserve 专用只读用户/token 与流白名单后，恢复 T007 并重跑一条真实 500 告警调查及 live 评测。",
+  "waiting_for": null,
   "artifacts": {
     "spec": "specs/001-resume-aiops/spec.md",
     "plan": "specs/001-resume-aiops/plan.md",
@@ -882,6 +882,32 @@
       "evidence": "examples/openobserve-aiops/README.md、DEMO.md、ROADMAP.md 和 docs/develop-me-roadmap.md 已声明本机测试部署、正式环境待确认项及未授权范围；未声称已部署生产。",
       "result": "pass",
       "at": "2026-09-25T04:53:44Z"
+    },
+    {
+      "id": "T007-deepseek-config-deploy",
+      "type": "command",
+      "kind": "integration",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-04"
+      ],
+      "command": "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T05:11:19Z",
+      "duration_ms": 9525,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T007-deepseek-config-deploy.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T007-deepseek-config-deploy.stderr.log",
+      "git": {
+        "head": "7b78abdb45b0bd2dd8556d1491297b78bce86293",
+        "changed_files": [
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "7cf44861f30fa5c58affd6277fc5c958086f0b3d356e13bcd8e04085b8129492"
+      }
     }
   ],
   "events": [
@@ -1226,8 +1252,20 @@
       "action": "block",
       "status": "blocked",
       "note": "T007 的 Compose、隔离测试、恢复演练和文档已完成；整体验收仍依赖真实 Holmes 调查。当前未提供有效模型凭据与 OpenObserve 专用只读凭据，AC-04 尚无 live 证据，依 Spec 必须保持 incomplete。"
+    },
+    {
+      "at": "2026-09-25T05:07:17Z",
+      "action": "resume",
+      "status": "executing",
+      "note": "主人在 blocked 后继续该目标，并明确要求将 Holmes 模型切换为 DeepSeek；本次工作限于本机测试环境配置和文档，不填入或回显 API 密钥。"
+    },
+    {
+      "at": "2026-09-25T05:11:29Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T007-deepseek-config-deploy: pass (source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build)"
     }
   ],
   "created_at": "2026-09-25T03:20:15Z",
-  "updated_at": "2026-09-25T04:53:44Z"
+  "updated_at": "2026-09-25T05:11:29Z"
 }
