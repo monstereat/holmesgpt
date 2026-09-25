@@ -1,0 +1,39 @@
+{
+  "base_commit": "8e1d020ae5665cda6154957e9d4d7599788cd667",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T005.json",
+  "new_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/alert-trigger/action_client.py",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/alert-trigger/tests/test_actions.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_approvals.py",
+    "examples/openobserve-aiops/docker-compose.yaml"
+  ],
+  "modified_preexisting_files": [],
+  "touched_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/alert-trigger/action_client.py",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/alert-trigger/tests/test_actions.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_approvals.py",
+    "examples/openobserve-aiops/docker-compose.yaml"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/action_client.py",
+    "examples/openobserve-aiops/alert-trigger/tasks.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/alert-trigger/tests/test_actions.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_approvals.py",
+    "examples/openobserve-aiops/docker-compose.yaml",
+    "ROADMAP.md"
+  ],
+  "internal_patterns": [
+    "specs/001-resume-aiops/**",
+    "specs/001-resume-aiops/scope-baseline-T005.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

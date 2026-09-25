@@ -1,0 +1,42 @@
+{
+  "base_commit": "f73458f5d9a679c13190247f5a0ca2647a968531",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T003.json",
+  "new_files": [
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/holmes_client.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_evidence.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_holmes_client.py",
+    "examples/openobserve-aiops/alert-trigger/worker.py",
+    "examples/openobserve-aiops/holmes-config/config.yaml.example",
+    "examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md"
+  ],
+  "modified_preexisting_files": [],
+  "touched_files": [
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/holmes_client.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_evidence.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_holmes_client.py",
+    "examples/openobserve-aiops/alert-trigger/worker.py",
+    "examples/openobserve-aiops/holmes-config/config.yaml.example",
+    "examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/alert-trigger/holmes_client.py",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/worker.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_holmes_client.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_evidence.py",
+    "examples/openobserve-aiops/holmes-config/config.yaml.example",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md",
+    "ROADMAP.md"
+  ],
+  "internal_patterns": [
+    "specs/001-resume-aiops/**",
+    "specs/001-resume-aiops/scope-baseline-T003.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

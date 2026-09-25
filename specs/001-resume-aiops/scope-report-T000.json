@@ -1,0 +1,27 @@
+{
+  "base_commit": "7ffdff860f34d5c9a2f28a10c9c2cc31cefc2fd6",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T000.json",
+  "new_files": [
+    "examples/openobserve-aiops/demo/order-service/src/main.ts",
+    "examples/openobserve-aiops/demo/order-service/test/actions.test.cjs"
+  ],
+  "modified_preexisting_files": [
+    "ROADMAP.md"
+  ],
+  "touched_files": [
+    "examples/openobserve-aiops/demo/order-service/src/main.ts",
+    "examples/openobserve-aiops/demo/order-service/test/actions.test.cjs",
+    "ROADMAP.md"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/demo/order-service/src/main.ts",
+    "examples/openobserve-aiops/demo/order-service/test/actions.test.cjs",
+    "ROADMAP.md"
+  ],
+  "internal_patterns": [
+    "specs/001-resume-aiops/**",
+    "specs/001-resume-aiops/scope-baseline-T000.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

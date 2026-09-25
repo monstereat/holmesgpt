@@ -2,7 +2,7 @@
   "schema_version": 2,
   "change_id": "001-resume-aiops",
   "mode": "roadmap",
-  "status": "spec_draft",
+  "status": "executing",
   "current_task": null,
   "waiting_for": null,
   "artifacts": {
@@ -17,118 +17,1048 @@
     "independent_review": "spec"
   },
   "approvals": {
-    "spec": null,
-    "plan": null,
+    "spec": {
+      "at": "2026-09-25T03:20:32Z",
+      "approver": "monstereat",
+      "evidence": "用户明确回复：用/goal模式完成上面这些任务，部署就部署在当前电脑的docker环境，先是测试环境，后续会上正式的",
+      "review_report": "specs/001-resume-aiops/spec-review.md"
+    },
+    "plan": {
+      "at": "2026-09-25T03:21:10Z",
+      "approver": "monstereat",
+      "evidence": "用户明确回复：不审核了，直接按文档要求编码。用户另明确授权：授权本机测试迁移（仅该项目的 Docker 测试 PostgreSQL，不涉及正式数据库）。",
+      "review_report": null
+    },
     "acceptance": null
   },
   "acceptance_criteria": {
     "AC-01": {
-      "description": "告警被认证、校验并稳定去重，未授权和无效告警不启动调查。"
+      "description": "告警经过认证与校验并稳定去重；未授权/无效请求不排队。"
     },
     "AC-02": {
-      "description": "事故与任务在 PostgreSQL 中持久化，API/worker 重启后可恢复。"
+      "description": "本机 PostgreSQL 持久化事故任务，API/worker 重启后恢复。"
     },
     "AC-03": {
-      "description": "调查任务有界重试、明确终态、幂等投递且不泄露凭据。"
+      "description": "调查任务具备幂等、有界退避重试、超时、失败终态和敏感信息保护。"
     },
     "AC-04": {
-      "description": "真实 Holmes 对 OpenObserve 做只读调查，并为确定结论保留可核验证据。"
+      "description": "Holmes 对 OpenObserve live 只读调查并保存证据；无凭据时保持 blocked，mock 不替代。"
     },
     "AC-05": {
-      "description": "本地事故工作台展示任务状态、Trace、结论和证据，不提供隐式处置写操作。"
+      "description": "本机工作台显示事故、任务、Trace、结论、证据、审批及处置时间线。"
     },
     "AC-06": {
-      "description": "本地启动、确定性测试和根因回放可重复，mock/live 结果分开报告。"
+      "description": "本机测试身份、角色和资源授权在查询、审批与执行入口生效。"
     },
     "AC-07": {
-      "description": "生产身份、资源归属与角色授权覆盖数据查询、审批和执行入口，未授权请求无副作用。"
+      "description": "隔离执行器只通过 order-service 自有接口操作 demo；复验权限，支持幂等、验证、回退和审计。"
     },
     "AC-08": {
-      "description": "应用可按确认的平台部署，完成健康检查、密钥注入、升级回滚及数据库备份恢复演练。"
+      "description": "本机 Docker 测试部署、健康检查、重启、数据恢复和演示流程可重复。"
     },
     "AC-09": {
-      "description": "生产动作仅执行逐项白名单且经动作拥有方授权和审批的请求，支持幂等、审计、执行后验证和失败回退。"
+      "description": "发布与 Runbook 上下文可经测试集成或 fixture 关联，缺失信息不伪造。"
     },
     "AC-10": {
-      "description": "生产发布、知识、聚类与故障评测按确认的提供方和阈值可重复验证，live 与 mock 结果清楚区分。"
+      "description": "20 例根因评测可重复，逐例报告合成/mock/live 结果和实际指标。"
+    },
+    "AC-11": {
+      "description": "文档明确本机测试到正式环境迁移所需决策，不宣称正式部署/生产动作已完成。"
     }
   },
-  "tasks": {},
-  "checks": [],
+  "tasks": {
+    "T000": {
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-07"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/demo/order-service/src/main.ts",
+        "examples/openobserve-aiops/demo/order-service/test/actions.test.cjs",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "node --test examples/openobserve-aiops/demo/order-service/test/actions.test.cjs"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T000-actions"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T000.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/001-resume-aiops/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-report-T000.json",
+        "sha256": "845fe3b94b5daf45046395d86a28c892bd117bb13f9359c6cb9758ec77d89e8e"
+      }
+    },
+    "T001": {
+      "depends_on": [
+        "T000"
+      ],
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-06"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/alert-trigger/app.py",
+        "examples/openobserve-aiops/alert-trigger/auth.py",
+        "examples/openobserve-aiops/alert-trigger/models.py",
+        "examples/openobserve-aiops/alert-trigger/store.py",
+        "examples/openobserve-aiops/alert-trigger/migrations/**",
+        "examples/openobserve-aiops/alert-trigger/requirements.txt",
+        "examples/openobserve-aiops/alert-trigger/requirements-test.txt",
+        "examples/openobserve-aiops/alert-trigger/Dockerfile",
+        "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_store.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_incidents.py",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_auth.py tests/test_store.py tests/test_incidents.py"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T001-domain-tests",
+        "T001-domain-tests-final"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T001.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/001-resume-aiops/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-report-T001.json",
+        "sha256": "4407b0d62f4f3bd8ae907c1cf58c6cb145cc83a187e2b3c50fff99204bc4d0c9"
+      }
+    },
+    "T002": {
+      "depends_on": [
+        "T001"
+      ],
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-08"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/alert-trigger/trigger.py",
+        "examples/openobserve-aiops/alert-trigger/app.py",
+        "examples/openobserve-aiops/alert-trigger/tasks.py",
+        "examples/openobserve-aiops/alert-trigger/worker.py",
+        "examples/openobserve-aiops/alert-trigger/migrations/**",
+        "examples/openobserve-aiops/alert-trigger/Dockerfile",
+        "examples/openobserve-aiops/alert-trigger/requirements.txt",
+        "examples/openobserve-aiops/alert-trigger/requirements-test.txt",
+        "examples/openobserve-aiops/alert-trigger/test_trigger.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_webhook.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_tasks.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_recovery.py",
+        "examples/openobserve-aiops/docker-compose.yaml",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_webhook.py tests/test_tasks.py tests/test_recovery.py"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T002-pipeline-tests"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T002.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/001-resume-aiops/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-report-T002.json",
+        "sha256": "b0bfc88859454892587e7c6bb4059fff63cad051c950db18ccc742c2d3fe49f6"
+      }
+    },
+    "T003": {
+      "depends_on": [
+        "T002"
+      ],
+      "acceptance_criteria": [
+        "AC-03",
+        "AC-04",
+        "AC-09",
+        "AC-10"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/alert-trigger/holmes_client.py",
+        "examples/openobserve-aiops/alert-trigger/app.py",
+        "examples/openobserve-aiops/alert-trigger/worker.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_holmes_client.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_evidence.py",
+        "examples/openobserve-aiops/holmes-config/config.yaml.example",
+        "examples/openobserve-aiops/README.md",
+        "examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_holmes_client.py tests/test_evidence.py"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T003-holmes-contract"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T003.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/001-resume-aiops/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-report-T003.json",
+        "sha256": "9ed0d7b090f9462b5ea6d349f2ada4a51a7ca95f2b972b29c2f02cc3e01e9b11"
+      }
+    },
+    "T004": {
+      "depends_on": [
+        "T001",
+        "T002",
+        "T003"
+      ],
+      "acceptance_criteria": [
+        "AC-05",
+        "AC-06",
+        "AC-08"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/alert-trigger/app.py",
+        "examples/openobserve-aiops/alert-trigger/public/incidents.html",
+        "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+        "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "docker run --rm aiops-incident:test python -m pytest -q tests/test_workbench_api.py"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T004-workbench-api"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T004.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/001-resume-aiops/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-report-T004.json",
+        "sha256": "1b89478ad29390e6855a100a1c16fc88e6789a376bcdf5773d1043f87891d659"
+      }
+    },
+    "T005": {
+      "depends_on": [
+        "T000",
+        "T001",
+        "T002",
+        "T004"
+      ],
+      "acceptance_criteria": [
+        "AC-05",
+        "AC-06",
+        "AC-07"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/alert-trigger/app.py",
+        "examples/openobserve-aiops/alert-trigger/action_client.py",
+        "examples/openobserve-aiops/alert-trigger/tasks.py",
+        "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+        "examples/openobserve-aiops/alert-trigger/tests/test_actions.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_approvals.py",
+        "examples/openobserve-aiops/docker-compose.yaml",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "docker run --rm aiops-incident:test python -m pytest -q tests/test_actions.py tests/test_approvals.py"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T005-action-approval"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T005.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/001-resume-aiops/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-report-T005.json",
+        "sha256": "5c1c03b1da351c1a2fc0b92fbe7d0df26535832a50a67103900923384ce1e6d6"
+      }
+    },
+    "T006": {
+      "depends_on": [
+        "T003"
+      ],
+      "acceptance_criteria": [
+        "AC-09",
+        "AC-10"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/evals/README.md",
+        "examples/openobserve-aiops/evals/run_evals.py",
+        "examples/openobserve-aiops/evals/report.schema.json",
+        "examples/openobserve-aiops/evals/test_known_root_causes.py",
+        "examples/openobserve-aiops/alert-trigger/evaluation.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_evaluation.py",
+        "examples/openobserve-aiops/runbooks/**",
+        "examples/openobserve-aiops/skills/**",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && docker run --rm -v \"$PWD/examples/openobserve-aiops/evals:/project/examples/openobserve-aiops/evals:ro\" -v \"$PWD/examples/openobserve-aiops/runbooks:/project/examples/openobserve-aiops/runbooks:ro\" -v \"$PWD/examples/openobserve-aiops/skills:/project/examples/openobserve-aiops/skills:ro\" -w /project aiops-incident:test python -m pytest -q --confcutdir=examples/openobserve-aiops/evals examples/openobserve-aiops/evals/test_known_root_causes.py"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T006-evaluation-verified-final"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T006.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/001-resume-aiops/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-report-T006.json",
+        "sha256": "3d410fc6239928e4f8abc3815bc850f88b3b6a4fd74e6eddbca41aacbfaf130a"
+      }
+    },
+    "T007": {
+      "depends_on": [
+        "T000",
+        "T001",
+        "T002",
+        "T003",
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-06",
+        "AC-07",
+        "AC-08",
+        "AC-09",
+        "AC-10",
+        "AC-11"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/docker-compose.yaml",
+        "examples/openobserve-aiops/README.md",
+        "examples/openobserve-aiops/DEMO.md",
+        "examples/openobserve-aiops/evals/README.md",
+        "ROADMAP.md",
+        "docs/develop-me-roadmap.md",
+        "specs/001-resume-aiops/verify.md"
+      ],
+      "commands": [
+        "docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build",
+        "docker compose -f examples/openobserve-aiops/docker-compose.yaml exec incident-api python -m pytest -q tests",
+        "python examples/openobserve-aiops/evals/run_evals.py --mode mock"
+      ],
+      "status": "pending",
+      "check_ids": []
+    }
+  },
+  "checks": [
+    {
+      "id": "T000-actions",
+      "type": "command",
+      "kind": "unit",
+      "task": "T000",
+      "acceptance_criteria": [
+        "AC-07"
+      ],
+      "command": "node --test examples/openobserve-aiops/demo/order-service/test/actions.test.cjs",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T03:24:39Z",
+      "duration_ms": 559,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T000-actions.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T000-actions.stderr.log",
+      "git": {
+        "head": "7ffdff860f34d5c9a2f28a10c9c2cc31cefc2fd6",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/demo/order-service/src/main.ts",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "64826fe6f3f43e07d57c2486f0dd66e76c1d954ca8f188825e275072e29091b7"
+      }
+    },
+    {
+      "id": "T001-domain-tests",
+      "type": "command",
+      "kind": "unit",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-06"
+      ],
+      "command": "docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_auth.py tests/test_store.py tests/test_incidents.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T03:31:09Z",
+      "duration_ms": 1535,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T001-domain-tests.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T001-domain-tests.stderr.log",
+      "git": {
+        "head": "206716090d4105d05f80b83a55c28c45fe5b59c8",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/alert-trigger/Dockerfile",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "b3f98a5ea161d9d14324adb65655a1157037abb954020a45b329ca9743436e37"
+      }
+    },
+    {
+      "id": "T001-domain-tests-final",
+      "type": "command",
+      "kind": "unit",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-06"
+      ],
+      "command": "docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_auth.py tests/test_store.py tests/test_incidents.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T03:33:34Z",
+      "duration_ms": 1454,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T001-domain-tests-final.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T001-domain-tests-final.stderr.log",
+      "git": {
+        "head": "206716090d4105d05f80b83a55c28c45fe5b59c8",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/alert-trigger/Dockerfile",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "f88b9aec1a3af1e9603b59a168271573340ad2261f48be1e49a61df47c4a39d0"
+      }
+    },
+    {
+      "id": "T002-pipeline-tests",
+      "type": "command",
+      "kind": "integration",
+      "task": "T002",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-08"
+      ],
+      "command": "docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_webhook.py tests/test_tasks.py tests/test_recovery.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T03:43:19Z",
+      "duration_ms": 1667,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T002-pipeline-tests.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T002-pipeline-tests.stderr.log",
+      "git": {
+        "head": "ce906168b294dcd22b08154411aa222e6466e16c",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/alert-trigger/Dockerfile",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/requirements.txt",
+          "examples/openobserve-aiops/alert-trigger/test_trigger.py",
+          "examples/openobserve-aiops/alert-trigger/trigger.py",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "8693f07ec9d2341ea23fef6e7dd5da8402c3f483b7dfa864e3bbc57af75c2989"
+      }
+    },
+    {
+      "id": "T003-holmes-contract",
+      "type": "command",
+      "kind": "unit",
+      "task": "T003",
+      "acceptance_criteria": [
+        "AC-03",
+        "AC-04",
+        "AC-09",
+        "AC-10"
+      ],
+      "command": "docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_holmes_client.py tests/test_evidence.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T03:53:02Z",
+      "duration_ms": 1618,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T003-holmes-contract.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T003-holmes-contract.stderr.log",
+      "git": {
+        "head": "f73458f5d9a679c13190247f5a0ca2647a968531",
+        "changed_files": [
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/worker.py",
+          "examples/openobserve-aiops/skills/order-service-inventory-failure/SKILL.md",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "6b9a91dfa10044c8c6e932c2c54493bb0d45d84bb805bb5ee89473653d4d9ac8"
+      }
+    },
+    {
+      "id": "T004-workbench-api",
+      "type": "command",
+      "kind": "integration",
+      "task": "T004",
+      "acceptance_criteria": [
+        "AC-05",
+        "AC-06",
+        "AC-08"
+      ],
+      "command": "docker run --rm aiops-incident:test python -m pytest -q tests/test_workbench_api.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:00:46Z",
+      "duration_ms": 1112,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T004-workbench-api.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T004-workbench-api.stderr.log",
+      "git": {
+        "head": "ee428287d7bf7063898555709dbb596c9772f824",
+        "changed_files": [
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "1ea6f012463e79ab97428a6609551f9598ae2d2d5c3275e734eaec584cebc858"
+      }
+    },
+    {
+      "id": "T005-action-approval",
+      "type": "command",
+      "kind": "integration",
+      "task": "T005",
+      "acceptance_criteria": [
+        "AC-05",
+        "AC-06",
+        "AC-07"
+      ],
+      "command": "docker run --rm aiops-incident:test python -m pytest -q tests/test_actions.py tests/test_approvals.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:10:46Z",
+      "duration_ms": 1286,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T005-action-approval.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T005-action-approval.stderr.log",
+      "git": {
+        "head": "8e1d020ae5665cda6154957e9d4d7599788cd667",
+        "changed_files": [
+          "ROADMAP.md",
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/docker-compose.yaml",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "8f17b92756588d5b7935e5c601c404e81cda54e9a97b0e0be5f56d50205293a3"
+      }
+    },
+    {
+      "id": "T006-evaluation",
+      "type": "command",
+      "kind": "test",
+      "task": "T006",
+      "acceptance_criteria": [
+        "AC-09",
+        "AC-10"
+      ],
+      "command": "docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && poetry run pytest -q --no-cov examples/openobserve-aiops/evals/test_known_root_causes.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:18:50Z",
+      "duration_ms": 1154,
+      "exit_code": 1,
+      "result": "fail",
+      "stdout_log": "specs/001-resume-aiops/evidence/T006-evaluation.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T006-evaluation.stderr.log",
+      "git": {
+        "head": "c6a409b120f785f6af0e49a71b2328a973b0320e",
+        "changed_files": [
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/evals/README.md",
+          "examples/openobserve-aiops/evals/test_known_root_causes.py",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "b391a126fd3625c91deb90000995bbe030b9f59f2af989a27c6e98269199a7d5"
+      }
+    },
+    {
+      "id": "T006-evaluation-final",
+      "type": "command",
+      "kind": "test",
+      "task": "T006",
+      "acceptance_criteria": [
+        "AC-09",
+        "AC-10"
+      ],
+      "command": "docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && poetry run pytest -q --no-cov examples/openobserve-aiops/evals/test_known_root_causes.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:19:52Z",
+      "duration_ms": 1818,
+      "exit_code": 127,
+      "result": "fail",
+      "stdout_log": "specs/001-resume-aiops/evidence/T006-evaluation-final.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T006-evaluation-final.stderr.log",
+      "git": {
+        "head": "c6a409b120f785f6af0e49a71b2328a973b0320e",
+        "changed_files": [
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/evals/README.md",
+          "examples/openobserve-aiops/evals/test_known_root_causes.py",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "15ea826dc2be66b1ed1c69b020467731e34a74e89630e6efaa134e2c2675b906"
+      }
+    },
+    {
+      "id": "T006-evaluation-verified",
+      "type": "command",
+      "kind": "test",
+      "task": "T006",
+      "acceptance_criteria": [
+        "AC-09",
+        "AC-10"
+      ],
+      "command": "docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && docker run --rm -v /Users/monster/Documents/GitHub/code/holmesgpt:/repo:ro -w /repo aiops-incident:test python -m pytest -q examples/openobserve-aiops/evals/test_known_root_causes.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:21:06Z",
+      "duration_ms": 1689,
+      "exit_code": 4,
+      "result": "fail",
+      "stdout_log": "specs/001-resume-aiops/evidence/T006-evaluation-verified.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T006-evaluation-verified.stderr.log",
+      "git": {
+        "head": "c6a409b120f785f6af0e49a71b2328a973b0320e",
+        "changed_files": [
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/evals/README.md",
+          "examples/openobserve-aiops/evals/test_known_root_causes.py",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "f33fd6ceade55f7b2c5604fa61a87068f6e49ef195d409a73810b447c18e465b"
+      }
+    },
+    {
+      "id": "T006-evaluation-passed",
+      "type": "command",
+      "kind": "test",
+      "task": "T006",
+      "acceptance_criteria": [
+        "AC-09",
+        "AC-10"
+      ],
+      "command": "docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && docker run --rm -v /Users/monster/Documents/GitHub/code/holmesgpt:/repo:ro -w /repo aiops-incident:test python -m pytest -q --confcutdir=examples/openobserve-aiops/evals examples/openobserve-aiops/evals/test_known_root_causes.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:21:40Z",
+      "duration_ms": 1692,
+      "exit_code": 4,
+      "result": "fail",
+      "stdout_log": "specs/001-resume-aiops/evidence/T006-evaluation-passed.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T006-evaluation-passed.stderr.log",
+      "git": {
+        "head": "c6a409b120f785f6af0e49a71b2328a973b0320e",
+        "changed_files": [
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/evals/README.md",
+          "examples/openobserve-aiops/evals/test_known_root_causes.py",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "7fc08efb6c2f2b67ffe139ca4000893403a757bca7bd2b2aba07ce2623089cde"
+      }
+    },
+    {
+      "id": "T006-evaluation-verified-final",
+      "type": "command",
+      "kind": "test",
+      "task": "T006",
+      "acceptance_criteria": [
+        "AC-09",
+        "AC-10"
+      ],
+      "command": "docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && docker run --rm -v /Users/monster/Documents/GitHub/code/holmesgpt/examples/openobserve-aiops/evals:/project/examples/openobserve-aiops/evals:ro -v /Users/monster/Documents/GitHub/code/holmesgpt/examples/openobserve-aiops/runbooks:/project/examples/openobserve-aiops/runbooks:ro -v /Users/monster/Documents/GitHub/code/holmesgpt/examples/openobserve-aiops/skills:/project/examples/openobserve-aiops/skills:ro -w /project aiops-incident:test python -m pytest -q --confcutdir=examples/openobserve-aiops/evals examples/openobserve-aiops/evals/test_known_root_causes.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-25T04:22:23Z",
+      "duration_ms": 1618,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T006-evaluation-verified-final.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T006-evaluation-verified-final.stderr.log",
+      "git": {
+        "head": "c6a409b120f785f6af0e49a71b2328a973b0320e",
+        "changed_files": [
+          "docs/develop-me-roadmap.md",
+          "examples/openobserve-aiops/evals/README.md",
+          "examples/openobserve-aiops/evals/test_known_root_causes.py",
+          "specs/001-resume-aiops/roadmap.md",
+          "specs/001-resume-aiops/spec.md",
+          "specs/001-resume-aiops/state.json"
+        ],
+        "diff_sha256": "354f12e7b169d734ee617c06307c294821534b1da1f97e301f798257bc647d86"
+      }
+    }
+  ],
   "events": [
     {
-      "at": "2026-09-25T02:36:03Z",
+      "at": "2026-09-25T03:20:15Z",
       "action": "init",
       "status": "initialized",
       "note": "State created."
     },
     {
-      "at": "2026-09-25T02:36:03Z",
+      "at": "2026-09-25T03:20:31Z",
       "action": "set_draft",
       "status": "spec_draft",
-      "note": "简历级 AIOps 项目范围待用户确认；目前仅准备路线图和 Spec。"
+      "note": "重新登记用户确认的本机 Docker 范围和验收标准。"
     },
     {
-      "at": "2026-09-25T02:36:03Z",
+      "at": "2026-09-25T03:20:31Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-01."
     },
     {
-      "at": "2026-09-25T02:36:03Z",
+      "at": "2026-09-25T03:20:31Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-02."
     },
     {
-      "at": "2026-09-25T02:36:03Z",
+      "at": "2026-09-25T03:20:32Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-03."
     },
     {
-      "at": "2026-09-25T02:36:03Z",
+      "at": "2026-09-25T03:20:32Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-04."
     },
     {
-      "at": "2026-09-25T02:36:03Z",
+      "at": "2026-09-25T03:20:32Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-05."
     },
     {
-      "at": "2026-09-25T02:36:03Z",
+      "at": "2026-09-25T03:20:32Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-06."
     },
     {
-      "at": "2026-09-25T02:41:00Z",
+      "at": "2026-09-25T03:20:32Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-07."
     },
     {
-      "at": "2026-09-25T02:41:00Z",
+      "at": "2026-09-25T03:20:32Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-08."
     },
     {
-      "at": "2026-09-25T02:41:01Z",
+      "at": "2026-09-25T03:20:32Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-09."
     },
     {
-      "at": "2026-09-25T02:41:01Z",
+      "at": "2026-09-25T03:20:32Z",
       "action": "add_criterion",
       "status": "spec_draft",
       "note": "Registered AC-10."
+    },
+    {
+      "at": "2026-09-25T03:20:32Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-11."
+    },
+    {
+      "at": "2026-09-25T03:20:32Z",
+      "action": "approve",
+      "status": "spec_approved",
+      "note": "spec approved by monstereat: 用户明确回复：用/goal模式完成上面这些任务，部署就部署在当前电脑的docker环境，先是测试环境，后续会上正式的"
+    },
+    {
+      "at": "2026-09-25T03:20:32Z",
+      "action": "set_draft",
+      "status": "plan_draft",
+      "note": "用户明确要求跳过 Plan 审查并直接按 Plan 编码。"
+    },
+    {
+      "at": "2026-09-25T03:21:04Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T000."
+    },
+    {
+      "at": "2026-09-25T03:21:04Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T001."
+    },
+    {
+      "at": "2026-09-25T03:21:04Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T002."
+    },
+    {
+      "at": "2026-09-25T03:21:04Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T003."
+    },
+    {
+      "at": "2026-09-25T03:21:04Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T004."
+    },
+    {
+      "at": "2026-09-25T03:21:04Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T005."
+    },
+    {
+      "at": "2026-09-25T03:21:04Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T006."
+    },
+    {
+      "at": "2026-09-25T03:21:04Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T007."
+    },
+    {
+      "at": "2026-09-25T03:21:10Z",
+      "action": "approve",
+      "status": "plan_approved",
+      "note": "plan approved by monstereat: 用户明确回复：不审核了，直接按文档要求编码。用户另明确授权：授权本机测试迁移（仅该项目的 Docker 测试 PostgreSQL，不涉及正式数据库）。"
+    },
+    {
+      "at": "2026-09-25T03:21:52Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T000."
+    },
+    {
+      "at": "2026-09-25T03:24:40Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T000-actions: pass (node --test examples/openobserve-aiops/demo/order-service/test/actions.test.cjs)"
+    },
+    {
+      "at": "2026-09-25T03:24:46Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T000 with T000-actions."
+    },
+    {
+      "at": "2026-09-25T03:27:06Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T001."
+    },
+    {
+      "at": "2026-09-25T03:31:11Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-domain-tests: pass (docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_auth.py tests/test_store.py tests/test_incidents.py)"
+    },
+    {
+      "at": "2026-09-25T03:33:36Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-domain-tests-final: pass (docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_auth.py tests/test_store.py tests/test_incidents.py)"
+    },
+    {
+      "at": "2026-09-25T03:34:20Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T001 with T001-domain-tests, T001-domain-tests-final."
+    },
+    {
+      "at": "2026-09-25T03:34:40Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T002."
+    },
+    {
+      "at": "2026-09-25T03:43:21Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T002-pipeline-tests: pass (docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_webhook.py tests/test_tasks.py tests/test_recovery.py)"
+    },
+    {
+      "at": "2026-09-25T03:45:48Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T002 with T002-pipeline-tests."
+    },
+    {
+      "at": "2026-09-25T03:46:41Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T003."
+    },
+    {
+      "at": "2026-09-25T03:53:03Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T003-holmes-contract: pass (docker build --target test -t aiops-incident:test examples/openobserve-aiops/alert-trigger && docker run --rm aiops-incident:test python -m pytest -q tests/test_holmes_client.py tests/test_evidence.py)"
+    },
+    {
+      "at": "2026-09-25T03:53:58Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T003 with T003-holmes-contract."
+    },
+    {
+      "at": "2026-09-25T03:55:06Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T004."
+    },
+    {
+      "at": "2026-09-25T04:00:47Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T004-workbench-api: pass (docker run --rm aiops-incident:test python -m pytest -q tests/test_workbench_api.py)"
+    },
+    {
+      "at": "2026-09-25T04:01:23Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T004 with T004-workbench-api."
+    },
+    {
+      "at": "2026-09-25T04:01:40Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T005."
+    },
+    {
+      "at": "2026-09-25T04:10:47Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T005-action-approval: pass (docker run --rm aiops-incident:test python -m pytest -q tests/test_actions.py tests/test_approvals.py)"
+    },
+    {
+      "at": "2026-09-25T04:11:09Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T005 with T005-action-approval."
+    },
+    {
+      "at": "2026-09-25T04:11:23Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T006."
+    },
+    {
+      "at": "2026-09-25T04:18:51Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T006-evaluation: fail (docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && poetry run pytest -q --no-cov examples/openobserve-aiops/evals/test_known_root_causes.py)"
+    },
+    {
+      "at": "2026-09-25T04:19:54Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T006-evaluation-final: fail (docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && poetry run pytest -q --no-cov examples/openobserve-aiops/evals/test_known_root_causes.py)"
+    },
+    {
+      "at": "2026-09-25T04:21:07Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T006-evaluation-verified: fail (docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && docker run --rm -v /Users/monster/Documents/GitHub/code/holmesgpt:/repo:ro -w /repo aiops-incident:test python -m pytest -q examples/openobserve-aiops/evals/test_known_root_causes.py)"
+    },
+    {
+      "at": "2026-09-25T04:21:42Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T006-evaluation-passed: fail (docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && docker run --rm -v /Users/monster/Documents/GitHub/code/holmesgpt:/repo:ro -w /repo aiops-incident:test python -m pytest -q --confcutdir=examples/openobserve-aiops/evals examples/openobserve-aiops/evals/test_known_root_causes.py)"
+    },
+    {
+      "at": "2026-09-25T04:22:25Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T006-evaluation-verified-final: pass (docker run --rm aiops-incident:test python -m pytest -q tests/test_evaluation.py && python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json && docker run --rm -v /Users/monster/Documents/GitHub/code/holmesgpt/examples/openobserve-aiops/evals:/project/examples/openobserve-aiops/evals:ro -v /Users/monster/Documents/GitHub/code/holmesgpt/examples/openobserve-aiops/runbooks:/project/examples/openobserve-aiops/runbooks:ro -v /Users/monster/Documents/GitHub/code/holmesgpt/examples/openobserve-aiops/skills:/project/examples/openobserve-aiops/skills:ro -w /project aiops-incident:test python -m pytest -q --confcutdir=examples/openobserve-aiops/evals examples/openobserve-aiops/evals/test_known_root_causes.py)"
+    },
+    {
+      "at": "2026-09-25T04:23:33Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T006 with T006-evaluation-verified-final."
     }
   ],
-  "created_at": "2026-09-25T02:36:03Z",
-  "updated_at": "2026-09-25T02:41:01Z"
+  "created_at": "2026-09-25T03:20:15Z",
+  "updated_at": "2026-09-25T04:23:33Z"
 }

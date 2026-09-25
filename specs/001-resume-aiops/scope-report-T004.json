@@ -1,0 +1,32 @@
+{
+  "base_commit": "ee428287d7bf7063898555709dbb596c9772f824",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T004.json",
+  "new_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.html",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py"
+  ],
+  "modified_preexisting_files": [],
+  "touched_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.html",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.html",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+    "ROADMAP.md"
+  ],
+  "internal_patterns": [
+    "specs/001-resume-aiops/**",
+    "specs/001-resume-aiops/scope-baseline-T004.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

@@ -1,0 +1,53 @@
+{
+  "base_commit": "206716090d4105d05f80b83a55c28c45fe5b59c8",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T001.json",
+  "new_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/alert-trigger/Dockerfile",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/auth.py",
+    "examples/openobserve-aiops/alert-trigger/migrations/0001_incidents_tasks.sql",
+    "examples/openobserve-aiops/alert-trigger/models.py",
+    "examples/openobserve-aiops/alert-trigger/requirements-test.txt",
+    "examples/openobserve-aiops/alert-trigger/requirements.txt",
+    "examples/openobserve-aiops/alert-trigger/store.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_incidents.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_store.py"
+  ],
+  "modified_preexisting_files": [],
+  "touched_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/alert-trigger/Dockerfile",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/auth.py",
+    "examples/openobserve-aiops/alert-trigger/migrations/0001_incidents_tasks.sql",
+    "examples/openobserve-aiops/alert-trigger/models.py",
+    "examples/openobserve-aiops/alert-trigger/requirements-test.txt",
+    "examples/openobserve-aiops/alert-trigger/requirements.txt",
+    "examples/openobserve-aiops/alert-trigger/store.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_incidents.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_store.py"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/auth.py",
+    "examples/openobserve-aiops/alert-trigger/models.py",
+    "examples/openobserve-aiops/alert-trigger/store.py",
+    "examples/openobserve-aiops/alert-trigger/migrations/**",
+    "examples/openobserve-aiops/alert-trigger/requirements.txt",
+    "examples/openobserve-aiops/alert-trigger/requirements-test.txt",
+    "examples/openobserve-aiops/alert-trigger/Dockerfile",
+    "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_store.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_incidents.py",
+    "ROADMAP.md"
+  ],
+  "internal_patterns": [
+    "specs/001-resume-aiops/**",
+    "specs/001-resume-aiops/scope-baseline-T001.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

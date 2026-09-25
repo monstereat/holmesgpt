@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "base_commit": "7ffdff860f34d5c9a2f28a10c9c2cc31cefc2fd6",
+  "initial_snapshots": {
+    "ROADMAP.md": {
+      "kind": "file",
+      "sha256": "b55b13d775b953dfb5f5dfdc0148da5bad023414dc6d12648bb553a4b5d0aeb4"
+    },
+    "docs/develop-me-roadmap.md": {
+      "kind": "file",
+      "sha256": "2d5c43b953f57aa291c8cdf09830433ff5d4efbe7f78dc2d89fe9d30e3060cbf"
+    }
+  },
+  "internal_patterns": [
+    "specs/001-resume-aiops/**",
+    "specs/001-resume-aiops/scope-baseline-T000.json"
+  ]
+}

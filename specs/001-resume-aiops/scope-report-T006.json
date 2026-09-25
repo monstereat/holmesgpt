@@ -1,0 +1,46 @@
+{
+  "base_commit": "c6a409b120f785f6af0e49a71b2328a973b0320e",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T006.json",
+  "new_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/alert-trigger/evaluation.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_evaluation.py",
+    "examples/openobserve-aiops/evals/README.md",
+    "examples/openobserve-aiops/evals/report.schema.json",
+    "examples/openobserve-aiops/evals/run_evals.py",
+    "examples/openobserve-aiops/evals/test_known_root_causes.py",
+    "examples/openobserve-aiops/runbooks/evaluation-contexts.json",
+    "examples/openobserve-aiops/runbooks/order-service-database-schema-mismatch.md",
+    "examples/openobserve-aiops/runbooks/order-service-release-regression.md"
+  ],
+  "modified_preexisting_files": [],
+  "touched_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/alert-trigger/evaluation.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_evaluation.py",
+    "examples/openobserve-aiops/evals/README.md",
+    "examples/openobserve-aiops/evals/report.schema.json",
+    "examples/openobserve-aiops/evals/run_evals.py",
+    "examples/openobserve-aiops/evals/test_known_root_causes.py",
+    "examples/openobserve-aiops/runbooks/evaluation-contexts.json",
+    "examples/openobserve-aiops/runbooks/order-service-database-schema-mismatch.md",
+    "examples/openobserve-aiops/runbooks/order-service-release-regression.md"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/evals/README.md",
+    "examples/openobserve-aiops/evals/run_evals.py",
+    "examples/openobserve-aiops/evals/report.schema.json",
+    "examples/openobserve-aiops/evals/test_known_root_causes.py",
+    "examples/openobserve-aiops/alert-trigger/evaluation.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_evaluation.py",
+    "examples/openobserve-aiops/runbooks/**",
+    "examples/openobserve-aiops/skills/**",
+    "ROADMAP.md"
+  ],
+  "internal_patterns": [
+    "specs/001-resume-aiops/**",
+    "specs/001-resume-aiops/scope-baseline-T006.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

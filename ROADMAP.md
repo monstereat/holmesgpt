@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境优先：Spec/Plan 已批准，按用户要求跳过独立 Plan 审查并开始编码。** 用户已明确先部署到当前电脑 Docker 测试环境，后续再上正式环境。本目标不连接/部署正式环境，也不执行真实生产操作。当前项目可本机演示 OpenObserve + NestJS 订单故障源 + Python 告警接收器；接收器默认用 `/bin/echo` 替身，不能证明 Holmes 已真实调查。
+**本机 Docker 测试环境优先：Spec/Plan 已批准，按用户要求直接编码。** 用户已明确先部署到当前电脑 Docker 测试环境，后续再上正式环境。本目标不连接/部署正式环境，也不执行真实生产操作。T000–T006 已实现并完成各自的定向验证；同一 Compose 栈部署、故障恢复演练和完整端到端验收在 T007。
 
 ## 已完成并验证
 
@@ -21,17 +21,15 @@
 - T003：Holmes 非流式 `/api/chat` 客户端、状态码与工具结果校验、限定流范围的证据映射和敏感值脱敏已完成；14 项契约测试通过。该结果来自模拟响应，未代表 live Holmes/OpenObserve 验收。
 - T004：工作台提供本地登录、服务端角色/资源校验、事故/任务/Trace/证据/审批/审计详情和受限任务重试。一次性本机 PostgreSQL 集成测试 2 passed。
 - T005 实现已完成，正在执行范围门禁：工作台可申请/批准/拒绝/取消及执行测试动作；operator 与 approver 分权，执行前复验审批和固定白名单，调用 order-service owner 接口并核对实际状态，失败时恢复原状态并审计。一次性本机 PostgreSQL 集成测试 4 passed；`node --check` 和 Compose 配置校验通过。
-- 当前任务：T006，20 例评测与发布/Runbook fixture。Compose live 调查仍待 T007，需模型和 OpenObserve 只读凭据；缺少凭据时 AC-04 保持 blocked。
+- T006：评测 runner 可生成 20 例 mock/live 结构化报告；mock 不生成模型诊断且标记 `not_scored`，live 请求需显式 `--confirm-live`，病例来源与实时 OpenObserve 证据分别标记。三条 synthetic 发布上下文准确引用病例证据并关联 Runbook。Docker 内部单测 4 passed，离线 mock 报告生成 20 例通过，病例/runbook 关联测试通过；未运行 live 请求。
+- 当前任务：T007，同一 Compose project 部署、重启/数据恢复演练和完整端到端验收。Holmes live 调查需模型和 OpenObserve 只读凭据；缺少凭据时 AC-04 保持 blocked。
 
 ## 待办
 
-1. 持久化事故/任务状态，并实现幂等、重试、超时和重启恢复。
-2. 接入真实 Holmes 只读调查，保存结论对应的 OpenObserve 证据。
-3. 展示事故状态、Trace、调查结果与证据的工作台。
-4. 将 20 个样本接入可重复评测，区分 mock 与 live 指标。
-5. 实现本机测试角色授权、隔离测试动作、执行验证/回退和本地数据恢复；不得使用 Docker socket、任意 Shell 或真实生产凭据。
-6. 将发布/Runbook 测试 fixture 与 20 例样本接入可重复评测；具备外部测试凭据时单独验收 live 集成。
-7. 记录正式环境迁移待确认项；正式部署、真实数据迁移和生产处置不属于当前执行范围。
+1. 在本机 Docker Compose 中组合 Holmes API、事故 API/worker、PostgreSQL、Redis、OpenObserve 与 order-service。
+2. 验收容器健康、Webhook→调查队列、审批→受限 demo 动作、服务重启/outbox 恢复及隔离数据库备份恢复。
+3. 有模型与 OpenObserve 只读凭据时执行 live Holmes 验收；没有凭据时如实保留 AC-04 阻塞状态。
+4. 完成测试环境演示文档并列明正式环境迁移待确认项；正式部署、真实数据迁移和生产处置不属于当前执行范围。
 
 ## 阻塞与授权门槛
 

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:holmes-openobserve-evaluation-report:1.0.0",
+  "title": "Holmes OpenObserve evaluation report",
+  "type": "object",
+  "required": ["schema_version", "mode", "evaluated_at", "case_source", "counts", "scoring", "cluster_taxonomy", "cases"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "mode": {"enum": ["mock", "live"]},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "case_source": {"const": "synthetic_fixture"},
+    "counts": {
+      "type": "object",
+      "required": ["total", "live_errors"],
+      "properties": {"total": {"const": 20}, "live_errors": {"type": "integer", "minimum": 0, "maximum": 20}},
+      "additionalProperties": false
+    },
+    "scoring": {"const": "not_scored"},
+    "cluster_taxonomy": {"const": "curated_fixture_taxonomy"},
+    "cases": {
+      "type": "array",
+      "minItems": 20,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["case_id", "source", "mode", "input", "evidence", "evidence_source", "evidence_status", "diagnosis", "reference_diagnosis", "expected_findings", "assumptions", "unsupported_claims", "safe_next_step", "cluster", "cluster_source", "scoring", "error_code"],
+        "properties": {
+          "case_id": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "pattern": "^known_root_causes\\.json#"},
+          "mode": {"enum": ["mock", "live"]},
+          "input": {
+            "type": "object",
+            "required": ["alert", "service", "symptom", "trace_ids"],
+            "properties": {
+              "alert": {"type": "string"},
+              "service": {"type": "string"},
+              "symptom": {"type": "string"},
+              "trace_ids": {"type": "array", "items": {"type": "string"}}
+            },
+            "additionalProperties": false
+          },
+          "evidence": {"type": "array"},
+          "evidence_source": {"enum": ["synthetic_fixture", "live_openobserve"]},
+          "evidence_status": {"enum": ["not_run", "fixture_only", "verified", "insufficient_data", "unavailable"]},
+          "diagnosis": {"type": ["string", "null"]},
+          "reference_diagnosis": {"type": "string"},
+          "expected_findings": {"type": "array", "items": {"type": "string"}},
+          "assumptions": {"type": "array", "items": {"type": "string"}},
+          "unsupported_claims": {"type": "array", "items": {"type": "string"}},
+          "safe_next_step": {"type": "string"},
+          "cluster": {"type": "string"},
+          "cluster_source": {"const": "curated_fixture_taxonomy"},
+          "scoring": {"const": "not_scored"},
+          "error_code": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
