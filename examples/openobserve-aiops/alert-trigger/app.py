@@ -15,7 +15,7 @@ import psycopg
 from authlib.integrations.starlette_client import OAuth
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from psycopg.types.json import Jsonb
@@ -86,6 +86,11 @@ def _validate_auth_configuration() -> OIDCSettings | None:
     if os.getenv("AIOPS_ENV", "production") != "local" and os.getenv("SESSION_COOKIE_SECURE", "true").lower() != "true":
         raise RuntimeError("SESSION_COOKIE_SECURE must be true for OIDC authentication")
     return _oidc_settings()
+
+
+def _validate_metrics_configuration() -> None:
+    if os.getenv("AIOPS_ENV", "production") != "local" and len(os.getenv("AIOPS_METRICS_TOKEN", "")) < 32:
+        raise RuntimeError("AIOPS_METRICS_TOKEN must contain at least 32 bytes outside local mode")
 
 
 class LoginRequest(BaseModel):
@@ -235,6 +240,7 @@ def _require_demo_actions_enabled() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _validate_metrics_configuration()
     settings = _validate_auth_configuration()
     if settings:
         metadata = await _oidc_client(settings).load_server_metadata()
@@ -286,6 +292,47 @@ def readyz() -> dict[str, str]:
     except psycopg.Error:
         raise HTTPException(status_code=503, detail="Incident database is unavailable") from None
     return {"status": "ready"}
+
+
+@app.get("/_internal/metrics", include_in_schema=False)
+def internal_metrics(request: Request) -> PlainTextResponse:
+    configured = os.getenv("AIOPS_METRICS_TOKEN", "")
+    if not configured:
+        raise HTTPException(status_code=404, detail="Metrics are disabled")
+    supplied = request.headers.get("authorization", "")
+    if not hmac.compare_digest(supplied, f"Bearer {configured}"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    database_url = os.getenv("DATABASE_URL", "")
+    if not database_url:
+        raise HTTPException(status_code=503, detail="Incident database is not configured")
+    try:
+        with psycopg.connect(database_url, connect_timeout=3) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT status, count(*) FROM tasks GROUP BY status")
+                status_counts = dict(cursor.fetchall())
+                cursor.execute(
+                    """SELECT COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at))), 0)
+                       FROM tasks WHERE status IN ('queued', 'retrying')"""
+                )
+                oldest_pending_age = cursor.fetchone()[0]
+                cursor.execute("SELECT COALESCE(sum(GREATEST(attempt - 1, 0)), 0) FROM tasks")
+                retry_attempts = cursor.fetchone()[0]
+    except psycopg.Error:
+        raise HTTPException(status_code=503, detail="Incident metrics are temporarily unavailable") from None
+
+    statuses = ("queued", "running", "retrying", "completed", "failed", "cancelled")
+    lines = [
+        "# HELP aiops_tasks Current incident tasks grouped by lifecycle status.",
+        "# TYPE aiops_tasks gauge",
+        *(f'aiops_tasks{{status="{status}"}} {int(status_counts.get(status, 0))}' for status in statuses),
+        "# HELP aiops_oldest_pending_task_age_seconds Age of the oldest queued or retrying task.",
+        "# TYPE aiops_oldest_pending_task_age_seconds gauge",
+        f"aiops_oldest_pending_task_age_seconds {max(0, float(oldest_pending_age or 0))}",
+        "# HELP aiops_task_retry_attempts_total Persisted task retry attempts beyond the initial attempt.",
+        "# TYPE aiops_task_retry_attempts_total counter",
+        f"aiops_task_retry_attempts_total {int(retry_attempts or 0)}",
+    ]
+    return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 @app.get("/", include_in_schema=False)

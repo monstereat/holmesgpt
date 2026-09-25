@@ -70,6 +70,8 @@ curl -fsS http://127.0.0.1:8080/
 
 The incident API `/healthz` is liveness; `/readyz` checks PostgreSQL connectivity. The incident worker health check requires a Celery ping response through Redis. Holmes `/healthz` is liveness; `/readyz` reflects model readiness and can fail when no model is configured. OpenObserve's image has no shell-based health probe, so its endpoint is checked from the host.
 
+The incident API exposes Prometheus text metrics at `/_internal/metrics` only when `AIOPS_METRICS_TOKEN` is set. The scraper must send `Authorization: Bearer <token>`; keep this endpoint private and store the token in the target's secret manager. It reports task counts by state, oldest pending task age, and persisted retry attempts. The local Compose token is optional and the endpoint stays disabled when it is unset.
+
 ## Alert routing and end-to-end walkthrough
 
 In OpenObserve, configure the alert destination to call `http://incident-api:8081/webhooks/openobserve` over the Compose network and send `X-Alert-Token` with the same `ALERT_WEBHOOK_TOKEN`. Use the bounded alert template shown in [`DEMO.md`](DEMO.md). Existing local OpenObserve destinations may still point to `host.docker.internal:8081`; update them if you want traffic to stay on the Compose network.

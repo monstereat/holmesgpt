@@ -181,6 +181,7 @@ services:
       AIOPS_ENV: local
       AIOPS_AUTH_MODE: local
       AIOPS_DEMO_ACTIONS_ENABLED: "true"
+      AIOPS_METRICS_TOKEN: ${AIOPS_METRICS_TOKEN:-}
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:?Export ALERT_WEBHOOK_TOKEN before starting the local demo}
       DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
       REDIS_URL: redis://redis:6379/0

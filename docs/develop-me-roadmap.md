@@ -259,6 +259,13 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 隔离 Compose 测试 **70 passed, 1 warning**；Seeder 测试 **18 passed**；schema 1.3 校验通过。
 - [ ] 重新运行 live 评测以验证新失败轨迹留痕，然后由人工按 rubric 评分；完成前不宣称诊断准确率。
 
+## 2026-09-25 增量：事故队列指标端点
+
+- [x] Incident API 新增 token 保护的 Prometheus text endpoint `/_internal/metrics`，输出 queued/running/retrying/completed/failed/cancelled 任务数、最老 pending age 和持久 retry attempts，不暴露用户或事故 label。
+- [x] 指标默认关闭；非 local 模式启动会拒绝缺失或短于 32 字节的 scraper token。生产网络必须限制为私有 Prometheus/scraper，Compose 未额外发布端口。
+- [x] 隔离 Compose 回归 **70 passed, 1 warning**；在运行中的本机 PostgreSQL 验证指标数据并确认 readiness HTTP 200，随后移除测试 token，指标端点回到默认 404。
+- [ ] 生产仍需 queue-age/backlog/failure 告警、worker/Holmes 延迟与 provider 成本指标、私网抓取配置及经容量测试确定的 SLO。
+
 ## 2026-09-25 增量：浏览器工作台角色与处置闭环验收
 
 - [x] 本机浏览器分别登录 operator 和 approver；operator 可发起测试动作但不能审批，approver 可审批但不显示执行按钮，operator 在批准后执行。

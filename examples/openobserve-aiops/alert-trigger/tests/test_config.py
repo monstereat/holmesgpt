@@ -5,7 +5,14 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app import _auth_mode, _require_demo_actions_enabled, _test_users_configuration, app, readyz
+from app import (
+    _auth_mode,
+    _require_demo_actions_enabled,
+    _test_users_configuration,
+    _validate_metrics_configuration,
+    app,
+    readyz,
+)
 
 
 def test_test_user_seeding_requires_local_environment(monkeypatch):
@@ -45,6 +52,47 @@ def test_demo_remediation_is_disabled_by_default(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         _require_demo_actions_enabled()
     assert exc.value.status_code == 503
+
+
+def test_metrics_token_is_required_outside_local_runtime(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.setenv("AIOPS_METRICS_TOKEN", "short")
+    with pytest.raises(RuntimeError, match="AIOPS_METRICS_TOKEN"):
+        _validate_metrics_configuration()
+    monkeypatch.setenv("AIOPS_METRICS_TOKEN", "m" * 40)
+    _validate_metrics_configuration()
+
+
+def test_metrics_endpoint_is_disabled_without_a_token(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "local")
+    monkeypatch.delenv("AIOPS_METRICS_TOKEN", raising=False)
+    with TestClient(app) as client:
+        assert client.get("/_internal/metrics").status_code == 404
+
+
+def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "local")
+    monkeypatch.setenv("AIOPS_METRICS_TOKEN", "m" * 40)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    cursor = MagicMock()
+    cursor.fetchall.return_value = [("queued", 2), ("completed", 4)]
+    cursor.fetchone.side_effect = [(7.5,), (3,)]
+    cursor.__enter__.return_value = cursor
+    connection = MagicMock()
+    connection.cursor.return_value = cursor
+    connection.__enter__.return_value = connection
+    monkeypatch.setattr("app.psycopg.connect", lambda *args, **kwargs: connection)
+
+    with TestClient(app) as client:
+        assert client.get("/_internal/metrics", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        response = client.get("/_internal/metrics", headers={"Authorization": f"Bearer {'m' * 40}"})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain; version=0.0.4")
+    assert 'aiops_tasks{status="queued"} 2' in response.text
+    assert 'aiops_tasks{status="failed"} 0' in response.text
+    assert "aiops_oldest_pending_task_age_seconds 7.5" in response.text
+    assert "aiops_task_retry_attempts_total 3" in response.text
 
 
 def test_incident_api_readiness_fails_without_database(monkeypatch):
