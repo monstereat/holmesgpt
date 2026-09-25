@@ -155,6 +155,7 @@ def _query_has_evaluation_scope(
         return False
     if event_type is None:
         return True
+    normalized = re.sub(r'["`]', "", sql).lower()
     event_predicate = rf"event_type\s*=\s*'{re.escape(event_type.lower())}'"
     return bool(
         re.search(event_predicate, normalized)

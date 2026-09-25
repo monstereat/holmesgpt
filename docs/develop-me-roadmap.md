@@ -266,6 +266,13 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 隔离 Compose 回归 **70 passed, 1 warning**；在运行中的本机 PostgreSQL 验证指标数据并确认 readiness HTTP 200，随后移除测试 token，指标端点回到默认 404。
 - [ ] 生产仍需 queue-age/backlog/failure 告警、worker/Holmes 延迟与 provider 成本指标、私网抓取配置及经容量测试确定的 SLO。
 
+## 2026-09-25 增量：生产迁移凭据边界与回归修复
+
+- [x] 非 local 环境运行 `migrate.py` 必须使用独立 `MIGRATION_DATABASE_URL`；不再回退到应用运行身份的 `DATABASE_URL`。本机 Compose 显式标记为 local 并沿用本地测试身份，生产部署仍须为迁移 Job 配置 schema 级权限身份。
+- [x] 修复 live evaluation release event matcher 的未定义 `normalized` 变量；修复 Holmes 只有失败工具调用时被误接受的问题，同时保留“有成功证据时附带记录失败调用”的行为。
+- [x] 隔离 Compose incident suite **78 passed, 1 warning**。
+- [ ] 生产平台的 migration Job、数据库角色/授权脚本及前向/回滚演练仍需按目标 PostgreSQL 平台生成和验收。
+
 ## 2026-09-25 增量：浏览器工作台角色与处置闭环验收
 
 - [x] 本机浏览器分别登录 operator 和 approver；operator 可发起测试动作但不能审批，approver 可审批但不显示执行按钮，operator 在批准后执行。

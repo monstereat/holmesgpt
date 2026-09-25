@@ -168,7 +168,7 @@ def extract_evidence(tool_calls: Any) -> tuple[list[dict[str, Any]], bool]:
         evidence.append(item)
     if not openobserve_calls:
         raise PermanentTaskError("holmes_no_openobserve_calls")
-    if not evidence and any(
+    if not any(item["status"] in {"success", "no_data"} for item in evidence) and any(
         isinstance(call, dict)
         and isinstance(call.get("result"), dict)
         and call["result"].get("status") not in {"success", "no_data"}

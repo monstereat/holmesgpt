@@ -166,7 +166,8 @@ services:
       target: runtime
     command: ["python", "migrate.py"]
     environment:
-      DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
+      AIOPS_ENV: local
+      MIGRATION_DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
     networks:
       - app
     depends_on:
