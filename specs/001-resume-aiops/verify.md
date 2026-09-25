@@ -10,7 +10,7 @@
 | AC-02 跨重启恢复 | 通过 | API、worker、Redis、PostgreSQL 重启后服务恢复；已创建 incident 仍存在；outbox/租约恢复由 T002 测试覆盖。 |
 | AC-03 有界重试和明确终态 | 通过（mock/故障路径） | Holmes 客户端/worker 的瞬时错误、超时、永久失败与脱敏由定向测试覆盖；本机缺外部配置时任务终态为 `failed:holmes_unavailable`。 |
 | AC-04 Holmes 只读调查和证据 | **部分完成，live RCA 阻塞** | T008 增加服务端受限代理和网络隔离；Holmes 无法解析 OpenObserve 服务名，只能访问代理。真实 OpenObserve Toolset 通过代理发现 2 条 allowlist 流并查询到实际日志。Holmes 默认模型为 `deepseek/deepseek-flash`，LiteLLM 支持工具调用；尚未提供 `DEEPSEEK_API_KEY`，未产生模型诊断证据。OpenObserve OSS 仍无原生 RBAC。 |
-| AC-05 事故工作台 | 部分验证 | 本机浏览器已加载登录页；incident API 登录、事故/任务/审批/复盘接口由隔离集成测试覆盖，工作台脚本静态资源与复盘表单通过检查。本轮未在浏览器中登录后逐项手工走查完整事故/审批页面，因此不记为完整浏览器验收。入口 `http://localhost:8081/`。 |
+| AC-05 事故工作台 | 部分验证 | 本机浏览器已加载登录页且无 console error；incident API 登录、事故/任务/审批/复盘接口由隔离集成测试覆盖，工作台脚本静态资源与复盘表单通过检查。本轮未用本机测试账号登录浏览器，未逐项手工走查完整事故/审批页面，因此不记为完整浏览器验收。入口 `http://localhost:8081/`。 |
 | AC-06 测试身份、角色、资源授权 | 通过 | operator 与 approver 分开；operator 自审批实测返回 HTTP 403；认证/权限矩阵测试通过。 |
 | AC-07 仅限 demo 的受控动作 | 通过（本机演示动作） | operator 请求动作、approver 批准后 order-service 状态 ON；获批恢复后状态 OFF。动作 owner 验证授权、固定资源和幂等键；测试涵盖拒绝、验证和回退路径。 |
 | AC-08 本机部署、恢复和重复演示 | 通过（测试环境） | Holmes、incident API/worker、PostgreSQL、Redis、OpenObserve、order-service 在同一 Compose project 运行；健康端点均返回 200。隔离 `aiops_restore_test` 的 pg_dump/pg_restore 成功，活动数据库与 volume 未覆盖/删除。 |

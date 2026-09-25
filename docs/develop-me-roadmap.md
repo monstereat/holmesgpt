@@ -50,33 +50,32 @@
 - [x] `.github/workflows/develop-me-aiops.yml` 已提交独立工具集测试工作流定义。
 - [x] 本地 OpenObserve 验证：日志、前端错误流、Trace 均收到相同 Trace ID；生产凭据、RBAC 和查询兼容性仍待验。
 - [x] 浏览器 SDK → NestJS HTTP 500 → `app_logs` / `frontend_errors` / OpenTelemetry Trace 使用同一 Trace ID（真实浏览器 + 本机 OpenObserve 已验）。
-- [ ] 告警调用真实 Holmes CLI 尚未验证；当前触发器用 `/bin/echo` 替身实测接收 Webhook 和 Trace ID。
-- [x] 建立可回放的订单 HTTP 500 故障注入；[ ] 调查录像。
+- [x] 告警 worker 已可调用本机 Holmes 非流式 API，隔离契约测试通过；本机真实模型调查仍待 `DEEPSEEK_API_KEY`。
+- [x] 建立可回放的订单 HTTP 500 故障注入；调查录像是可选演示材料，不作为产品验收项。
 
 ## 3. P1：展示工程可靠性的功能
 
-- [ ] **真实发布关联：** 接通 Git/CI 发布 Webhook，按故障时间窗口检索并验证最新版本、提交和变更文件。
+- [ ] **外部 Git/CI 发布源（后续集成）：** 本机签名发布事件已可写入 OpenObserve 并与故障窗口查询；GitHub/GitLab/Jenkins 的真实 Webhook 凭据和流水线连接留待后续接入。
 - [x] **本地发布事件原型：** NestJS 接受标准化发布事件，要求 HMAC-SHA256 签名并将版本/commit/变更文件写入 `app_logs`；调查提示要求按告警时间检索。Docker → OpenObserve 查询端到端已验；尚未接入 GitHub/GitLab/Jenkins。
 - [x] **事故流程内存原型：** `examples/openobserve-aiops/incident_workflow.py` 实现状态转换、负责人、严重级别、幂等键、重复告警归并、审批事件和时间线；不执行处置命令。
 - [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox；本地测试身份与资源 RBAC；重启恢复、幂等及审计查询通过单测和 Compose 验收。数据库 schema/migration 仅应用到获授权的本机测试数据库；生产身份集成仍待规划。
 - [x] **内存 RCA 数据模型：** 已验证结论必须带 HTTPS 证据链接，未验证结论明确标为 assumption；原型只记录声明，不自动验证其真实性。
-- [ ] **真实 RCA 集成：** Holmes 输出逐项绑定 OpenObserve 日志/Trace、发布或 Runbook 来源；证据不足的结论保留为假设并可人工纠错。
+- [ ] **真实 RCA 结果验收：** Holmes 调查 API、只读证据代理和带来源/查询信息的证据保存已实现；真实模型输出对日志/Trace/发布/Runbook 的引用与假设质量仍待 DeepSeek 凭据实测。
 - [x] **本地调查 Skill：** 使用当前支持的 `custom_skill_paths`/`SKILL.md` 提供订单故障只读调查步骤，并通过 Holmes `scan_skill_directory` 验证解析；真实 CLI 调查及证据引用仍待模型凭据和 OpenObserve 查询权限。旧 Catalog 仅留作迁移参考。
 - [x] **本机持久复盘：** 事故详情提供影响、根因、恢复措施和行动项表单；approver/admin 可保存草稿或标记已审核，viewer/operator 只读；PostgreSQL 保存审核人/时间并将变更写入事故审计时间线（隔离 API 集成测试通过）。
 - [x] **内存审批原型：** Agent 只能提交白名单建议，审批经外部授权回调验证；原型不执行运维命令。
-- [ ] **生产受控处置：** 独立执行器须重新校验用户身份、授权、动作白名单、幂等键、取消和审计；高风险生产回滚需有验证失败回退。
-- [ ] **完整复盘报告：** 本机已实现持久化和人工审核；需结合真实 Holmes 证据及发布记录完善 RCA，并完成浏览器端手工走查。正式签发流程属于后续产品决策。
+- [ ] **生产受控处置（当前范围之外）：** 本机只实现固定的 order-service 测试动作、独立审批、owner 侧授权复验、幂等、执行后验证、失败恢复和审计；生产执行器/真实生产权限必须另行设计和授权。
+- [ ] **完整复盘内容验收：** 本机已实现持久化、角色权限和人工审核；Holmes 真实诊断接入后需再核对 RCA/发布证据，并完成浏览器登录后的手工走查。正式签发流程属于后续产品决策。
 - [x] **本机告警/任务/Trace 关联：** 持久事故详情串联 alert fingerprint、task ID 和 Trace ID；发布版本双向查询与真实 CI 接入仍待完成。
-- [x] **本机任务查询原型：** 告警响应返回 task ID；同一 token 认证的 `GET /tasks/{task_id}` 返回状态、Trace ID 和结果，内存最多保留 1000 条/1 小时。未覆盖告警 ID、发布检索双向接口，且无持久化。
-- [x] **本地关联指纹：** 本地 `alert_id` 指纹可查询所关联 task IDs 与 Trace IDs，Webhook 重复响应复用该指纹；它不是 OpenObserve 原生告警 ID，且无发布关联和持久化。
-- [ ] **配置安全：** OpenObserve 使用最低权限的独立服务账户；日志查询限制流、时间、数量和查询耗时；对 SQL 策略做安全复核。
+- [x] **持久任务查询与关联：** incident 详情返回其 PostgreSQL 持久 task 状态、Trace、结果和审计；重复告警由稳定指纹幂等归并，outbox/worker 支持重投、租约回收和有界重试。它不是 OpenObserve 原生告警 ID。
+- [x] **本机只读查询边界：** OpenObserve OSS root 凭据只交给本机策略代理，Holmes 只能经隔离网络访问 allowlist 流列表与受限搜索；查询窗口、耗时、行数和响应均受限，SQL 用 ClickHouse AST 检查。该机制不是 OpenObserve 原生 RBAC，正式环境需评估支持服务端 RBAC 的版本。
 
 ## 4. P2：后续扩展
 
-- [x] 建立 20 个结构化已知根因评测案例并生成可重复 mock 报告；**Holmes live 检索覆盖率、诊断质量和误处置率尚未评测**，不可用样本数量或 mock 结果代替。
+- [x] 建立 20 个结构化已知根因案例、本机 synthetic evidence seeder 和 mock/live 报告生成器；缺 key 的 live 安全门及 OpenObserve→Holmes 只读检索路径已测。**真实 Holmes live 检索覆盖率、诊断质量和误处置率尚未评测**，mock 结果不代表诊断能力。
 - [x] 本机接收器 5 分钟进程内去重：带 Trace 告警按告警名和 Trace ID 做幂等键，无 Trace 告警排除触发时间但保留计数差异（9 项接收器测试通过）。
 - [ ] Keep 集成或相似故障聚类；跨多个服务的共同根因分析。
-- [ ] 审批后可执行的运维动作模板库及验证失败回退策略。
+- [x] 本机单一 `set-chaos-mode` 测试动作经审批后执行，执行后状态核对、失败恢复和审计已验；通用运维动作模板库不在当前本机测试目标内。
 
 ## 5. 首个演示场景与验收
 
@@ -114,7 +113,7 @@ poetry install --with dev
 poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
 ```
 
-**状态说明：** [x] 表示文件已提交，不等于 CI 已成功或线上接入已完成。当前工具集的 SQL 文本拦截是基础防线，正式接生产前需结合只读账户、可访问流白名单、SQL 语法验证、查询配额和部署级网络隔离进一步加固。
+**状态说明：** [x] 只表示该条目的描述范围已在本机测试环境实现并有对应验证，不代表生产接入。后续章节记录更具体的实现边界、实测证据和未完成事项。当前 Holmes 查询由 AST 约束、allowlist 和网络隔离共同限定；OpenObserve OSS 本身仍无原生 RBAC。
 
 ## 2026-09-24 增量：OpenObserve 严格范围及凭据保护
 
@@ -191,7 +190,7 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 新增复盘读取/保存 API；approver/admin 可保存和审核，viewer/operator 仅能读取，跨资源仍由服务端 scope 检查；复盘操作追加审计事件。
 - [x] 事故详情工作台提供复盘表单和审核状态；`DEMO.md` 说明手工流程，并更正 OpenObserve OSS 通过代理隔离而非“只读账户”的描述。
 - [x] 隔离 Compose 测试 42 passed；当前本机数据库已应用 migration；本机 HTTP smoke 验证登录、复盘读取、operator 写入拒绝和工作台脚本已通过。
-- [ ] 浏览器人工走查仍待完成；真实 Holmes 证据驱动的 RCA/复盘仍待 DeepSeek API Key。
+- [ ] 浏览器已确认登录页可加载且无 console error；受本机测试账号凭据未进入浏览器自动化，本轮没有登录后手工走查审批、执行和复盘流程。后端角色/API 已由隔离测试覆盖；真实 Holmes 证据驱动的 RCA/复盘仍待 DeepSeek API Key。
 
 ## 2026-09-25 增量：20 例评测语料完整性
 
