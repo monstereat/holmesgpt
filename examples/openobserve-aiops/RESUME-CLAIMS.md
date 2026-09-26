@@ -12,7 +12,7 @@ Use the wording below only for the work and evidence currently present in this r
 - Added provider-neutral OIDC/PKCE identity foundations, persisted login transactions, session revocation, account disablement, and an authenticated low-cardinality Prometheus endpoint for queue state, pending age, retries, and configured admission capacity.
 - Added PostgreSQL-serialized webhook admission control across API replicas; production requires an operator-selected pending-task cap, duplicate alerts remain idempotent at saturation, and overload responses include `Retry-After` for source retries.
 - Added a PostgreSQL least-privilege role bootstrap template separating application DML from schema migration privileges; exercised migrations 0001–0006 on an isolated PostgreSQL 16 database and verified the runtime role could not create schema objects or update/delete/truncate audit history.
-- Validated the local Docker stack with **87 incident-service tests passing** and a live 20-case synthetic retrieval run: 20/20 case-evidence matches, 3/3 release-event matches, zero successful searches without exact run/case scope, zero detected cross-case fixture hits, and zero tool errors. Root-cause diagnosis scoring remains `not_scored`.
+- Ran the isolated Docker Compose incident-service suite (**87 passed**) and a live 20-case synthetic retrieval run: 20/20 case-evidence matches, 3/3 release-event matches, zero successful searches without exact run/case scope, zero detected cross-case fixture hits, and zero tool errors. Added a separate reviewer-attributed rubric workflow with per-case evidence references; root-cause diagnosis remains `not_scored` until independent reviewers complete and adjudicate a score sheet.
 
 ## Interview framing
 

@@ -77,7 +77,7 @@ Each gate must have a named owner and retained evidence. Production data and act
 | 8. Evaluation and release | Reproducible 20-case live report against synthetic staging evidence; per-case evidence/release matches; reviewed failure cases; rollback rehearsal | Mock report presented as model accuracy, missing per-case artifacts, or unreviewed regression |
 | 9. Go/no-go | Security, data/privacy, operations, application, and action owners sign the evidence bundle; rollback and incident contacts are reachable | Any open critical finding, missing owner, or absent rollback decision |
 
-The 20-case suite is a regression signal, not by itself proof of production readiness or an accuracy guarantee. Establish evaluation thresholds and independent review criteria before using it as a release gate.
+The 20-case suite is a regression signal, not by itself proof of production readiness or an accuracy guarantee. [`evals/review_scoring.py`](evals/review_scoring.py) creates a separate human scoring sheet and validates per-case scores, evidence references, reviewer notes, and source report identity; the machine-generated report remains `not_scored`. Require two independent reviewers, adjudicate disagreements, and establish thresholds before using diagnosis scores as a release gate.
 
 ## Current gaps and next decisions
 

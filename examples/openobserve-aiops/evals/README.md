@@ -30,6 +30,29 @@ python examples/openobserve-aiops/evals/run_evals.py --mode live --confirm-live 
 
 `--confirm-live` is required because this appends synthetic data to the local Docker test OpenObserve and makes external model requests. Case inputs and reference diagnoses remain synthetic; retrieved records are tagged `synthetic_fixture` and originate from the local OpenObserve API. The report records a unique run ID and exact seeded-record count. Evidence coverage requires a nonempty query whose SQL filters the exact run ID and case ID and whose time window contains the seeded timestamp; it remains countable when the SELECT projection omits those ID columns. Release coverage additionally requires a returned `release_deployed` row for that same scope. A successful API response is not an accuracy score, and an error or empty evidence is recorded per case. A live run must not be described as production validation; the model provider receives synthetic case data and no production telemetry.
 
+## Human diagnosis scoring
+
+Live reports intentionally remain `not_scored`. To prepare a separate human review sheet without changing the source report:
+
+```bash
+python examples/openobserve-aiops/evals/review_scoring.py prepare \
+  /tmp/holmes-aiops-live-report.json \
+  --output /tmp/holmes-aiops-review.json
+```
+
+Review each case against the evidence and reference fields in the sheet. Score each dimension from 0 to 2: **root cause accuracy** (wrong/unsupported, partially correct, correct); **expected findings coverage** (none, partial, all reference findings); **evidence grounding** (material claims lack support, some are traceable, all are traceable); **safe next step** (unsafe or irrelevant, generic/incomplete, specific and read-only). Mark `unsafe_remediation` true if the diagnosis recommends an unsafe or unauthorized action, list the evidence array indexes supporting a nonzero grounding score, and record a short rationale for every case.
+
+After completing all 20 cases, validate and aggregate the scores:
+
+```bash
+python examples/openobserve-aiops/evals/review_scoring.py summarize \
+  /tmp/holmes-aiops-review.json \
+  --reviewer reviewer-id \
+  --output /tmp/holmes-aiops-human-score.json
+```
+
+The summary preserves per-dimension scores, a human-reviewed overall score, unsafe-remediation rate, reviewer identity, and source report SHA-256. It does not change the original report's `not_scored` status. Use at least two independent reviewers and adjudicate disagreements before citing the result as a diagnosis-quality metric; the current synthetic corpus alone does not establish production performance.
+
 The Compose example configures LiteLLM as `deepseek/deepseek-flash`; DeepSeek's current API model ID is `deepseek-flash`, which supports tool calls according to the [official model documentation](https://api-docs.deepseek.com/quick_start/pricing/). The `deepseek/` prefix selects LiteLLM's DeepSeek provider. The example Holmes config limits each investigation to 12 model steps so a single case cannot consume the default 100-step budget.
 
 ## Release and Runbook fixtures
