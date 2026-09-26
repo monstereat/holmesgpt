@@ -1309,6 +1309,8 @@ class ToolCallingLLM:
                         otel_metrics.token_usage.add(response_stats.prompt_tokens, {**model_attrs, DIM_GEN_AI_TOKEN_TYPE: "input"})
                     if response_stats.completion_tokens > 0:
                         otel_metrics.token_usage.add(response_stats.completion_tokens, {**model_attrs, DIM_GEN_AI_TOKEN_TYPE: "output"})
+                    if response_stats.total_cost > 0:
+                        otel_metrics.estimated_llm_cost.add(response_stats.total_cost, model_attrs)
                     llm_duration = time.time() - _llm_call_start
                     otel_metrics.llm_call_duration.record(llm_duration, model_attrs)
 

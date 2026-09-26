@@ -707,6 +707,7 @@ class TestOTelMetrics:
         m = OTelMetrics(meter)
 
         assert hasattr(m, "token_usage")
+        assert hasattr(m, "estimated_llm_cost")
         assert hasattr(m, "investigation_duration")
         assert hasattr(m, "investigation_count")
         assert hasattr(m, "investigation_iterations")
@@ -728,6 +729,7 @@ class TestOTelMetrics:
 
         # These should not raise
         m.token_usage.add(100, {"gen_ai_request_model": "test", "gen_ai_token_type": "input"})
+        m.estimated_llm_cost.add(0.001, {"gen_ai_request_model": "test", "gen_ai_system": "litellm"})
         m.investigation_count.add(1, {"gen_ai_request_model": "test"})
         m.investigation_duration.record(1.5, {"gen_ai_request_model": "test"})
         m.investigation_iterations.record(3, {"gen_ai_request_model": "test"})

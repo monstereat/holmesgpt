@@ -188,6 +188,11 @@ class OTelMetrics:
             description="Number of input/output tokens used by LLM calls",
             unit="{token}",
         )
+        self.estimated_llm_cost = meter.create_counter(
+            name="holmesgpt.llm.cost.estimated",
+            description="Cumulative per-call LLM cost estimates reported by LiteLLM; zero or unavailable estimates are omitted",
+            unit="USD",
+        )
 
         # Investigation metrics
         self.investigation_duration = meter.create_histogram(
@@ -444,6 +449,10 @@ class OpenTelemetryTracer:
             ),
             View(
                 instrument_name="gen_ai.client.operation.duration",
+                attribute_keys=[DIM_GEN_AI_REQUEST_MODEL, DIM_GEN_AI_SYSTEM],
+            ),
+            View(
+                instrument_name="holmesgpt.llm.cost.estimated",
                 attribute_keys=[DIM_GEN_AI_REQUEST_MODEL, DIM_GEN_AI_SYSTEM],
             ),
             View(
