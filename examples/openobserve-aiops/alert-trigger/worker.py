@@ -10,6 +10,7 @@ from typing import Any
 import psycopg
 from celery import Celery
 
+from broker_config import validate_broker_url
 from db_config import validate_database_url
 from holmes_client import HolmesClient
 from tasks import (
@@ -22,7 +23,9 @@ from tasks import (
 )
 
 logger = logging.getLogger("holmes_aiops.worker")
-celery_app = Celery("holmes_aiops", broker=os.getenv("REDIS_URL", "redis://redis:6379/0"))
+local_broker_url = "redis://redis:6379/0" if os.getenv("AIOPS_ENV", "production") == "local" else ""
+broker_url = validate_broker_url(os.getenv("REDIS_URL", local_broker_url), required=True)
+celery_app = Celery("holmes_aiops", broker=broker_url)
 celery_app.conf.update(
     task_ignore_result=True,
     broker_connection_retry_on_startup=True,

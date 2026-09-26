@@ -2,9 +2,11 @@ from unittest.mock import MagicMock
 
 import psycopg
 import pytest
+from redis.connection import SSLConnection, parse_url
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from broker_config import validate_broker_url
 from db_config import validate_database_url
 from app import (
     API_METRICS_LOCK,
@@ -108,6 +110,33 @@ def test_api_and_worker_reject_non_tls_database_urls(monkeypatch):
         api_database_url()
     with pytest.raises(RuntimeError, match="sslmode=verify-full"):
         worker_database_url()
+
+
+def test_non_local_broker_url_requires_tls_auth_and_hostname_verification(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    for broker_url in (
+        "redis://:secret@broker.internal:6379/0",
+        "rediss://broker.internal:6379/0?ssl_cert_reqs=required&ssl_check_hostname=true",
+        "rediss://:secret@broker.internal:invalid/0?ssl_cert_reqs=required&ssl_check_hostname=true",
+        "rediss://:secret@broker.internal:6379/0?ssl_cert_reqs=required&ssl_check_hostname=false",
+        "rediss://:secret@broker.internal:6379/0?ssl_cert_reqs=required",
+        "rediss://:secret@broker.internal:6379/0?ssl_cert_reqs=none&ssl_check_hostname=true",
+    ):
+        with pytest.raises(RuntimeError):
+            validate_broker_url(broker_url, required=True)
+
+    broker_url = "rediss://:secret@broker.internal:6379/0?ssl_cert_reqs=required&ssl_check_hostname=true"
+    assert validate_broker_url(broker_url, required=True) == broker_url
+    options = parse_url(broker_url)
+    assert options["connection_class"] is SSLConnection
+    assert options["ssl_cert_reqs"] == "required"
+    assert options["ssl_check_hostname"] is True
+
+
+def test_local_broker_url_can_use_the_isolated_compose_network(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "local")
+    broker_url = "redis://redis:6379/0"
+    assert validate_broker_url(broker_url, required=True) == broker_url
 
 
 def test_pending_task_capacity_is_required_and_validated_outside_local_runtime(monkeypatch):
