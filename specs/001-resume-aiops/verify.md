@@ -16,7 +16,7 @@
 | AC-08 本机部署、恢复和重复演示 | 通过（测试环境） | Holmes、incident API/worker、PostgreSQL、Redis、OpenObserve、order-service 在同一 Compose project 运行；健康端点均返回 200。隔离 `aiops_restore_test` 的 pg_dump/pg_restore 成功，活动数据库与 volume 未覆盖/删除。 |
 | AC-09 发布和知识上下文关联 | 通过（fixture/mock） | 三条本地发布/Runbook fixture 有来源标记并关联已知根因案例；真实 Git/CI 发布源仍未接入。 |
 | AC-10 20 例可重复评测 | **部分通过（诊断准确性未评分）** | 20 例 mock JSON 报告和结构/关联测试通过。最新 live 报告 schema 1.3 通过 Draft 2020-12 校验；40 条 synthetic 行在 Holmes 调用前确认可搜索；20 案完成，20/20 exact run/case 证据命中、3/3 release event 命中，未限定成功查询、跨案例命中和工具错误均为 0。Diagnosis scoring 仍为 `not_scored`，不能代表诊断准确率。当前临时报告 SHA-256：`e4aa1b79bfd3692f990add632f79fc4c4a1faddb16793f23a29f3ed95a148939`。 |
-| AC-11 正式环境边界 | 通过（准备文档；生产部署未执行） | 新增平台无关的生产部署配置决策表、配置安全门槛、分阶段验收与 go/no-go 证据要求；平台、身份、网络、SLO/RPO/RTO 等待负责人确认，未创建可执行生产清单或配置/执行生产操作。 |
+| AC-11 正式环境边界 | 部分通过（准备文档；生产部署未执行） | 用户选择当前 macOS Docker Desktop 24.0.6 / Compose 2.23.0 作为目标运行时；该主机单点且尚未确认是获批的常开生产主机。身份、域名/TLS、数据服务身份、OpenObserve RBAC/租户、告警路由、SLO/RPO/RTO、动作责任人等仍待确认，尚无可执行生产 manifest 或生产凭据。 |
 
 ## 验证结果
 
