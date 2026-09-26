@@ -134,6 +134,13 @@ services:
 
   order-service:
     build: ./demo/order-service
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
     environment:
       OPENOBSERVE_URL: http://openobserve:5080
       OPENOBSERVE_ORG: default
@@ -178,6 +185,13 @@ services:
     build:
       context: ./alert-trigger
       target: runtime
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
     environment:
       AIOPS_ENV: local
       AIOPS_AUTH_MODE: local
@@ -214,6 +228,13 @@ services:
     build:
       context: ./alert-trigger
       target: runtime
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
     command: ["celery", "-A", "worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
     environment:
       DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops

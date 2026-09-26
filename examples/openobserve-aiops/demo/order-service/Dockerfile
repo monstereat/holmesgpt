@@ -13,5 +13,6 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 COPY public ./public
+USER node
 EXPOSE 8080
 CMD ["node", "dist/main.js"]
