@@ -28,6 +28,7 @@ Do not claim production launch, multi-tenant isolation, high availability, measu
 
 ## Evidence
 
+- Reboot recovery check: with no queued task or pending outbox row, restarted the incident API and Celery worker; both returned healthy, API liveness/readiness returned 200, and the failure task, verified evidence, OFF approval, and audit timeline remained persisted in PostgreSQL. Database, Redis, and Holmes restart behavior was not part of this specific check.
 - [Production readiness gates](PRODUCTION-READINESS.md)
 - [Project progress and validation record](../../docs/develop-me-roadmap.md)
 - Latest local incident-service result: 96 passed, 1 upstream deprecation warning (2026-09-26), including PostgreSQL concurrency/admission checks and production database/broker URL validation. Compose configuration check and API/worker/migration image builds passed. The current worker and incident API are healthy; because an orphaned legacy `alert-trigger` container still owns 8081, the API is loopback-bound on 8082 via `AIOPS_API_HOST_PORT`. Liveness/readiness/workbench/auth-mode routes return 200; unauthenticated incident/user APIs return 401. A fresh synthetic runtime smoke produced an order (201), flushed its trace (201), accepted a webhook (202), and completed a worker investigation with 2 saved Holmes tool evidence items, including the exact alert Trace ID; `evidence_status=verified`. This exercised evidence retrieval on a success-log alert, not RCA accuracy or the approval/action path.
