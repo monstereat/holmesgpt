@@ -125,6 +125,14 @@ docker build -t aiops-openobserve-proxy:test openobserve-proxy
 docker run --rm aiops-openobserve-proxy:test python -m unittest discover -s tests -v
 ```
 
+Run a live compatibility check against an isolated, ephemeral OpenObserve v1.0.3 instance. The script uses an internal Docker network, test-only credentials and temporary storage, then removes both containers and the network:
+
+```bash
+bash verify-openobserve-proxy-live.sh
+```
+
+If the default test subnet conflicts with a local route, set `AIOPS_TEST_DOCKER_SUBNET` to an unused private `/29`. The script does not use or modify the running demo's OpenObserve data.
+
 Generate a deterministic report for the 20 synthetic root-cause cases:
 
 ```bash
