@@ -18,6 +18,7 @@ export ALERT_WEBHOOK_TOKEN="$(openssl rand -hex 32)"
 export ORDER_ACTION_TOKEN="$(openssl rand -hex 32)"
 export HOLMES_API_KEY="$(openssl rand -hex 32)"
 export SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
+export AIOPS_API_HOST_PORT="${AIOPS_API_HOST_PORT:-8081}"
 export ADMIN_PASSWORD="$(openssl rand -hex 24)"
 export OPERATOR_PASSWORD="$(openssl rand -hex 24)"
 export APPROVER_PASSWORD="$(openssl rand -hex 24)"
@@ -53,6 +54,8 @@ After startup:
 
 The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action; Compose explicitly enables it with `AIOPS_DEMO_ACTIONS_ENABLED=true`. The action is disabled by default in every other environment, including for already approved requests. The separate `approver` can approve or reject it and edit/review incident retrospectives. The requester cannot approve their own request. All three accounts are local demo identities, not a production identity provider.
 
+The incident API's host port defaults to `8081`; set `AIOPS_API_HOST_PORT=8082` before Compose commands if another local container already owns that port. The service remains on port `8081` inside the private Compose network, so the OpenObserve webhook destination does not change.
+
 The local `admin` can inspect application identity mappings and disable a user's workbench access. This does not change the user's identity-provider account; role and resource assignments remain controlled by OIDC group mappings. No local admin credential is committed.
 
 Logout revokes the current OIDC cookie or local bearer session server-side by storing only its token hash and expiry. The API checks revocation on authenticated requests. If logout cannot reach PostgreSQL, the workbench keeps the current session visible and reports the error instead of silently treating the token as revoked.
@@ -63,8 +66,8 @@ Check service state and liveness:
 docker compose ps
 curl -fsS http://127.0.0.1:5080/healthz
 curl -fsS http://127.0.0.1:5050/healthz
-curl -fsS http://127.0.0.1:8081/healthz
-curl -fsS http://127.0.0.1:8081/readyz
+curl -fsS "http://127.0.0.1:${AIOPS_API_HOST_PORT:-8081}/healthz"
+curl -fsS "http://127.0.0.1:${AIOPS_API_HOST_PORT:-8081}/readyz"
 curl -fsS http://127.0.0.1:8080/
 ```
 

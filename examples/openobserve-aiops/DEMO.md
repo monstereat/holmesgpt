@@ -1,6 +1,6 @@
 # 本机 AIOps 演示：告警、调查、审批和测试处置
 
-本流程仅操作当前机器上的 Docker 测试环境。先按 [`README.md`](README.md) 启动 Compose 并配置本地账户。浏览器入口为订单 demo `http://localhost:8080`、事故工作台 `http://localhost:8081`、OpenObserve `http://localhost:5080`。
+本流程仅操作当前机器上的 Docker 测试环境。先按 [`README.md`](README.md) 启动 Compose 并配置本地账户。浏览器入口默认为订单 demo `http://localhost:8080`、事故工作台 `http://localhost:8081`、OpenObserve `http://localhost:5080`；若设置了 `AIOPS_API_HOST_PORT`，事故工作台和下文发往主机的 curl 请求使用该端口，Compose 内部 webhook 地址仍使用 8081。
 
 ## 1. 验证订单遥测
 
@@ -19,7 +19,7 @@
 若暂时没有真实 OpenObserve Alert 配置，可在当前 shell 设置同一 webhook token 后发送一个本地测试告警。trace ID 应替换为第 4 步实际观测到的 32 位十六进制 ID：
 
 ```bash
-curl -fsS http://127.0.0.1:8081/webhooks/openobserve \
+curl -fsS "http://127.0.0.1:${AIOPS_API_HOST_PORT:-8081}/webhooks/openobserve" \
   -H "X-Alert-Token: $ALERT_WEBHOOK_TOKEN" \
   -H 'Content-Type: application/json' \
   --data '{"alert_name":"OrderCreateFailure","trace_id":"0123456789abcdef0123456789abcdef","alert_count":1}'

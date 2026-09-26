@@ -242,7 +242,7 @@ services:
       ORDER_SERVICE_URL: http://order-service:8080
       ORDER_ACTION_SERVICE_TOKEN: ${ORDER_ACTION_TOKEN:?Export ORDER_ACTION_TOKEN before starting the local demo}
     ports:
-      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:${AIOPS_API_HOST_PORT:-8081}:8081"
     networks:
       - app
       - incident-webhook
