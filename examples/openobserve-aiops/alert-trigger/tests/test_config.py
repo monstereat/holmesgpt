@@ -6,6 +6,8 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import (
+    API_METRICS_LOCK,
+    API_REQUEST_METRICS,
     _auth_mode,
     _require_demo_actions_enabled,
     _max_pending_tasks,
@@ -96,14 +98,19 @@ def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
     cursor = MagicMock()
     cursor.fetchall.return_value = [("queued", 2), ("completed", 4)]
-    cursor.fetchone.side_effect = [(7.5,), (3,)]
+    cursor.fetchone.side_effect = [(5, 1.5, 9.2), (7.5,), (3,)]
     cursor.__enter__.return_value = cursor
     connection = MagicMock()
     connection.cursor.return_value = cursor
     connection.__enter__.return_value = connection
     monkeypatch.setattr("app.psycopg.connect", lambda *args, **kwargs: connection)
+    with API_METRICS_LOCK:
+        API_REQUEST_METRICS.clear()
 
     with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200
+        incident_id = "00000000-0000-0000-0000-000000000001"
+        assert client.get(f"/api/incidents/{incident_id}").status_code == 401
         assert client.get("/_internal/metrics", headers={"Authorization": "Bearer wrong"}).status_code == 401
         response = client.get("/_internal/metrics", headers={"Authorization": f"Bearer {'m' * 40}"})
 
@@ -114,6 +121,14 @@ def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     assert "aiops_oldest_pending_task_age_seconds 7.5" in response.text
     assert "aiops_task_retry_attempts_total 3" in response.text
     assert "aiops_pending_task_capacity 250" in response.text
+    assert 'aiops_worker_task_duration_seconds_windowed{quantile="0.50"} 1.5' in response.text
+    assert 'aiops_worker_task_duration_seconds_windowed{quantile="0.95"} 9.2' in response.text
+    assert "aiops_worker_task_duration_samples_windowed 5" in response.text
+    assert "aiops_api_requests_in_flight 0" in response.text
+    assert 'aiops_api_requests_total{method="GET",route="/healthz",status_class="2xx"} 1' in response.text
+    assert 'route="/api/incidents/{incident_id}"' in response.text
+    assert incident_id not in response.text
+    assert "aiops_api_request_duration_seconds_bucket" in response.text
 
 
 def test_incident_api_readiness_fails_without_database(monkeypatch):

@@ -7,6 +7,8 @@ import json
 import os
 import re
 import secrets
+import threading
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -32,6 +34,10 @@ PUBLIC_PATH = Path(__file__).parent / "public"
 SESSION_COOKIE_NAME = "aiops_session"
 OIDC_STATE_COOKIE_NAME = "aiops_oidc_state"
 OIDC_SESSION_TTL_SECONDS = 900
+API_DURATION_BUCKETS = (0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+API_METRICS_LOCK = threading.Lock()
+API_REQUESTS_IN_FLIGHT = 0
+API_REQUEST_METRICS: dict[tuple[str, str, str], dict[str, object]] = {}
 
 
 def _auth_mode() -> str:
@@ -279,15 +285,47 @@ app = FastAPI(title="Holmes AIOps Incident Service", version="0.1.0", lifespan=l
 
 @app.middleware("http")
 async def protect_cookie_authenticated_mutations(request: Request, call_next):
+    global API_REQUESTS_IN_FLIGHT
+    measure_request = request.url.path != "/_internal/metrics"
+    if measure_request:
+        with API_METRICS_LOCK:
+            API_REQUESTS_IN_FLIGHT += 1
+    started = time.perf_counter()
+    status_code = 500
     unsafe_method = request.method in {"POST", "PUT", "PATCH", "DELETE"}
     cookie_session = request.cookies.get(SESSION_COOKIE_NAME)
     bearer_auth = request.headers.get("authorization", "")
-    if unsafe_method and cookie_session and (_auth_mode() == "oidc" or not bearer_auth):
-        expected_origin = os.getenv("AIOPS_PUBLIC_ORIGIN", "").rstrip("/")
-        origin = request.headers.get("origin", "").rstrip("/")
-        if not expected_origin or not origin or not hmac.compare_digest(origin, expected_origin):
-            return JSONResponse({"detail": "Request origin is not allowed"}, status_code=403)
-    return await call_next(request)
+    try:
+        if unsafe_method and cookie_session and (_auth_mode() == "oidc" or not bearer_auth):
+            expected_origin = os.getenv("AIOPS_PUBLIC_ORIGIN", "").rstrip("/")
+            origin = request.headers.get("origin", "").rstrip("/")
+            if not expected_origin or not origin or not hmac.compare_digest(origin, expected_origin):
+                response = JSONResponse({"detail": "Request origin is not allowed"}, status_code=403)
+            else:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        if measure_request:
+            elapsed = time.perf_counter() - started
+            route = request.scope.get("route")
+            route_name = getattr(route, "path", "unmatched")
+            label = (request.method, route_name, f"{status_code // 100}xx")
+            with API_METRICS_LOCK:
+                API_REQUESTS_IN_FLIGHT -= 1
+                metric = API_REQUEST_METRICS.setdefault(
+                    label,
+                    {"count": 0, "duration_sum": 0.0, "buckets": [0] * (len(API_DURATION_BUCKETS) + 1)},
+                )
+                metric["count"] = int(metric["count"]) + 1
+                metric["duration_sum"] = float(metric["duration_sum"]) + elapsed
+                buckets = metric["buckets"]
+                for index, boundary in enumerate(API_DURATION_BUCKETS):
+                    if elapsed <= boundary:
+                        buckets[index] += 1
+                buckets[-1] += 1
 
 
 @app.get("/healthz")
@@ -308,6 +346,10 @@ def readyz() -> dict[str, str]:
     return {"status": "ready"}
 
 
+def _prometheus_label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
 @app.get("/_internal/metrics", include_in_schema=False)
 def internal_metrics(request: Request) -> PlainTextResponse:
     configured = os.getenv("AIOPS_METRICS_TOKEN", "")
@@ -325,6 +367,19 @@ def internal_metrics(request: Request) -> PlainTextResponse:
                 cursor.execute("SELECT status, count(*) FROM tasks GROUP BY status")
                 status_counts = dict(cursor.fetchall())
                 cursor.execute(
+                    """SELECT count(*),
+                              COALESCE(percentile_cont(0.50) WITHIN GROUP (
+                                  ORDER BY EXTRACT(EPOCH FROM (completed_at - started_at))), 0),
+                              COALESCE(percentile_cont(0.95) WITHIN GROUP (
+                                  ORDER BY EXTRACT(EPOCH FROM (completed_at - started_at))), 0)
+                       FROM tasks
+                       WHERE status IN ('completed', 'failed')
+                         AND started_at IS NOT NULL AND completed_at IS NOT NULL
+                         AND completed_at >= now() - interval '24 hours'
+                         AND completed_at >= started_at"""
+                )
+                task_duration_count, task_duration_p50, task_duration_p95 = cursor.fetchone()
+                cursor.execute(
                     """SELECT COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at))), 0)
                        FROM tasks WHERE status IN ('queued', 'running', 'retrying')"""
                 )
@@ -333,6 +388,20 @@ def internal_metrics(request: Request) -> PlainTextResponse:
                 retry_attempts = cursor.fetchone()[0]
     except psycopg.Error:
         raise HTTPException(status_code=503, detail="Incident metrics are temporarily unavailable") from None
+
+    with API_METRICS_LOCK:
+        in_flight = API_REQUESTS_IN_FLIGHT
+        api_metrics = [
+            (
+                method,
+                route,
+                status_class,
+                int(metric["count"]),
+                float(metric["duration_sum"]),
+                list(metric["buckets"]),
+            )
+            for (method, route, status_class), metric in API_REQUEST_METRICS.items()
+        ]
 
     statuses = ("queued", "running", "retrying", "completed", "failed", "cancelled")
     lines = [
@@ -345,7 +414,37 @@ def internal_metrics(request: Request) -> PlainTextResponse:
         "# HELP aiops_task_retry_attempts_total Persisted task retry attempts beyond the initial attempt.",
         "# TYPE aiops_task_retry_attempts_total counter",
         f"aiops_task_retry_attempts_total {int(retry_attempts or 0)}",
+        "# HELP aiops_worker_task_duration_seconds_windowed Recent worker task execution duration percentiles over a rolling 24 hour window.",
+        "# TYPE aiops_worker_task_duration_seconds_windowed gauge",
+        f'aiops_worker_task_duration_seconds_windowed{{quantile="0.50"}} {float(task_duration_p50 or 0)}',
+        f'aiops_worker_task_duration_seconds_windowed{{quantile="0.95"}} {float(task_duration_p95 or 0)}',
+        "# HELP aiops_worker_task_duration_samples_windowed Number of completed or failed worker tasks in the rolling 24 hour duration sample.",
+        "# TYPE aiops_worker_task_duration_samples_windowed gauge",
+        f"aiops_worker_task_duration_samples_windowed {int(task_duration_count or 0)}",
+        "# HELP aiops_api_requests_in_flight API requests currently executing in this process.",
+        "# TYPE aiops_api_requests_in_flight gauge",
+        f"aiops_api_requests_in_flight {in_flight}",
+        "# HELP aiops_api_requests_total Completed API requests since process start, excluding this metrics endpoint.",
+        "# TYPE aiops_api_requests_total counter",
+        "# HELP aiops_api_request_duration_seconds API request duration since process start, excluding this metrics endpoint.",
+        "# TYPE aiops_api_request_duration_seconds histogram",
     ]
+    for method, route, status_class, count, duration_sum, buckets in api_metrics:
+        labels = (
+            f'method="{_prometheus_label(method)}",'
+            f'route="{_prometheus_label(route)}",'
+            f'status_class="{_prometheus_label(status_class)}"'
+        )
+        for index, boundary in enumerate(API_DURATION_BUCKETS):
+            lines.append(f'aiops_api_request_duration_seconds_bucket{{{labels},le="{boundary}"}} {buckets[index]}')
+        lines.extend(
+            [
+                f'aiops_api_request_duration_seconds_bucket{{{labels},le="+Inf"}} {buckets[-1]}',
+                f"aiops_api_request_duration_seconds_sum{{{labels}}} {duration_sum}",
+                f"aiops_api_request_duration_seconds_count{{{labels}}} {count}",
+                f"aiops_api_requests_total{{{labels}}} {count}",
+            ]
+        )
     capacity = _max_pending_tasks()
     if capacity is not None:
         lines.extend([

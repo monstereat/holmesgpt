@@ -155,6 +155,8 @@ def test_postgres_migration_and_idempotency_on_local_test_database():
             assert cursor.fetchone() == ("0001_incidents_tasks",)
             cursor.execute("SELECT version FROM schema_migrations WHERE version = '0006_audit_events_append_only'")
             assert cursor.fetchone() == ("0006_audit_events_append_only",)
+            cursor.execute("SELECT version FROM schema_migrations WHERE version = '0007_task_duration_metrics_index'")
+            assert cursor.fetchone() == ("0007_task_duration_metrics_index",)
         alert = IncidentInput(fingerprint, "integration-order-500", ("a" * 32,), {"count": 1})
         first = create_incident(conn, alert)
         repeated = create_incident(conn, alert)
