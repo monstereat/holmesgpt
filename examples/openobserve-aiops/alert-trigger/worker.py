@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 from typing import Any
+from urllib.parse import urlsplit
 
 import psycopg
 from celery import Celery
@@ -125,16 +126,31 @@ def _database_url() -> str:
     return validate_database_url(os.getenv("DATABASE_URL", ""), "DATABASE_URL", required=True)
 
 
-def run_investigation(task: ClaimedTask) -> dict[str, Any]:
+def _holmes_client() -> HolmesClient:
     base_url = os.getenv("HOLMES_API_URL", "")
     api_key = os.getenv("HOLMES_API_KEY", "")
     if not base_url or not api_key:
-        raise PermanentTaskError("holmes_configuration_missing")
-    client = HolmesClient(
-        base_url=base_url,
-        api_key=api_key,
-        timeout_seconds=int(os.getenv("HOLMES_TIMEOUT_SECONDS", "900")),
-    )
+        raise RuntimeError("HOLMES_API_URL and HOLMES_API_KEY are required")
+    try:
+        timeout_seconds = int(os.getenv("HOLMES_TIMEOUT_SECONDS", "900"))
+        client = HolmesClient(base_url=base_url, api_key=api_key, timeout_seconds=timeout_seconds)
+    except (ValueError, TypeError):
+        raise RuntimeError("Holmes worker configuration is invalid") from None
+    if os.getenv("AIOPS_ENV", "production") != "local" and urlsplit(client.base_url).scheme != "https":
+        raise RuntimeError("HOLMES_API_URL must use HTTPS outside local mode")
+    return client
+
+
+def validate_worker_configuration() -> None:
+    _database_url()
+    _holmes_client()
+
+
+def run_investigation(task: ClaimedTask) -> dict[str, Any]:
+    try:
+        client = _holmes_client()
+    except RuntimeError:
+        raise PermanentTaskError("holmes_configuration_missing") from None
     return client.investigate({
         "task_id": task.task_id,
         "alert_name": task.alert_name,

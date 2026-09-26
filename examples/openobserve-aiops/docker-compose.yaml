@@ -275,7 +275,7 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
-    command: ["celery", "-A", "worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    command: ["python", "worker_entrypoint.py", "worker", "--loglevel=INFO", "--concurrency=2"]
     environment:
       AIOPS_ENV: local
       DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops

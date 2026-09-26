@@ -21,7 +21,11 @@ from app import (
     app,
     readyz,
 )
-from worker import _database_url as worker_database_url
+from worker import (
+    _database_url as worker_database_url,
+    _holmes_client,
+    validate_worker_configuration,
+)
 
 
 def test_test_user_seeding_requires_local_environment(monkeypatch):
@@ -110,6 +114,32 @@ def test_api_and_worker_reject_non_tls_database_urls(monkeypatch):
         api_database_url()
     with pytest.raises(RuntimeError, match="sslmode=verify-full"):
         worker_database_url()
+
+
+def test_worker_configuration_fails_before_consuming_tasks_without_holmes(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://runtime:secret@db.internal/aiops?sslmode=verify-full")
+    monkeypatch.delenv("HOLMES_API_URL", raising=False)
+    monkeypatch.delenv("HOLMES_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="HOLMES_API_URL and HOLMES_API_KEY"):
+        validate_worker_configuration()
+
+
+def test_worker_requires_https_holmes_endpoint_outside_local_mode(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.setenv("HOLMES_API_URL", "http://holmes.internal:5050")
+    monkeypatch.setenv("HOLMES_API_KEY", "worker-key")
+    with pytest.raises(RuntimeError, match="HOLMES_API_URL must use HTTPS"):
+        _holmes_client()
+
+
+def test_worker_accepts_valid_production_holmes_configuration(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://runtime:secret@db.internal/aiops?sslmode=verify-full")
+    monkeypatch.setenv("HOLMES_API_URL", "https://holmes.internal")
+    monkeypatch.setenv("HOLMES_API_KEY", "worker-key")
+    monkeypatch.setenv("HOLMES_TIMEOUT_SECONDS", "120")
+    validate_worker_configuration()
 
 
 def test_non_local_broker_url_requires_tls_auth_and_hostname_verification(monkeypatch):
