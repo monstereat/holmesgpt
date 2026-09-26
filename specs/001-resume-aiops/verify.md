@@ -29,6 +29,7 @@
 - Holmes/OpenObserve live 合成调查与 20 案 live 评测已实际运行，检索覆盖复核通过；不得把 API 健康、合成 fixture 或 `not_scored` 报告描述为诊断准确率或生产验证。
 - DeepSeek live 验证：已使用私有本机配置实际运行 20 案 synthetic live evaluation；该结果证明模型调用、工具检索和来源追踪链路运行，但不证明 production 模型质量。凭据值未写入报告或仓库。
 - 2026-09-26 当前 SQL 字段策略代理复验：24 项 proxy unittest 全部通过；隔离 OpenObserve v1.0.3 ingest/search 与字段策略验收通过；此前失败的精确 run/case `AND` 查询经运行中的 proxy 重放返回 HTTP 200；当前 proxy 上的 20 案 DeepSeek live run 完成，机器报告及 Draft 2020-12 schema 校验通过，根因诊断仍 `not_scored`。报告 `/tmp/holmes-aiops-live-report-post-and-fix.json` 仅在本机临时目录，SHA-256 见 AC-10。
+- 2026-09-26 当前事故服务完整隔离 Compose suite：**103 passed, 1 Starlette/AnyIO deprecation warning**；临时 PostgreSQL 集成测试已启用。Compose 提醒存在既存 orphan `alert-trigger` 容器，本次没有删除它，测试进程退出码为 0。
 - 浏览器端到端手工验收：operator/approver 分别登录；operator 申请 `set-chaos-mode:on`，approver 批准，operator 执行并观察 owner 验证 OFF→ON；再经审批执行 OFF 恢复并验证 ON→OFF。operator 无复盘写入/审核按钮，approver 保存并审核含真实限制说明的合成复盘；审计时间线显示审批、动作核验和 `retrospective.reviewed`。合成事故的 Holmes 任务以 `holmes_unavailable` 到达重试上限，证明任务失败路径可见但不能替代 live RCA。
 - 正式环境准备：`examples/openobserve-aiops/PRODUCTION-READINESS.md` 列出服务职责、待确认部署输入、生产配置门槛、staging 分阶段验收和 go/no-go 证据。它是准备文档，不是可执行生产 manifest；未执行生产部署。
 - 最新 mock 重放重新生成 20 条报告，并在项目 Poetry Python 3.12 环境通过 Draft 2020-12 Schema 校验；全部案例 `diagnosis: null`、`scoring: not_scored`。它验证了产物结构和可重复生成，不代表 Holmes 诊断质量。
