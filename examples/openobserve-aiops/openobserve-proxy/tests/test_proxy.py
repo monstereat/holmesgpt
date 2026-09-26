@@ -50,6 +50,13 @@ class ProxyPolicyTests(unittest.TestCase):
         self.assertIn("changed_files", result["query"]["sql"])
         self.assertNotIn("user_id", result["query"]["sql"])
 
+    def test_accepts_holmes_find_trace_query_shape(self):
+        trace_id = "a" * 32
+        sql = f'SELECT * FROM "app_logs" WHERE trace_id = \'{trace_id}\' ORDER BY _timestamp DESC'
+        result = validate_search(search_body(sql), FIELD_ALLOWLISTS)
+        self.assertIn("trace_id", result["query"]["sql"])
+        self.assertIn("_timestamp DESC", result["query"]["sql"])
+
     def test_rejects_disallowed_selected_or_filtered_fields(self):
         for sql in (
             "SELECT user_id FROM app_logs",
