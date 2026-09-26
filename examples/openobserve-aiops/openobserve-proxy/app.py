@@ -17,8 +17,6 @@ from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
 
-UPSTREAM_HOST = "openobserve"
-UPSTREAM_PORT = 5080
 ORGANIZATION = "default"
 ALLOWED_STREAMS = frozenset({"app_logs", "frontend_errors"})
 MAX_REQUEST_BYTES = 1_048_576
@@ -34,6 +32,30 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"Missing required environment variable: {name}")
     return value
+
+
+def _upstream_settings() -> tuple[str, str, str, str, int]:
+    raw_url = _required_env("OPENOBSERVE_UPSTREAM_URL").rstrip("/")
+    parsed = urlsplit(raw_url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("OPENOBSERVE_UPSTREAM_URL must be an http(s) origin without credentials or path")
+    if parsed.scheme != "https" and os.getenv("AIOPS_ENV") != "local":
+        raise RuntimeError("OPENOBSERVE_UPSTREAM_URL must use HTTPS outside local mode")
+    organization = _required_env("OPENOBSERVE_ORG")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", organization):
+        raise RuntimeError("OPENOBSERVE_ORG is invalid")
+    username = _required_env("OPENOBSERVE_UPSTREAM_USERNAME")
+    password = _required_env("OPENOBSERVE_UPSTREAM_PASSWORD")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return parsed.scheme, parsed.hostname, organization, username, port
 
 
 def validate_search(body: dict[str, Any]) -> dict[str, Any]:
@@ -111,8 +133,8 @@ def validate_search(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _upstream_request(method: str, path: str, body: bytes | None = None) -> tuple[int, bytes]:
-    username = _required_env("ZO_ROOT_USER_EMAIL")
-    password = _required_env("ZO_ROOT_USER_PASSWORD")
+    scheme, host, _organization, username, port = _upstream_settings()
+    password = _required_env("OPENOBSERVE_UPSTREAM_PASSWORD")
     credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
     headers = {
         "Authorization": f"Basic {credentials}",
@@ -123,7 +145,8 @@ def _upstream_request(method: str, path: str, body: bytes | None = None) -> tupl
         headers["Content-Type"] = "application/json"
         headers["Content-Length"] = str(len(body))
 
-    connection = http.client.HTTPConnection(UPSTREAM_HOST, UPSTREAM_PORT, timeout=10)
+    connection_type = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+    connection = connection_type(host, port, timeout=10)
     try:
         connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
@@ -141,6 +164,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     server_version = "AIOpsOpenObservePolicy/1.0"
     client_user = ""
     client_password = ""
+    organization = ORGANIZATION
 
     def log_message(self, format: str, *args: Any) -> None:
         # Keep SQL, query parameters and upstream details out of container logs.
@@ -184,7 +208,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
         if not self._require_auth():
             return
-        if parsed.path != f"/api/{ORGANIZATION}/streams":
+        if parsed.path != f"/api/{self.organization}/streams":
             self._reply(404, {"error": "route not allowed"})
             return
         try:
@@ -198,14 +222,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if params["type"][0] != "logs" or params["fetchSchema"][0] not in {"true", "false"}:
             self._reply(400, {"error": "invalid query parameters"})
             return
-        upstream_path = f"/api/{ORGANIZATION}/streams?fetchSchema={params['fetchSchema'][0]}&type=logs"
+        upstream_path = f"/api/{self.organization}/streams?fetchSchema={params['fetchSchema'][0]}&type=logs"
         self._forward("GET", upstream_path)
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler interface
         parsed = urlsplit(self.path)
         if not self._require_auth():
             return
-        if parsed.path != f"/api/{ORGANIZATION}/_search" or parsed.query:
+        if parsed.path != f"/api/{self.organization}/_search" or parsed.query:
             self._reply(404, {"error": "route not allowed"})
             return
         if self.headers.get_content_type() != "application/json":
@@ -227,7 +251,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
         self._forward(
             "POST",
-            f"/api/{ORGANIZATION}/_search",
+            f"/api/{self.organization}/_search",
             json.dumps(sanitized, separators=(",", ":")).encode(),
         )
 
@@ -286,12 +310,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    _scheme, _host, organization, _username, _port = _upstream_settings()
     handler = type(
         "ConfiguredProxyHandler",
         (ProxyHandler,),
         {
             "client_user": _required_env("OPENOBSERVE_PROXY_USERNAME"),
             "client_password": _required_env("OPENOBSERVE_PROXY_PASSWORD"),
+            "organization": organization,
         },
     )
     server = ThreadingHTTPServer(("0.0.0.0", 8090), handler)

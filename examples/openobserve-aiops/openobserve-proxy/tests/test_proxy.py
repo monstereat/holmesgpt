@@ -1,13 +1,15 @@
 import base64
 import http.client
 import json
+import os
 import threading
 import time
 import unittest
+from unittest.mock import Mock
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
 
-from app import ProxyHandler, validate_search
+from app import ProxyHandler, _upstream_request, _upstream_settings, validate_search
 
 
 def search_body(sql="SELECT * FROM app_logs", *, start=1_000_000, end=2_000_000, size=20):
@@ -63,6 +65,63 @@ class ProxyPolicyTests(unittest.TestCase):
         body["organization"] = "other"
         with self.assertRaises(ValueError):
             validate_search(body)
+
+    def test_upstream_requires_https_outside_local_mode(self):
+        settings = {
+            "OPENOBSERVE_UPSTREAM_URL": "http://openobserve:5080",
+            "OPENOBSERVE_ORG": "default",
+            "OPENOBSERVE_UPSTREAM_USERNAME": "reader",
+            "OPENOBSERVE_UPSTREAM_PASSWORD": "secret",
+            "AIOPS_ENV": "production",
+        }
+        with patch.dict(os.environ, settings, clear=True), self.assertRaises(RuntimeError):
+            _upstream_settings()
+
+    def test_upstream_rejects_credentials_and_paths_in_url(self):
+        settings = {
+            "OPENOBSERVE_UPSTREAM_URL": "https://reader:secret@observe.example/api",
+            "OPENOBSERVE_ORG": "default",
+            "OPENOBSERVE_UPSTREAM_USERNAME": "reader",
+            "OPENOBSERVE_UPSTREAM_PASSWORD": "secret",
+            "AIOPS_ENV": "production",
+        }
+        with patch.dict(os.environ, settings, clear=True), self.assertRaises(RuntimeError):
+            _upstream_settings()
+
+    def test_upstream_rejects_invalid_organization_path(self):
+        settings = {
+            "OPENOBSERVE_UPSTREAM_URL": "https://observe.example",
+            "OPENOBSERVE_ORG": "tenant-a/../../users",
+            "OPENOBSERVE_UPSTREAM_USERNAME": "reader",
+            "OPENOBSERVE_UPSTREAM_PASSWORD": "secret",
+            "AIOPS_ENV": "production",
+        }
+        with patch.dict(os.environ, settings, clear=True), self.assertRaises(RuntimeError):
+            _upstream_settings()
+
+    def test_upstream_uses_tls_and_dedicated_credentials(self):
+        settings = {
+            "OPENOBSERVE_UPSTREAM_URL": "https://observe.example:8443",
+            "OPENOBSERVE_ORG": "tenant-a",
+            "OPENOBSERVE_UPSTREAM_USERNAME": "reader",
+            "OPENOBSERVE_UPSTREAM_PASSWORD": "read-secret",
+            "AIOPS_ENV": "production",
+        }
+        response = Mock(status=200)
+        response.read.return_value = b'{"list": []}'
+        connection = Mock()
+        connection.getresponse.return_value = response
+        with patch.dict(os.environ, settings, clear=True), patch(
+            "app.http.client.HTTPSConnection", return_value=connection
+        ) as https_connection:
+            status, body = _upstream_request("GET", "/api/tenant-a/streams")
+        self.assertEqual((status, body), (200, b'{"list": []}'))
+        https_connection.assert_called_once_with("observe.example", 8443, timeout=10)
+        headers = connection.request.call_args.kwargs["headers"]
+        self.assertEqual(
+            headers["Authorization"],
+            "Basic " + base64.b64encode(b"reader:read-secret").decode(),
+        )
 
 
 class ProxyHTTPTests(unittest.TestCase):
