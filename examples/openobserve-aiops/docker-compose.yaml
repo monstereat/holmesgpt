@@ -100,12 +100,44 @@ services:
       timeout: 3s
       retries: 20
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    environment:
+      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-demo@example.test}
+      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?Export ZO_ROOT_USER_PASSWORD before starting the local demo}
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    networks:
+      - incident-holmes
+      - telemetry-write
+    depends_on:
+      openobserve:
+        condition: service_started
+
   holmes-api:
     build:
       context: ../..
       dockerfile: Dockerfile
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
     entrypoint: ["python", "-u", "server.py"]
     environment:
+      HOME: /tmp
+      HOLMES_CONFIGPATH_DIR: /tmp
       HOLMES_HOST: 0.0.0.0
       HOLMES_PORT: "5050"
       HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
@@ -113,8 +145,11 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OPENOBSERVE_PROXY_USERNAME: ${OPENOBSERVE_PROXY_USERNAME:?Export local proxy username before starting the demo}
       OPENOBSERVE_PROXY_PASSWORD: ${OPENOBSERVE_PROXY_PASSWORD:?Export local proxy password before starting the demo}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: holmesgpt-aiops
     volumes:
-      - ${HOLMES_CONFIG_FILE:-./holmes-config/config.yaml.example}:/root/.holmes/config.yaml:ro
+      - ${HOLMES_CONFIG_FILE:-./holmes-config/config.yaml.example}:/tmp/config.yaml:ro
       - ./skills:/etc/holmes/skills:ro
     ports:
       - "127.0.0.1:5050:5050"
@@ -125,6 +160,8 @@ services:
     depends_on:
       openobserve-proxy:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import os,sys,urllib.request; sys.exit(0 if os.getenv('DEEPSEEK_API_KEY') and urllib.request.urlopen('http://127.0.0.1:5050/readyz', timeout=4).status == 200 else 1)"]
       interval: 10s
