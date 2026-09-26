@@ -27,4 +27,4 @@ Do not claim production launch, multi-tenant isolation, high availability, measu
 - [Production readiness gates](PRODUCTION-READINESS.md)
 - [Project progress and validation record](../../docs/develop-me-roadmap.md)
 - Latest local incident-service result: 87 passed, 1 upstream deprecation warning (2026-09-26), including a real PostgreSQL concurrent admission-cap check.
-- Latest live synthetic report: `/tmp/holmes-aiops-live-report-final.json`, run `18add25121ba4ccdb0955c783b7dafc8` (local ephemeral artifact, not committed; schema 1.3 validated).
+- Latest live synthetic report: `/tmp/holmes-aiops-live-report-final.json`, run `a6585b72bc124a579bdca7833b2ae5a6` (20/20 diagnoses and verified evidence, zero tool errors, schema 1.3 validated; diagnosis scoring remains `not_scored`). The matching blank human review sheet is `/tmp/holmes-aiops-review.json`; both files are local ephemeral artifacts and are not committed.
