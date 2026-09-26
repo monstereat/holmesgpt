@@ -896,6 +896,38 @@ class TestCompactionCosts:
         assert result.num_compactions == 1
 
 
+class TestOTelEstimatedCostMetrics:
+    @pytest.mark.parametrize(
+        ("cost", "should_record"), [(0.0, False), (0.003, True)]
+    )
+    @patch(LIMIT_PATCH, side_effect=_make_context_limiter_passthrough)
+    def test_only_positive_estimated_costs_are_recorded(
+        self, _mock_limit, cost, should_record, make_ai, mock_llm
+    ):
+        metrics = MagicMock()
+        mock_llm.completion.return_value = _make_llm_response(
+            content="answer", tool_calls=None, cost=cost
+        )
+        ai = make_ai()
+
+        with patch(
+            "holmes.core.tool_calling_llm.TracingFactory.get_metrics",
+            return_value=metrics,
+        ):
+            ai.call([{"role": "user", "content": "question"}])
+
+        if should_record:
+            metrics.estimated_llm_cost.add.assert_called_once_with(
+                cost,
+                {
+                    "gen_ai_request_model": "gpt-4o",
+                    "gen_ai_system": "litellm",
+                },
+            )
+        else:
+            metrics.estimated_llm_cost.add.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Test 12: call_stream includes costs in metadata
 # ---------------------------------------------------------------------------
