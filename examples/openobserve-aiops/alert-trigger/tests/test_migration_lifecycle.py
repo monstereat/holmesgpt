@@ -1,7 +1,10 @@
+from contextlib import nullcontext
+
 from fastapi.testclient import TestClient
 
 from app import app
 from migrate import main
+from migration_runner import MIGRATION_LOCK_KEY, apply_migrations
 
 
 def test_api_startup_does_not_apply_migrations(monkeypatch):
@@ -46,3 +49,51 @@ def test_local_migration_command_can_reuse_local_database_url(monkeypatch):
 
     assert main() == 0
     assert applied == ["postgresql://local/aiops"]
+
+
+def test_migration_runner_uses_transaction_scoped_database_lock(monkeypatch, tmp_path):
+    statements = []
+
+    class Cursor:
+        def execute(self, statement, params):
+            statements.append((statement, params))
+
+        def fetchone(self):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class Connection:
+        def execute(self, statement, params=None, **kwargs):
+            statements.append((statement, params))
+
+        def cursor(self):
+            return Cursor()
+
+        def transaction(self):
+            return nullcontext()
+
+        def commit(self):
+            statements.append(("COMMIT", None))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    migration = tmp_path / "0001_test.sql"
+    migration.write_text("CREATE TABLE migration_lock_test (id integer);", encoding="utf-8")
+    monkeypatch.setattr("migration_runner.psycopg.connect", lambda _: Connection())
+    monkeypatch.setattr("migration_runner.MIGRATIONS_PATH", tmp_path)
+
+    apply_migrations("postgresql://test/aiops")
+
+    sql = [statement for statement, _ in statements]
+    assert sql[0] == "SELECT pg_advisory_xact_lock(%s, %s)"
+    assert statements[0][1] == MIGRATION_LOCK_KEY
+    assert sql.index("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())") < sql.index("CREATE TABLE migration_lock_test (id integer);")

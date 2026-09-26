@@ -26,6 +26,7 @@
 - 2026-09-26 恢复能力增量：新增 `backup-postgres.sh`，以 PostgreSQL custom format 生成 dump，临时文件默认为 `0600`、经 `pg_restore --list` 校验后原子发布，并拒绝覆盖已有备份。`verify-postgresql-backup.sh` 在无网络、无持久卷的 PostgreSQL 16 容器中运行 migrations 0001–0007，验证了 dump、覆盖保护和独立恢复库中的迁移记录、索引及合成事故数据。`bash -n` 与隔离恢复验证通过。此项只证明本地备份/恢复机制；生产加密异地留存、PITR/WAL、保留期和实测 RPO/RTO 仍未配置。
 - 2026-09-26 告警增量：Incident API 新增生产必填 `AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS`，作为 owner-defined pending-task age threshold 输出为 `aiops_oldest_pending_task_age_slo_seconds`；local 可省略。新增 Prometheus 兼容规则，覆盖 API scrape down、pending task age 超目标、到达 admission capacity 和存在 failed tasks。规则含 synthetic firing tests；Prometheus 3.14.0 `promtool check rules` / `test rules` 通过，API 配置定向测试 **15 passed，1 warning**。通知接收器、私网抓取和目标平台告警对象仍待平台/值班流程确认，容量阈值仍待压测。
 - 2026-09-26 发布/回滚规程：在生产准备文档补充平台无关的发布前置、一次性迁移门禁、按依赖顺序滚动发布、观察阈值、应用回退和数据库恢复流程。明确不自动执行 down migration、不覆盖活动数据库，worker/action 任务需先在所有者服务侧暂停与核对。文档检查通过；平台命令、阈值、值班人和生产恢复演练仍待目标环境及负责人确认。
+- 2026-09-26 migration 并发保护：并发启动两次本机 migration job 时复现 `schema_migrations` 表创建冲突。迁移器改为事务级 PostgreSQL advisory lock，将互斥覆盖到建表、版本读取、SQL 执行和登记全过程，提交/回滚时数据库自动释放锁；首次 session-lock 方案未通过并发验证，已替换。隔离 Compose migration 生命周期测试 **5 passed，1 warning**；两进程同时对全新隔离测试数据库执行迁移均成功退出，最终正好登记 7 个版本且任务耗时索引存在。第一次并发失败帮助定位原方案未建立有效隔离，未将该次结果计为通过。
 
 - `specs/001-resume-aiops/` 的 Spec 已获用户确认并通过独立审查；Plan/Tasks 已按用户要求直接批准。数据库迁移获授权仅作用于本机 Docker 测试库。
 - T001：事故/任务/审批/审计/outbox PostgreSQL schema、稳定指纹与事务写入、带资源范围的测试角色授权、口令哈希与签名会话已完成；一次性本机 PostgreSQL 集成测试验证迁移、重复事件去重及 outbox 失败回滚。
