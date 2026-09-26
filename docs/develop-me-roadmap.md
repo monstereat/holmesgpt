@@ -264,7 +264,7 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] Incident API 新增 token 保护的 Prometheus text endpoint `/_internal/metrics`，输出 queued/running/retrying/completed/failed/cancelled 任务数、最老 pending age 和持久 retry attempts，不暴露用户或事故 label。
 - [x] 指标默认关闭；非 local 模式启动会拒绝缺失或短于 32 字节的 scraper token。生产网络必须限制为私有 Prometheus/scraper，Compose 未额外发布端口。
 - [x] 隔离 Compose 回归 **70 passed, 1 warning**；在运行中的本机 PostgreSQL 验证指标数据并确认 readiness HTTP 200，随后移除测试 token，指标端点回到默认 404。
-- [ ] 生产仍需 queue-age/backlog/failure 告警、私网抓取配置及经容量测试确定的 SLO；worker task latency、Holmes model-call latency 与 LiteLLM 正值成本估算指标已在后续增量中实现并于本机验证。
+- [ ] 后续增量已实现 pending-task-age/capacity/failed-task/API scrape Prometheus-compatible alerts，并要求生产配置 owner-selected `AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS`；production 仍需私网抓取、通知路由与经容量测试确定的容量 SLO。worker task latency、Holmes model-call latency 与 LiteLLM 正值成本估算指标已在后续增量中实现并于本机验证。
 
 ## 2026-09-25 增量：生产迁移凭据边界与回归修复
 

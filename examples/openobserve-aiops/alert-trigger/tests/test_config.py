@@ -11,6 +11,7 @@ from app import (
     _auth_mode,
     _require_demo_actions_enabled,
     _max_pending_tasks,
+    _oldest_pending_task_age_slo_seconds,
     _test_users_configuration,
     _validate_metrics_configuration,
     app,
@@ -84,6 +85,25 @@ def test_pending_task_capacity_is_optional_only_for_local_runtime(monkeypatch):
     assert _max_pending_tasks() is None
 
 
+def test_oldest_pending_task_age_slo_is_required_and_validated_outside_local_runtime(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.delenv("AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS", raising=False)
+    with pytest.raises(RuntimeError, match="AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS"):
+        _oldest_pending_task_age_slo_seconds()
+    for value in ("0", "-1", "nan", "inf", "not-a-number"):
+        monkeypatch.setenv("AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS", value)
+        with pytest.raises(RuntimeError, match="positive"):
+            _oldest_pending_task_age_slo_seconds()
+    monkeypatch.setenv("AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS", "90")
+    assert _oldest_pending_task_age_slo_seconds() == 90
+
+
+def test_oldest_pending_task_age_slo_is_optional_only_in_local_runtime(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "local")
+    monkeypatch.delenv("AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS", raising=False)
+    assert _oldest_pending_task_age_slo_seconds() is None
+
+
 def test_metrics_endpoint_is_disabled_without_a_token(monkeypatch):
     monkeypatch.setenv("AIOPS_ENV", "local")
     monkeypatch.delenv("AIOPS_METRICS_TOKEN", raising=False)
@@ -95,6 +115,7 @@ def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     monkeypatch.setenv("AIOPS_ENV", "local")
     monkeypatch.setenv("AIOPS_METRICS_TOKEN", "m" * 40)
     monkeypatch.setenv("AIOPS_MAX_PENDING_TASKS", "250")
+    monkeypatch.setenv("AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS", "90")
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
     cursor = MagicMock()
     cursor.fetchall.return_value = [("queued", 2), ("completed", 4)]
@@ -121,6 +142,7 @@ def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     assert "aiops_oldest_pending_task_age_seconds 7.5" in response.text
     assert "aiops_task_retry_attempts_total 3" in response.text
     assert "aiops_pending_task_capacity 250" in response.text
+    assert "aiops_oldest_pending_task_age_slo_seconds 90.0" in response.text
     assert 'aiops_worker_task_duration_seconds_windowed{quantile="0.50"} 1.5' in response.text
     assert 'aiops_worker_task_duration_seconds_windowed{quantile="0.95"} 9.2' in response.text
     assert "aiops_worker_task_duration_samples_windowed 5" in response.text

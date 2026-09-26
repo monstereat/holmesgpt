@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -110,6 +111,21 @@ def _max_pending_tasks() -> int | None:
     if capacity < 1:
         raise RuntimeError("AIOPS_MAX_PENDING_TASKS must be a positive integer")
     return capacity
+
+
+def _oldest_pending_task_age_slo_seconds() -> float | None:
+    raw = os.getenv("AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS", "").strip()
+    if not raw and os.getenv("AIOPS_ENV", "production") == "local":
+        return None
+    try:
+        threshold = float(raw)
+    except ValueError:
+        raise RuntimeError(
+            "AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS must be a positive number outside local mode"
+        ) from None
+    if not math.isfinite(threshold) or threshold <= 0:
+        raise RuntimeError("AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS must be a positive number")
+    return threshold
 
 
 class LoginRequest(BaseModel):
@@ -261,6 +277,7 @@ def _require_demo_actions_enabled() -> None:
 async def lifespan(_app: FastAPI):
     _validate_metrics_configuration()
     _max_pending_tasks()
+    _oldest_pending_task_age_slo_seconds()
     settings = _validate_auth_configuration()
     if settings:
         metadata = await _oidc_client(settings).load_server_metadata()
@@ -451,6 +468,13 @@ def internal_metrics(request: Request) -> PlainTextResponse:
             "# HELP aiops_pending_task_capacity Maximum admitted queued, running, and retrying tasks.",
             "# TYPE aiops_pending_task_capacity gauge",
             f"aiops_pending_task_capacity {capacity}",
+        ])
+    pending_task_age_slo = _oldest_pending_task_age_slo_seconds()
+    if pending_task_age_slo is not None:
+        lines.extend([
+            "# HELP aiops_oldest_pending_task_age_slo_seconds Owner-configured maximum age for queued, running, or retrying tasks.",
+            "# TYPE aiops_oldest_pending_task_age_slo_seconds gauge",
+            f"aiops_oldest_pending_task_age_slo_seconds {pending_task_age_slo}",
         ])
     return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
