@@ -11,7 +11,7 @@ Use the wording below only for the work and evidence currently present in this r
 - Integrated Holmes investigations with DeepSeek and OpenObserve through a read-only query proxy that restricts routes, streams, query windows, result sizes, and timeouts; retained redacted tool evidence with each investigation.
 - Added provider-neutral OIDC/PKCE identity foundations, persisted login transactions, session revocation, account disablement, and an authenticated low-cardinality Prometheus endpoint for queue state, pending age, retries, and configured admission capacity.
 - Added PostgreSQL-serialized webhook admission control across API replicas; production requires an operator-selected pending-task cap, duplicate alerts remain idempotent at saturation, and overload responses include `Retry-After` for source retries.
-- Added a PostgreSQL least-privilege role bootstrap template separating application DML from schema migration privileges; exercised migrations 0001–0005 on an isolated PostgreSQL 16 database and verified the runtime role could not create schema objects.
+- Added a PostgreSQL least-privilege role bootstrap template separating application DML from schema migration privileges; exercised migrations 0001–0006 on an isolated PostgreSQL 16 database and verified the runtime role could not create schema objects or update/delete/truncate audit history.
 - Validated the local Docker stack with **87 incident-service tests passing** and a live 20-case synthetic retrieval run: 20/20 case-evidence matches, 3/3 release-event matches, zero successful searches without exact run/case scope, zero detected cross-case fixture hits, and zero tool errors. Root-cause diagnosis scoring remains `not_scored`.
 
 ## Interview framing

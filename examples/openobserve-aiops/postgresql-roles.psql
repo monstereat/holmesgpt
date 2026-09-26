@@ -18,6 +18,17 @@ GRANT USAGE, CREATE ON SCHEMA public TO aiops_migrator;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aiops_runtime;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO aiops_runtime;
 
+-- Audit history is append-only for the application identity, including when
+-- this bootstrap is rerun against an existing database.
+DO $$
+BEGIN
+    IF to_regclass('public.audit_events') IS NOT NULL THEN
+        EXECUTE 'REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.audit_events FROM aiops_runtime';
+        EXECUTE 'REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.audit_events FROM PUBLIC';
+    END IF;
+END
+$$;
+
 ALTER DEFAULT PRIVILEGES FOR ROLE aiops_migrator IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO aiops_runtime;
 ALTER DEFAULT PRIVILEGES FOR ROLE aiops_migrator IN SCHEMA public
