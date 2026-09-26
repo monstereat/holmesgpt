@@ -25,6 +25,7 @@ from psycopg.types.json import Jsonb
 
 from action_client import ActionServiceError, OrderActionClient
 from auth import ROLE_PERMISSIONS, create_session, hash_password, parse_session, require_permission, session_expiration, verify_password
+from db_config import validate_database_url
 from models import IncidentInput, Principal
 from store import TaskQueueAtCapacity, create_incident
 from trigger import MAX_BODY_BYTES, normalize_alert
@@ -208,7 +209,10 @@ def _database_url() -> str:
     value = os.getenv("DATABASE_URL", "")
     if not value:
         raise HTTPException(status_code=503, detail="Incident database is not configured")
-    return value
+    try:
+        return validate_database_url(value, "DATABASE_URL", required=True)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
 
 
 def _test_users_configuration() -> str:
@@ -283,7 +287,11 @@ async def lifespan(_app: FastAPI):
         metadata = await _oidc_client(settings).load_server_metadata()
         if metadata.get("issuer") != settings.issuer or "S256" not in metadata.get("code_challenge_methods_supported", []):
             raise RuntimeError("OIDC discovery issuer or PKCE S256 capability is invalid")
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = validate_database_url(
+        os.getenv("DATABASE_URL", ""),
+        "DATABASE_URL",
+        required=os.getenv("AIOPS_ENV", "production") != "local",
+    )
     if database_url:
         raw_users = _test_users_configuration()
         if raw_users:
@@ -352,9 +360,7 @@ def healthz() -> dict[str, str]:
 
 @app.get("/readyz")
 def readyz() -> dict[str, str]:
-    database_url = os.getenv("DATABASE_URL", "")
-    if not database_url:
-        raise HTTPException(status_code=503, detail="Incident database is not configured")
+    database_url = _database_url()
     try:
         with psycopg.connect(database_url, connect_timeout=3) as conn:
             conn.execute("SELECT 1")
@@ -375,9 +381,7 @@ def internal_metrics(request: Request) -> PlainTextResponse:
     supplied = request.headers.get("authorization", "")
     if not hmac.compare_digest(supplied, f"Bearer {configured}"):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    database_url = os.getenv("DATABASE_URL", "")
-    if not database_url:
-        raise HTTPException(status_code=503, detail="Incident database is not configured")
+    database_url = _database_url()
     try:
         with psycopg.connect(database_url, connect_timeout=3) as conn:
             with conn.cursor() as cursor:
@@ -1155,9 +1159,7 @@ async def openobserve_webhook(request: Request) -> dict[str, object]:
     except (UnicodeDecodeError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail="Invalid alert payload") from exc
 
-    database_url = os.getenv("DATABASE_URL", "")
-    if not database_url:
-        raise HTTPException(status_code=503, detail="Incident database is not configured")
+    database_url = _database_url()
     alert = IncidentInput(fingerprint, name, tuple(traces), summary)
     with psycopg.connect(database_url) as conn:
         try:

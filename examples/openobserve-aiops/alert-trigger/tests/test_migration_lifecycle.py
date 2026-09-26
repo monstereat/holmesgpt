@@ -1,5 +1,6 @@
 from contextlib import nullcontext
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import app
@@ -38,6 +39,17 @@ def test_migration_command_uses_migration_url(monkeypatch):
 
     assert main() == 0
     assert applied == ["postgresql://migrator/aiops"]
+
+
+def test_migration_runner_rejects_non_tls_database_url_before_connect(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    connected = []
+    monkeypatch.setattr("migration_runner.psycopg.connect", connected.append)
+
+    with pytest.raises(RuntimeError, match="sslmode=verify-full"):
+        apply_migrations("postgresql://migrator:secret@db.internal/aiops")
+
+    assert connected == []
 
 
 def test_local_migration_command_can_reuse_local_database_url(monkeypatch):

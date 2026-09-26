@@ -10,6 +10,7 @@ from typing import Any
 import psycopg
 from celery import Celery
 
+from db_config import validate_database_url
 from holmes_client import HolmesClient
 from tasks import (
     ClaimedTask,
@@ -114,7 +115,11 @@ class OutboxDispatcher:
 
 
 def start_outbox_dispatcher() -> OutboxDispatcher:
-    return OutboxDispatcher(os.environ["DATABASE_URL"]).start()
+    return OutboxDispatcher(_database_url()).start()
+
+
+def _database_url() -> str:
+    return validate_database_url(os.getenv("DATABASE_URL", ""), "DATABASE_URL", required=True)
 
 
 def run_investigation(task: ClaimedTask) -> dict[str, Any]:
@@ -137,9 +142,7 @@ def run_investigation(task: ClaimedTask) -> dict[str, Any]:
 
 @celery_app.task(name="holmes_aiops.investigate")
 def investigate_task(task_id: str) -> str:
-    database_url = os.getenv("DATABASE_URL", "")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is required by the worker")
+    database_url = _database_url()
     with psycopg.connect(database_url) as conn:
         task = claim_task(conn, task_id)
     if task is None:

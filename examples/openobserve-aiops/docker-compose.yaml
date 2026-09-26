@@ -274,6 +274,7 @@ services:
       - /tmp:rw,noexec,nosuid,size=16m
     command: ["celery", "-A", "worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
     environment:
+      AIOPS_ENV: local
       DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
       REDIS_URL: redis://redis:6379/0
       HOLMES_API_URL: http://holmes-api:5050

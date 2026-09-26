@@ -4,12 +4,15 @@ from pathlib import Path
 
 import psycopg
 
+from db_config import validate_database_url
+
 
 MIGRATIONS_PATH = Path(__file__).parent / "migrations"
 MIGRATION_LOCK_KEY = (0x484F4C4D, 0x41494F50)  # Namespaced as "HOLM" / "AIOP".
 
 
 def apply_migrations(database_url: str) -> None:
+    database_url = validate_database_url(database_url, "MIGRATION_DATABASE_URL", required=True)
     with psycopg.connect(database_url) as conn:
         with conn.transaction():
             conn.execute("SELECT pg_advisory_xact_lock(%s, %s)", MIGRATION_LOCK_KEY)

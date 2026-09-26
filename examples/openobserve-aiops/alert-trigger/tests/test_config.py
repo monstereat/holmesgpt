@@ -5,10 +5,12 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from db_config import validate_database_url
 from app import (
     API_METRICS_LOCK,
     API_REQUEST_METRICS,
     _auth_mode,
+    _database_url as api_database_url,
     _require_demo_actions_enabled,
     _max_pending_tasks,
     _oldest_pending_task_age_slo_seconds,
@@ -17,6 +19,7 @@ from app import (
     app,
     readyz,
 )
+from worker import _database_url as worker_database_url
 
 
 def test_test_user_seeding_requires_local_environment(monkeypatch):
@@ -65,6 +68,46 @@ def test_metrics_token_is_required_outside_local_runtime(monkeypatch):
         _validate_metrics_configuration()
     monkeypatch.setenv("AIOPS_METRICS_TOKEN", "m" * 40)
     _validate_metrics_configuration()
+
+
+def test_non_local_database_urls_require_full_tls_verification(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    with pytest.raises(RuntimeError, match="valid PostgreSQL connection string"):
+        validate_database_url("not-a-postgresql-url", "DATABASE_URL", required=True)
+
+    for database_url in (
+        "postgresql://aiops:secret@db.internal/aiops",
+        "postgresql://aiops:secret@db.internal/aiops?sslmode=require",
+        "postgresql://aiops:secret@db.internal/aiops?sslmode=verify-ca",
+    ):
+        with pytest.raises(RuntimeError, match="sslmode=verify-full"):
+            validate_database_url(database_url, "DATABASE_URL", required=True)
+
+    database_url = "postgresql://aiops:secret@db.internal/aiops?sslmode=verify-full"
+    assert validate_database_url(database_url, "DATABASE_URL", required=True) == database_url
+
+
+def test_database_url_is_required_outside_local_and_optional_locally(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    with pytest.raises(RuntimeError, match="DATABASE_URL is required"):
+        validate_database_url("", "DATABASE_URL", required=True)
+
+    monkeypatch.setenv("AIOPS_ENV", "local")
+    assert validate_database_url("", "DATABASE_URL") == ""
+    with pytest.raises(RuntimeError, match="DATABASE_URL is required"):
+        validate_database_url("", "DATABASE_URL", required=True)
+    database_url = "postgresql://aiops@postgres/aiops"
+    assert validate_database_url(database_url, "DATABASE_URL") == database_url
+
+
+def test_api_and_worker_reject_non_tls_database_urls(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://aiops:secret@db.internal/aiops")
+
+    with pytest.raises(HTTPException, match="sslmode=verify-full"):
+        api_database_url()
+    with pytest.raises(RuntimeError, match="sslmode=verify-full"):
+        worker_database_url()
 
 
 def test_pending_task_capacity_is_required_and_validated_outside_local_runtime(monkeypatch):
