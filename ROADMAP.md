@@ -15,7 +15,7 @@
 ## 实施状态与验证
 
 - 2026-09-26 过载保护增量：生产模式现在要求显式 `AIOPS_MAX_PENDING_TASKS`；基于 PostgreSQL transaction advisory lock，跨 API 副本原子限制 queued/running/retrying 总数。重复告警即使队列满仍返回已有事故；新告警容量满时返回 503 和 `Retry-After: 30`。新增并发 admission 集成测试、配置/HTTP 回归；隔离 Compose suite **87 passed，1 warning**。API 已重建并通过 `/readyz`；生产容量值仍必须由授权压测决定，本地 Compose 不设默认上限。
-- 2026-09-26 审计权限增量：新增 migration `0006_audit_events_append_only`，并让 PostgreSQL role bootstrap 在已有审计表时也撤销 runtime 的 UPDATE/DELETE/TRUNCATE 权限；PUBLIC 同样不能修改或清空审计表。一次性 PostgreSQL 16 环境验证了首次 bootstrap 和重跑、migration 0001–0006、runtime SELECT/INSERT 成功及 UPDATE/DELETE/TRUNCATE 被拒绝；事故服务 Compose 回归 **87 passed，1 warning**，迁移版本断言通过。已将 0006 应用到此前授权的本机测试数据库，并确认 `schema_migrations` 已登记。该边界不限制表 owner、superuser 或数据库管理员。
+- 2026-09-26 审计权限增量：新增 migration `0006_audit_events_append_only`，并让 PostgreSQL role bootstrap 在已有审计表时也撤销 runtime 的 UPDATE/DELETE/TRUNCATE 权限；PUBLIC 同样不能修改或清空审计表。新增可重复运行的隔离 PG16 role verifier，并已验证首次 bootstrap 和重跑、runtime SELECT/INSERT 成功及 UPDATE/DELETE/TRUNCATE/建表被拒绝；事故服务 Compose 回归 **87 passed，1 warning**，迁移版本断言通过。已将 0006 应用到此前授权的本机测试数据库，并确认 `schema_migrations` 已登记。该边界不限制表 owner、superuser 或数据库管理员。
 - 2026-09-26 本机运行态复核：当前 Docker 中的 incident API 与工作树不一致，`/healthz` 返回旧版纯文本，`/readyz` 为 404，容器没有 Compose healthcheck，环境中也没有新版要求的 `SESSION_SIGNING_KEY` 和测试身份映射。数据库迁移 0006 已应用，但新版 API 尚未在该容器运行；等待用户确认是否创建仅本机测试使用的随机会话签名密钥后再重建。此前 87 项测试验证的是当前源码构建的隔离测试镜像，不代表这个旧容器已经更新。
 
 - `specs/001-resume-aiops/` 的 Spec 已获用户确认并通过独立审查；Plan/Tasks 已按用户要求直接批准。数据库迁移获授权仅作用于本机 Docker 测试库。
