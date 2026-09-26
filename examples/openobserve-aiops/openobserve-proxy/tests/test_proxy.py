@@ -94,6 +94,7 @@ class ProxyPolicyTests(unittest.TestCase):
             json.dumps({"app_logs": ["message"]}),
             json.dumps({"app_logs": ["message", "message"], "frontend_errors": ["message"]}),
             json.dumps({"app_logs": ["*"], "frontend_errors": ["message"]}),
+            json.dumps({"app_logs": [f"field{index}" for index in range(101)], "frontend_errors": ["message"]}),
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(RuntimeError):

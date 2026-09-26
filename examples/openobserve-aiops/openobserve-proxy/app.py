@@ -73,6 +73,7 @@ def load_field_allowlists(raw: str | None = None) -> dict[str, tuple[str, ...]]:
         if (
             not isinstance(fields, list)
             or not fields
+            or len(fields) > 100
             or any(not isinstance(field, str) or not FIELD_NAME.fullmatch(field) for field in fields)
             or len(fields) != len(set(fields))
         ):
