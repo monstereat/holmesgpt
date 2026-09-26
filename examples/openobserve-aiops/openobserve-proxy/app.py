@@ -10,7 +10,7 @@ import os
 import re
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import parse_qs, urlsplit
 
 from sqlglot import exp, parse_one
@@ -25,6 +25,7 @@ MAX_ROWS = 100
 MAX_WINDOW_US = 3_600 * 1_000_000
 MAX_TIMEOUT_SECONDS = 30
 SQL_COMMENT_MARKERS = re.compile(r"--|/\*|\*/|#|;")
+FIELD_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
 
 
 def _required_env(name: str) -> str:
@@ -58,7 +59,51 @@ def _upstream_settings() -> tuple[str, str, str, str, int]:
     return parsed.scheme, parsed.hostname, organization, username, port
 
 
-def validate_search(body: dict[str, Any]) -> dict[str, Any]:
+def load_field_allowlists(raw: str | None = None) -> dict[str, tuple[str, ...]]:
+    configured = raw if raw is not None else _required_env("OPENOBSERVE_ALLOWED_FIELDS_JSON")
+    try:
+        value = json.loads(configured)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("OPENOBSERVE_ALLOWED_FIELDS_JSON must be valid JSON") from exc
+    if not isinstance(value, dict) or set(value) != ALLOWED_STREAMS:
+        raise RuntimeError("OPENOBSERVE_ALLOWED_FIELDS_JSON must define every allowed stream exactly once")
+
+    allowlists: dict[str, tuple[str, ...]] = {}
+    for stream, fields in value.items():
+        if (
+            not isinstance(fields, list)
+            or not fields
+            or any(not isinstance(field, str) or not FIELD_NAME.fullmatch(field) for field in fields)
+            or len(fields) != len(set(fields))
+        ):
+            raise RuntimeError("OPENOBSERVE_ALLOWED_FIELDS_JSON contains an invalid field list")
+        allowlists[stream] = tuple(fields)
+    return allowlists
+
+
+def _column_name(column: exp.Column, source_stream: str) -> str:
+    if column.db or column.catalog or (column.table and column.table != source_stream):
+        raise ValueError("Qualified columns are not permitted")
+    return column.name
+
+
+def _contains_object(value: Any) -> bool:
+    if isinstance(value, dict):
+        return True
+    return isinstance(value, list) and any(_contains_object(item) for item in value)
+
+
+def _filter_record(value: dict[str, Any], allowed_fields: set[str]) -> dict[str, Any]:
+    return {
+        key: item
+        for key, item in value.items()
+        if key in allowed_fields and not _contains_object(item)
+    }
+
+
+def validate_search(
+    body: dict[str, Any], field_allowlists: Mapping[str, tuple[str, ...]]
+) -> dict[str, Any]:
     if set(body) != {"query", "search_type", "timeout"}:
         raise ValueError("Invalid search request shape")
     if body.get("search_type") != "ui":
@@ -94,8 +139,31 @@ def validate_search(body: dict[str, Any]) -> dict[str, Any]:
     table = tables[0]
     if table.name not in ALLOWED_STREAMS or table.db or table.catalog or table.alias:
         raise ValueError("Log stream is not allowed")
-    if any(isinstance(node, exp.Anonymous) for node in expression.walk()):
-        raise ValueError("Unrecognized SQL functions are not permitted")
+    if any(isinstance(node, (exp.Func, exp.Bracket)) for node in expression.walk()):
+        raise ValueError("SQL functions and nested field access are not permitted")
+
+    allowed_fields = field_allowlists.get(table.name)
+    if not allowed_fields:
+        raise ValueError("Log stream has no configured field policy")
+    projections = expression.expressions
+    expanded_projections: list[exp.Expression] = []
+    for projection in projections:
+        if isinstance(projection, exp.Star) or (isinstance(projection, exp.Column) and projection.is_star):
+            expanded_projections.extend(exp.column(field) for field in allowed_fields)
+        else:
+            if any(isinstance(node, exp.Star) or (isinstance(node, exp.Column) and node.is_star) for node in projection.walk()):
+                raise ValueError("Wildcard expressions are not permitted")
+            output_name = projection.alias_or_name
+            if output_name and output_name not in allowed_fields:
+                raise ValueError("Selected field is not allowed")
+            expanded_projections.append(projection)
+    expression.set("expressions", expanded_projections)
+
+    for column in expression.find_all(exp.Column):
+        if column.is_star:
+            raise ValueError("Wildcard expressions are not permitted")
+        if _column_name(column, table.name) not in allowed_fields:
+            raise ValueError("Query references a field that is not allowed")
 
     start_time = query.get("start_time")
     end_time = query.get("end_time")
@@ -165,6 +233,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     client_user = ""
     client_password = ""
     organization = ORGANIZATION
+    field_allowlists: Mapping[str, tuple[str, ...]] = {}
 
     def log_message(self, format: str, *args: Any) -> None:
         # Keep SQL, query parameters and upstream details out of container logs.
@@ -245,7 +314,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             value = json.loads(raw_body)
             if not isinstance(value, dict):
                 raise ValueError("Invalid search request")
-            sanitized = validate_search(value)
+            sanitized = validate_search(value, self.field_allowlists)
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
             self._reply(400, {"error": str(exc)})
             return
@@ -279,24 +348,41 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 for item in streams:
                     if not isinstance(item, dict) or item.get("name") not in ALLOWED_STREAMS:
                         continue
+                    stream_name = item["name"]
+                    allowed_fields = set(self.field_allowlists.get(stream_name, ()))
+                    schema = item.get("schema", [])
+                    filtered_schema = []
+                    if isinstance(schema, list):
+                        for field in schema[:100]:
+                            name = field if isinstance(field, str) else field.get("name") if isinstance(field, dict) else None
+                            if name in allowed_fields:
+                                filtered_schema.append(
+                                    {"name": name, "type": field.get("type")}
+                                    if isinstance(field, dict)
+                                    else name
+                                )
                     filtered.append(
                         {
-                            "name": item["name"],
+                            "name": stream_name,
                             "stream_type": item.get("stream_type"),
                             "stats": item.get("stats"),
-                            "schema": item.get("schema", [])[:100]
-                            if isinstance(item.get("schema", []), list)
-                            else [],
+                            "schema": filtered_schema,
                         }
                     )
                 data = {"list": filtered}
             else:
                 hits = data.get("hits", [])
-                if not isinstance(hits, list):
+                if not isinstance(hits, list) or any(not isinstance(hit, dict) for hit in hits):
                     raise ValueError("Invalid upstream search response")
-                limit = json.loads(body or b"{}")["query"]["size"]
+                request = json.loads(body or b"{}")
+                limit = request["query"]["size"]
+                tables = list(parse_one(request["query"]["sql"], dialect="clickhouse").find_all(exp.Table))
+                allowed_fields = set(self.field_allowlists[tables[0].name])
                 data = {
-                    "hits": hits[:limit],
+                    "hits": [
+                        _filter_record(hit, allowed_fields)
+                        for hit in hits[:limit]
+                    ],
                     "total": data.get("total"),
                     "took": data.get("took"),
                     "scan_size": data.get("scan_size"),
@@ -311,6 +397,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     _scheme, _host, organization, _username, _port = _upstream_settings()
+    field_allowlists = load_field_allowlists()
     handler = type(
         "ConfiguredProxyHandler",
         (ProxyHandler,),
@@ -318,6 +405,7 @@ def main() -> None:
             "client_user": _required_env("OPENOBSERVE_PROXY_USERNAME"),
             "client_password": _required_env("OPENOBSERVE_PROXY_PASSWORD"),
             "organization": organization,
+            "field_allowlists": field_allowlists,
         },
     )
     server = ThreadingHTTPServer(("0.0.0.0", 8090), handler)

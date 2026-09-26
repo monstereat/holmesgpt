@@ -41,6 +41,8 @@ services:
       OPENOBSERVE_PROXY_PASSWORD: ${OPENOBSERVE_PROXY_PASSWORD:?Export local proxy password before starting the demo}
       OPENOBSERVE_UPSTREAM_URL: http://openobserve:5080
       OPENOBSERVE_ORG: default
+      OPENOBSERVE_ALLOWED_FIELDS_JSON: >-
+        {"app_logs":["_timestamp","timestamp","trace_id","span_id","service","service_name","level","message","route","release","event_type","commit_sha","changed_files","deployed_at","evaluation_run_id","evaluation_case_id","evaluation_source","alert_name"],"frontend_errors":["_timestamp","trace_id","span_id","service","release","message","stack","route"]}
       OPENOBSERVE_UPSTREAM_USERNAME: ${ZO_ROOT_USER_EMAIL:-demo@example.test}
       OPENOBSERVE_UPSTREAM_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?Export ZO_ROOT_USER_PASSWORD before starting the local demo}
     networks:
