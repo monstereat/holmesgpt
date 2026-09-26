@@ -30,9 +30,23 @@ if [[ "$ready" != true ]]; then
     exit 1
 fi
 
+for migration in "$repo_dir"/alert-trigger/migrations/*.sql; do
+    docker exec -i "$container_name" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+        < "$migration"
+    version="$(basename "$migration" .sql)"
+    docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+        -c "INSERT INTO schema_migrations (version) VALUES ('$version') ON CONFLICT DO NOTHING" \
+        >/dev/null
+done
+
 docker exec -i "$container_name" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-CREATE TABLE backup_probe (id integer PRIMARY KEY, payload text NOT NULL);
-INSERT INTO backup_probe (id, payload) VALUES (1, 'restore-check');
+INSERT INTO incidents (id, fingerprint, alert_name, summary)
+VALUES (
+    '00000000-0000-4000-8000-000000000001',
+    repeat('a', 64),
+    'backup-restore-check',
+    '{"source":"synthetic"}'
+);
 SQL
 
 backup_path="/backups/aiops-backup-check.dump"
@@ -57,11 +71,25 @@ docker exec "$container_name" createdb -U postgres aiops_restore_test
 docker exec "$container_name" pg_restore --exit-on-error --single-transaction \
     --no-owner -U postgres -d aiops_restore_test "$backup_path"
 
-restored_payload="$(docker exec "$container_name" psql -At -U postgres \
-    -d aiops_restore_test -c 'SELECT payload FROM backup_probe WHERE id = 1')"
-if [[ "$restored_payload" != "restore-check" ]]; then
-    echo "restored database did not contain the expected synthetic row" >&2
+restored_incident="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_restore_test -c "SELECT alert_name || ':' || fingerprint FROM incidents WHERE id = '00000000-0000-4000-8000-000000000001'")"
+if [[ "$restored_incident" != "backup-restore-check:$(printf 'a%.0s' {1..64})" ]]; then
+    echo "restored database did not contain the expected synthetic incident" >&2
     exit 1
 fi
 
-echo "PostgreSQL backup verification passed: dump validated, existing output protected, isolated restore matched"
+restored_migrations="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_restore_test -c 'SELECT count(*) FROM schema_migrations')"
+if [[ "$restored_migrations" != "7" ]]; then
+    echo "restored database contained $restored_migrations migration records instead of 7" >&2
+    exit 1
+fi
+
+restored_index="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_restore_test -c "SELECT to_regclass('public.tasks_terminal_duration_completed_idx') IS NOT NULL")"
+if [[ "$restored_index" != "t" ]]; then
+    echo "restored database did not contain the task duration index" >&2
+    exit 1
+fi
+
+echo "PostgreSQL backup verification passed: 7 migrations and a synthetic incident restored, overwrite protection held"
