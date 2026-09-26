@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境优先：T000–T009 功能已实现；当前运行栈仍有 incident API 镜像漂移，不能视为当前工作树已完整部署；生产部署包和准入尚未完成。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。最新隔离评测有 20/20 精确案例证据命中、3/3 发布事件命中、0 个未限定成功查询、0 个跨案例 fixture 命中和 0 个工具错误；报告 schema 1.3 通过验证。评测专用策略按服务端 run/case 上下文拒绝缺少精确条件或含 OR 的搜索；大小写无关头读取与字符串字面量边界均有回归测试。Incident API 现要求生产显式配置待处理任务容量，并以 PostgreSQL 事务锁限制并发 webhook admission；容量必须由压测确定。诊断评分仍为 `not_scored`，不能声明准确率。Holmes 只能经受限的流列表/搜索端点访问 allowlist 流。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
+**本机 Docker 测试环境已恢复：当前工作树对应的 incident API 与 worker 均 healthy，API loopback 端口为 8082（8081 被遗留 `alert-trigger` 占用）；operator/approver 登录、权限拒绝、带精确 Trace 的成功调查和本机 500 故障调查均有实时证据，最终演示状态为 OFF。此状态只代表本机测试，不等于生产部署。生产部署包、目标平台验收和 go/no-go 尚未完成。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。最新隔离评测有 20/20 精确案例证据命中、3/3 发布事件命中、0 个未限定成功查询、0 个跨案例 fixture 命中和 0 个工具错误；报告 schema 1.3 通过验证。评测专用策略按服务端 run/case 上下文拒绝缺少精确条件或含 OR 的搜索；大小写无关头读取与字符串字面量边界均有回归测试。Incident API 现要求生产显式配置待处理任务容量，并以 PostgreSQL 事务锁限制并发 webhook admission；容量必须由压测确定。诊断评分仍为 `not_scored`，不能声明准确率。Holmes 只能经受限的流列表/搜索端点访问 allowlist 流。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
 
 ## 已完成并验证
 
@@ -19,6 +19,7 @@
 - 2026-09-26 本机运行态复核：当前 Docker 中的 incident API 与工作树不一致，`/healthz` 返回旧版纯文本，`/readyz` 为 404，容器没有 Compose healthcheck，环境中也没有新版要求的 `SESSION_SIGNING_KEY` 和测试身份映射。数据库迁移 0006 已应用，当前源码的 incident API/worker 镜像已构建并分别通过 FastAPI 路由、worker 导入检查；新版 API 尚未替换旧容器，等待用户确认是否创建仅本机测试使用的随机会话签名密钥。此前 87 项测试验证的是当前源码构建的隔离测试镜像，不代表这个旧容器已经更新。
 - 2026-09-26 本机进程状态复核：发现 `incident-api` 容器上次因 `127.0.0.1:8081` 被同一 Compose 项目的遗留 `alert-trigger` 占用而退出（255）；`incident-worker` 因 Redis AOF 写入时宿主 Docker 磁盘无空间退出（1）。只读检查时 Docker 磁盘尚余 1.6 GB，Redis AOF 约 1.4 MB、最后写状态已恢复为 `ok`，队列无待执行消息。使用当前已构建镜像重建 worker 后，Celery ping 健康检查通过；为 API 增加 `AIOPS_API_HOST_PORT` 主机端口变量，默认仍为 8081、保持 loopback 绑定和容器内 8081 不变。复用现存本机配置而非轮换密钥，将新版 API 以 `AIOPS_API_HOST_PORT=8082` 重建并运行；worker/API 均 healthy，API `/healthz`、`/readyz`、`/auth/mode`、`/` 返回 200，未认证访问事故及用户 API 返回 401。旧 `alert-trigger` 仍在 8081 提供 `/healthz` 200 但根路径 404，未停止或删除。未执行带用户密码的登录 smoke（现有容器配置未提供明文账户密码）；此前 96 项隔离测试和本轮健康检查不代表完整业务闭环重新验证。
 - 2026-09-26 当前运行栈只读调查 smoke：通过配置的本机 operator 账户登录成功；operator/approver 登录均为 200、事故列表均为 200（7 条）。创建一笔带随机 W3C Trace ID 的本机成功订单（201），flush 日志（201），向新 Incident API webhook 发合成告警（202）；当前 worker 将任务处理至 `completed`，API 详情保存 2 条 Holmes 工具证据，其中一条递归引用与事故相同的精确 Trace ID，`evidence_status=verified`，时间线包含 `task.completed`。未启用 chaos mode、未调用处置动作。该 smoke 验证当前 API/worker/DeepSeek/受限 OpenObserve 查询链路，不测诊断正确率；本机事故 API 对外 loopback 端口 8082，`AIOPS_API_HOST_PORT` 默认仍为 8081。
+- 2026-09-26 本机故障调查及恢复验收：在独立 `AIOPSRuntimeSmoke` 测试 incident 上由 operator 请求并经 approver 独立批准启用演示故障，order-service 返回 HTTP 500。按相同 Trace ID 发 webhook（代码路径断言接收 202），Celery worker 调用 Holmes 后任务为 `completed`，存储 2 条工具证据、精确 Trace 命中和 `evidence_status=verified`。目标故障 incident 上由 operator 请求将 `set-chaos-mode` 设为 OFF；自审批返回 403，approver 独立批准后 API 调用 owner 并验证 OFF。该 incident 审计包含 `approval.requested`、`approval.approved`、`action.verified`、`task.completed`；PG 确认 approver 与 requester 不同，最终 `/internal/demo-state` 为 OFF。ON 刺激的审批审计挂在单独的 runtime smoke incident 上，OFF 验收挂在故障 incident 上；这是本机演示动作，不能表述为生产处置或模型 RCA 评分。
 - 2026-09-26 诊断评分增量：新增独立人工评分 sheet 和聚合 CLI，要求对 20 个 live case 分别记录根因准确性、关键发现覆盖、证据引用、只读安全下一步及不安全处置标记；汇总包含 reviewer、原报告 SHA-256、分维度得分和不安全建议率。定向测试 **4 passed**；自动评测报告仍固定为 `not_scored`，尚无人工评分数据，不能声明诊断准确率。已为本次 live 报告生成 20 案空白 review sheet `/tmp/holmes-aiops-review.json`。
 - 2026-09-26 DeepSeek live 评测复跑：本机 runner 完成 20/20 Holmes 调查，20/20 有 diagnosis、verified evidence；20/20 精确 case evidence、3/3 release event，0 个未限定成功搜索、0 跨案 fixture 命中、0 工具错误。报告 schema 1.3 通过 Draft 2020-12 校验；run ID `a6585b72bc124a579bdca7833b2ae5a6`，报告 `/tmp/holmes-aiops-live-report-final.json`。该结果仅说明本地合成数据的检索/调用覆盖，不证明根因准确率；诊断评分保持 `not_scored`。
 - 2026-09-26 指标增量：受 Bearer 保护的 `/_internal/metrics` 新增 API route-template 请求直方图、状态类计数和 in-flight gauge，以及 PostgreSQL 最近 24 小时已完成/失败任务耗时 p50/p95；migration `0007_task_duration_metrics_index` 为时间窗查询添加部分索引。API 指标仅在当前进程内累计，worker 时长包含 Holmes 调用但不等于 provider-only latency。事故服务 Compose 回归 **87 passed，1 warning**。Holmes 后续已通过私有 Collector 输出 model-call duration、token 和正值 LiteLLM estimated-cost 指标，并在 OpenObserve 验证；告警规则和经压测确定的容量 SLO 仍未补齐。
@@ -64,8 +65,8 @@
 
 ## 待办
 
-1. 用本机告警入口和持久任务 worker 完成一次真实 500 告警端到端调查，核对调查状态、工具证据和审计记录；不得把模型诊断文案直接当成根因准确性评分。
-2. 建立独立于检索覆盖率的根因诊断评分 rubric；重新运行以确认失败工具轨迹留痕，再人工评分 live 案例。完成前维持 `not_scored`。
+1. 根因诊断评分 rubric 和 20 案 live 评测已准备；尚无两名独立 reviewer 的评分与分歧裁决，继续保持 `not_scored`。
+2. 本机 API/worker/DeepSeek/受限 OpenObserve 的成功日志与 500 告警调查链路均已验证；500 测试同时核对 worker 证据、独立 OFF 审批、不可自批、审计和最终 OFF。该证据仅针对本机 demo；若改变动作所有者协议或上线前的代码版本，需要在 staging 重跑。
 3. 生产部署决策与分阶段验收见 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](examples/openobserve-aiops/PRODUCTION-READINESS.md)，其中平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍待负责人确认与单独授权。
 
 ## 阻塞与授权门槛
