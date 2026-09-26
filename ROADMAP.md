@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境已恢复：当前工作树对应的 incident API、worker、policy proxy 均 healthy，API loopback 端口为 8082（8081 被遗留 `alert-trigger` 占用）；operator/approver 登录、权限拒绝、带精确 Trace 的成功调查和本机 500 故障调查均有实时证据，最终演示状态为 OFF。policy proxy 已替换为当前源码并通过 Holmes toolset enabled 检查；隔离 OpenObserve v1.0.3 集成验收通过，另有一条本机合成日志经当前 Holmes/代理链路返回 `verified` 且证据匹配 trace 与 marker。此状态只代表本机测试，不等于生产部署。用户现选择当前 Mac 上的 Docker Desktop/Compose 作为目标运行时；尚未确认该单机工作站是否获批常开并承担生产负载，具体 TLS、IdP、数据服务和回滚配置未完成。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。2026-09-26 经当前字段策略代理完成 20 案 live 合成评测：20/20 精确案例证据、3/3 发布事件匹配，未限定成功查询、跨案例命中、工具错误均为 0；报告 schema 1.3 校验通过。诊断评分仍为 `not_scored`，不能声明准确率。评测专用策略按服务端 run/case 上下文拒绝缺少精确条件或含 OR 的搜索；大小写无关头读取与字符串字面量边界均有回归测试。Incident API 现要求生产显式配置待处理任务容量，并以 PostgreSQL 事务锁限制并发 webhook admission；容量必须由压测确定。代理源码逐流配置 SQL 字段 allowlist，并在返回结果中过滤非允许字段；生产字段选择和自由文本分类仍待数据所有者确认。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
+**本机 Docker 测试环境已恢复：当前工作树对应的 incident API、worker、policy proxy 均 healthy，API loopback 端口为 8082（8081 被遗留 `alert-trigger` 占用）；operator/approver 登录、权限拒绝、带精确 Trace 的成功调查和本机 500 故障调查均有实时证据，最终演示状态为 OFF。policy proxy 已替换为当前源码并通过 Holmes toolset enabled 检查；隔离 OpenObserve v1.0.3 集成验收通过，另有一条本机合成日志经当前 Holmes/代理链路返回 `verified` 且证据匹配 trace 与 marker。此状态只代表本机测试，不等于生产部署。当前 Mac 的 Docker Desktop/Compose 明确是本地测试环境；正式生产平台和部署范围仍未选择。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。2026-09-26 经当前字段策略代理完成 20 案 live 合成评测：20/20 精确案例证据、3/3 发布事件匹配，未限定成功查询、跨案例命中、工具错误均为 0；报告 schema 1.3 校验通过。诊断评分仍为 `not_scored`，不能声明准确率。评测专用策略按服务端 run/case 上下文拒绝缺少精确条件或含 OR 的搜索；大小写无关头读取与字符串字面量边界均有回归测试。Incident API 现要求生产显式配置待处理任务容量，并以 PostgreSQL 事务锁限制并发 webhook admission；容量必须由压测确定。代理源码逐流配置 SQL 字段 allowlist，并在返回结果中过滤非允许字段；生产字段选择和自由文本分类仍待数据所有者确认。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
 
 ## 已完成并验证
 
@@ -28,7 +28,8 @@
 - 2026-09-26 修复策略代理的 SQL AST 误判并复验：前一轮 20 案 live 评测发现合法 `AND` 被 SQLGlot 识别为函数节点，导致 run/case 限定查询被拒绝；新增回归测试，保留对 `OR`、函数和嵌套字段的拒绝。代理单测 **24 passed**，隔离 OpenObserve v1.0.3 端到端策略验收通过；本机原失败 SQL 重放 HTTP 200。随后经当前 Compose proxy 重跑 DeepSeek live 合成评测，run `3c1b6cb9bc124a579bdca7833b2ae5a6`：20/20 案例证据、3/3 发布事件匹配，40 条合成记录，39 条取证记录，0 工具错误、0 未限定成功查询、0 跨案命中；schema 1.3 校验通过。诊断评分仍为 `not_scored`，不代表 RCA 准确率，也不是生产验收。
 - 2026-09-26 同步本机验收记录：`specs/001-resume-aiops/verify.md` 更新为当前 20 案 run、schema 1.3 和报告 SHA-256，并将旧的测试统计和 DeepSeek 未运行状态标为历史；仅文档验证，未重跑历史全仓 suite。生产平台选择、IdP/数据策略、容量/RPO/RTO 与人工诊断评分仍待完成。
 - 2026-09-26 事故服务完整隔离回归复验：使用 Compose `test` profile 的临时 PostgreSQL 与内部测试网络重建当前 `incident-test` 镜像，**103 passed、1 个 Starlette/AnyIO 弃用 warning**。Compose 检测到一个既存 `alert-trigger` orphan 容器；未删除该容器，测试服务退出码 0。该结果覆盖本机 AIOps 服务测试，不代表生产平台或全仓 LLM 回归。
-- 2026-09-26 生产运行目标确认：用户选择当前 macOS Docker Desktop 24.0.6、Apple Silicon、Compose 2.23.0。生产准备记录改为单机 Docker 候选，明确该工作站尚未被确认是获批的常开生产主机，TLS/IdP/数据服务/OpenObserve RBAC/恢复等验收输入仍未齐备；未运行或升级生产配置。
+- 2026-09-26 本地验证环境确认：用户明确当前 macOS Docker Desktop 24.0.6、Apple Silicon、Compose 2.23.0 仅用于本地测试，尚未选择正式生产平台。生产准备文档保持平台待选；没有启动生产配置。
+- 2026-09-26 本机测试栈复核：incident worker 原为正常退出，使用现有容器启动后 healthcheck 转为 healthy；incident API `/healthz`、`/readyz`、`/auth/mode` 和工作台根路径返回 200，认证模式为 local；Holmes、OpenObserve、order-service 健康请求均返回 200。没有重建或改动数据卷。当前 shell 未载入本机 Compose 必需变量，`docker compose config` 因缺少 `POSTGRES_PASSWORD` 无法渲染；现有容器继续运行，但后续 Compose 重建需恢复私有本地配置。
 - 2026-09-26 过载保护增量：生产模式现在要求显式 `AIOPS_MAX_PENDING_TASKS`；基于 PostgreSQL transaction advisory lock，跨 API 副本原子限制 queued/running/retrying 总数。重复告警即使队列满仍返回已有事故；新告警容量满时返回 503 和 `Retry-After: 30`。新增并发 admission 集成测试、配置/HTTP 回归；隔离 Compose suite **87 passed，1 warning**。API 已重建并通过 `/readyz`；生产容量值仍必须由授权压测决定，本地 Compose 不设默认上限。
 - 2026-09-26 审计权限增量：新增 migration `0006_audit_events_append_only`，并让 PostgreSQL role bootstrap 在已有审计表时也撤销 runtime 的 UPDATE/DELETE/TRUNCATE 权限；PUBLIC 同样不能修改或清空审计表。新增可重复运行的隔离 PG16 role verifier，并已验证首次 bootstrap 和重跑、runtime SELECT/INSERT 成功及 UPDATE/DELETE/TRUNCATE/建表被拒绝；事故服务 Compose 回归 **87 passed，1 warning**，迁移版本断言通过。已将 0006 应用到此前授权的本机测试数据库，并确认 `schema_migrations` 已登记。该边界不限制表 owner、superuser 或数据库管理员。
 - 2026-09-26 本机运行态复核：当前 Docker 中的 incident API 与工作树不一致，`/healthz` 返回旧版纯文本，`/readyz` 为 404，容器没有 Compose healthcheck，环境中也没有新版要求的 `SESSION_SIGNING_KEY` 和测试身份映射。数据库迁移 0006 已应用，当前源码的 incident API/worker 镜像已构建并分别通过 FastAPI 路由、worker 导入检查；新版 API 尚未替换旧容器，等待用户确认是否创建仅本机测试使用的随机会话签名密钥。此前 87 项测试验证的是当前源码构建的隔离测试镜像，不代表这个旧容器已经更新。
@@ -89,7 +90,7 @@
 - 本机测试 PostgreSQL schema/migration 已获用户明确授权；`0003_incident_retrospectives` 已应用于当前 Docker 测试库。授权不包含正式数据库或任何生产数据。
 - DeepSeek 凭据已配置在本机私有文件中，没有进入仓库。OpenObserve OSS 没有原生 RBAC；当前本机策略代理和 Docker 网络强制 Holmes 仅能访问两条受限只读路由，但不提供 OpenObserve 原生用户/租户隔离，也不能防止本机 Docker 管理员或代理被攻破。
 - 本机 Docker 服务已运行；每次从新 shell 管理 Compose 前需加载本机私有运行变量文件 `/tmp/holmesgpt-aiops-test-runtime.sh`（权限 0600）。该临时文件不在仓库中，系统清理 `/tmp` 后需重新生成配置。
-- 用户已将目标运行时选为当前 Mac 的 Docker Desktop/Compose，并要求推进到生产可验收状态；这授权准备、实现和本地验证，不等于已经通过最终生产 go/no-go。实际启用生产流量、迁移生产数据或执行生产处置前，仍需依据具体部署包、风险和回退计划完成最终确认。
+- 用户要求先在当前 Mac Docker Desktop/Compose 本地测试环境运行和验证；正式生产平台尚未选择。实现和本地验证不代表生产部署授权；实际启用生产流量、迁移生产数据或执行生产处置前，仍需依据具体部署包、风险和回退计划完成最终确认。
 
 ## 最近验证（2026-09-25）
 
