@@ -346,6 +346,14 @@
         document.getElementById("local-login-description").textContent = "使用组织身份提供方登录。";
         document.getElementById("login-form").classList.add("hidden");
         oidcLogin.classList.remove("hidden");
+      } else {
+        fetch("/auth/local-test-defaults", { cache: "no-store" })
+          .then((response) => response.ok ? response.json() : null)
+          .then((defaults) => {
+            if (!defaults || token()) return;
+            document.getElementById("username").value = defaults.username;
+            document.getElementById("password").value = defaults.password;
+          });
       }
       if (token() || authMode === "oidc") enterWorkbench();
     })

@@ -60,6 +60,26 @@ def test_oidc_is_the_default_auth_mode_outside_local_runtime(monkeypatch):
     assert _auth_mode() == "oidc"
 
 
+def test_local_login_defaults_prefill_operator_only_in_local_mode(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "local")
+    monkeypatch.setenv(
+        "AIOPS_TEST_USERS_JSON",
+        '[{"username":"operator","password":"test-password","role":"operator","resource_scopes":["order-service"]}]',
+    )
+    response = TestClient(app).get("/auth/local-test-defaults")
+    assert response.status_code == 200
+    assert response.json() == {"username": "operator", "password": "test-password"}
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_local_login_defaults_are_not_exposed_in_production(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.delenv("AIOPS_AUTH_MODE", raising=False)
+    monkeypatch.delenv("AIOPS_TEST_USERS_JSON", raising=False)
+    response = TestClient(app).get("/auth/local-test-defaults")
+    assert response.status_code == 404
+
+
 def test_demo_remediation_is_disabled_by_default(monkeypatch):
     monkeypatch.delenv("AIOPS_DEMO_ACTIONS_ENABLED", raising=False)
     with pytest.raises(HTTPException) as exc:

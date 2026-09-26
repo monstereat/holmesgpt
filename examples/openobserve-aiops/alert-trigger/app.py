@@ -493,6 +493,20 @@ def auth_mode() -> dict[str, str]:
     return {"mode": _auth_mode()}
 
 
+@app.get("/auth/local-test-defaults")
+def local_test_login_defaults():
+    if _auth_mode() != "local":
+        raise HTTPException(status_code=404, detail="Not found")
+    users = json.loads(_test_users_configuration() or "[]")
+    operator = next((user for user in users if user.get("role") == "operator"), None)
+    if not operator:
+        raise HTTPException(status_code=404, detail="Local operator test account is not configured")
+    return JSONResponse(
+        {"username": operator["username"], "password": operator["password"]},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/auth/login")
 async def oidc_login(request: Request):
     if _auth_mode() != "oidc":
