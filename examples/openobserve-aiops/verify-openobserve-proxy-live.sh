@@ -46,7 +46,7 @@ docker run -d \
   -e OPENOBSERVE_ORG=default \
   -e OPENOBSERVE_UPSTREAM_USERNAME=proxy-check@example.test \
   -e OPENOBSERVE_UPSTREAM_PASSWORD="$OPENOBSERVE_TEST_PASSWORD" \
-  -e 'OPENOBSERVE_ALLOWED_FIELDS_JSON={"app_logs":["_timestamp","trace_id","service","message"],"frontend_errors":["_timestamp","trace_id","service","message"]}' \
+  -e 'OPENOBSERVE_ALLOWED_FIELDS_JSON={"app_logs":["_timestamp","trace_id","service","message","evaluation_run_id","evaluation_case_id"],"frontend_errors":["_timestamp","trace_id","service","message"]}' \
   "$PROXY_IMAGE" >/dev/null
 
 docker exec -i "$PROXY" python - <<'PY'
@@ -54,6 +54,7 @@ import base64
 import json
 import os
 import time
+import uuid
 import urllib.error
 import urllib.request
 
@@ -96,11 +97,15 @@ wait_for("http://127.0.0.1:8090/healthz")
 
 timestamp = time.time_ns() // 1_000
 trace_id = "a" * 32
+run_id = uuid.uuid4().hex
+case_id = "proxy-field-policy-check"
 record = {
     "_timestamp": timestamp,
     "trace_id": trace_id,
     "service": "proxy-live-check",
     "message": "synthetic-policy-marker",
+    "evaluation_run_id": run_id,
+    "evaluation_case_id": case_id,
     "private_probe": "must-not-be-returned",
 }
 status, _ = request(
@@ -140,7 +145,10 @@ if "private_probe" in schema_names:
 search_url = "http://127.0.0.1:8090/api/default/_search"
 query = {
     "query": {
-        "sql": f"SELECT * FROM app_logs WHERE trace_id = '{trace_id}'",
+        "sql": (
+            f"SELECT * FROM app_logs WHERE trace_id = '{trace_id}' "
+            f"AND evaluation_run_id = '{run_id}' AND evaluation_case_id = '{case_id}'"
+        ),
         "start_time": timestamp - 30_000_000,
         "end_time": timestamp + 30_000_000,
         "from": 0,

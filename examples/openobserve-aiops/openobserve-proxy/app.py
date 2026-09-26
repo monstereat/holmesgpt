@@ -140,7 +140,12 @@ def validate_search(
     table = tables[0]
     if table.name not in ALLOWED_STREAMS or table.db or table.catalog or table.alias:
         raise ValueError("Log stream is not allowed")
-    if any(isinstance(node, (exp.Func, exp.Bracket)) for node in expression.walk()):
+    if any(isinstance(node, exp.Or) for node in expression.walk()):
+        raise ValueError("SQL OR conditions are not permitted")
+    if any(
+        isinstance(node, exp.Bracket) or (isinstance(node, exp.Func) and not isinstance(node, exp.And))
+        for node in expression.walk()
+    ):
         raise ValueError("SQL functions and nested field access are not permitted")
 
     allowed_fields = field_allowlists.get(table.name)

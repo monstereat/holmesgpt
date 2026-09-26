@@ -57,6 +57,25 @@ class ProxyPolicyTests(unittest.TestCase):
         self.assertIn("trace_id", result["query"]["sql"])
         self.assertIn("_timestamp DESC", result["query"]["sql"])
 
+    def test_accepts_scoped_evaluation_predicates_joined_with_and(self):
+        sql = (
+            "SELECT * FROM app_logs WHERE trace_id = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "
+            "AND evaluation_run_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "
+            "AND evaluation_case_id = 'order-inventory-negative-stock' ORDER BY _timestamp ASC"
+        )
+        result = validate_search(search_body(sql), FIELD_ALLOWLISTS)
+        self.assertIn("evaluation_run_id", result["query"]["sql"])
+        self.assertIn("evaluation_case_id", result["query"]["sql"])
+
+    def test_rejects_or_predicates_and_sql_functions(self):
+        queries = (
+            "SELECT message FROM app_logs WHERE service = 'api' OR level = 'error'",
+            "SELECT count(*) FROM app_logs WHERE evaluation_run_id = 'run' AND evaluation_case_id = 'case'",
+        )
+        for sql in queries:
+            with self.subTest(sql=sql), self.assertRaises(ValueError):
+                validate_search(search_body(sql), FIELD_ALLOWLISTS)
+
     def test_rejects_disallowed_selected_or_filtered_fields(self):
         for sql in (
             "SELECT user_id FROM app_logs",
