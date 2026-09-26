@@ -7,15 +7,28 @@ import pytest
 from migration_runner import apply_migrations
 from models import IncidentInput
 from store import create_incident, stable_fingerprint
-from task_errors import PermanentTaskError
+from task_errors import PermanentTaskError, RetryableTaskError
 from tasks import claim_task, fail_task, retry_delay
-from worker import investigate_task
+from worker import investigate_task, run_investigation
 
 
 def test_retry_delay_is_bounded_exponential():
     assert [retry_delay(n) for n in (1, 2, 3, 4, 5, 8)] == [5, 10, 20, 40, 80, 300]
     with pytest.raises(ValueError):
         retry_delay(0)
+
+
+def test_worker_checks_openobserve_toolset_before_model_call(monkeypatch):
+    class UnavailableToolsetClient:
+        def check_openobserve_toolset(self):
+            raise RetryableTaskError("holmes_toolset_unavailable")
+
+        def investigate(self, _task):
+            pytest.fail("worker called Holmes chat while OpenObserve tools were unavailable")
+
+    monkeypatch.setattr("worker._holmes_client", lambda: UnavailableToolsetClient())
+    with pytest.raises(RetryableTaskError, match="holmes_toolset_unavailable"):
+        run_investigation(None)
 
 
 def test_task_attempts_and_permanent_failure_on_local_postgres():

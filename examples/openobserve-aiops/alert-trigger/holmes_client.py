@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 from task_errors import PermanentTaskError, RetryableTaskError
 
 MAX_RESPONSE_BYTES = 2_000_000
+MAX_INFO_RESPONSE_BYTES = 256_000
 MAX_EVIDENCE_CALLS = 20
 MAX_EVIDENCE_TEXT = 64_000
 ALLOWED_STREAMS = frozenset({"app_logs", "frontend_errors"})
@@ -228,6 +229,39 @@ class HolmesClient:
             raise ValueError("Holmes timeout must be between 1 and 900 seconds")
         if self.opener is None:
             self.opener = urllib.request.build_opener(_NoRedirect())
+
+    def check_openobserve_toolset(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/info?detail=full",
+            headers={"Accept": "application/json", "X-API-Key": self.api_key},
+            method="GET",
+        )
+        try:
+            with self.opener.open(request, timeout=min(self.timeout_seconds, 10)) as response:
+                if response.status != 200:
+                    raise PermanentTaskError("holmes_toolset_status_failed")
+                raw = response.read(MAX_INFO_RESPONSE_BYTES + 1)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 or exc.code >= 500:
+                raise RetryableTaskError("holmes_unavailable") from None
+            if exc.code in {401, 403}:
+                raise PermanentTaskError("holmes_auth_failed") from None
+            raise PermanentTaskError("holmes_toolset_status_failed") from None
+        except (TimeoutError, urllib.error.URLError, OSError):
+            raise RetryableTaskError("holmes_unavailable") from None
+        if len(raw) > MAX_INFO_RESPONSE_BYTES:
+            raise PermanentTaskError("holmes_toolset_status_invalid")
+        try:
+            info = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise PermanentTaskError("holmes_toolset_status_invalid") from None
+        toolsets = info.get("toolsets") if isinstance(info, dict) else None
+        openobserve = next(
+            (toolset for toolset in toolsets if isinstance(toolset, dict) and toolset.get("name") == "openobserve"),
+            None,
+        ) if isinstance(toolsets, list) else None
+        if not openobserve or openobserve.get("enabled") is not True or openobserve.get("status") != "enabled":
+            raise RetryableTaskError("holmes_toolset_unavailable")
 
     def investigate(self, task: dict[str, Any], *, evaluation: bool = False) -> dict[str, Any]:
         payload = json.dumps({"ask": build_investigation_question(task, evaluation=evaluation), "stream": False}).encode("utf-8")

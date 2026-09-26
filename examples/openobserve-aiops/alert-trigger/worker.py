@@ -151,6 +151,7 @@ def run_investigation(task: ClaimedTask) -> dict[str, Any]:
         client = _holmes_client()
     except RuntimeError:
         raise PermanentTaskError("holmes_configuration_missing") from None
+    client.check_openobserve_toolset()
     return client.investigate({
         "task_id": task.task_id,
         "alert_name": task.alert_name,

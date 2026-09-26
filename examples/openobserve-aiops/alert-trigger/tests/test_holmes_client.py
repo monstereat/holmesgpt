@@ -221,6 +221,40 @@ def test_find_trace_uses_the_generated_sql_and_must_match_the_alert_trace_id():
         extract_evidence([call], expected_trace_ids=[])
 
 
+def test_openobserve_toolset_readiness_uses_authenticated_info_endpoint():
+    response = FakeResponse({
+        "toolsets": [{"name": "openobserve", "enabled": True, "status": "enabled", "tool_count": 3}],
+    })
+    opener = FakeOpener(response)
+    client = HolmesClient("https://holmes.internal", "service-key", opener=opener)
+
+    client.check_openobserve_toolset()
+
+    assert opener.request.full_url == "https://holmes.internal/api/info?detail=full"
+    assert opener.request.get_header("X-api-key") == "service-key"
+    assert opener.timeout == 10
+
+
+@pytest.mark.parametrize(
+    "toolset, expected_code",
+    [
+        ({"name": "openobserve", "enabled": False, "status": "disabled"}, "holmes_toolset_unavailable"),
+        ({"name": "openobserve", "enabled": True, "status": "failed"}, "holmes_toolset_unavailable"),
+    ],
+)
+def test_openobserve_toolset_unavailability_is_retryable(toolset, expected_code):
+    client = HolmesClient(
+        "http://holmes",
+        "service-key",
+        opener=FakeOpener(FakeResponse({"toolsets": [toolset]})),
+    )
+
+    with pytest.raises(RetryableTaskError) as raised:
+        client.check_openobserve_toolset()
+
+    assert raised.value.code == expected_code
+
+
 def test_json_encoded_openobserve_results_remain_structured_for_fixture_matching():
     data = {
         "hits": [{
