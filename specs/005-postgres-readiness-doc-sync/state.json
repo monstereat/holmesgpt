@@ -1,0 +1,95 @@
+{
+  "schema_version": 2,
+  "change_id": "005-postgres-readiness-doc-sync",
+  "mode": "standard",
+  "status": "verifying",
+  "current_task": null,
+  "waiting_for": null,
+  "artifacts": {
+    "spec": "specs/005-postgres-readiness-doc-sync/spec.md",
+    "plan": "specs/005-postgres-readiness-doc-sync/plan.md",
+    "tasks": "specs/005-postgres-readiness-doc-sync/tasks.md",
+    "verify": "specs/005-postgres-readiness-doc-sync/verify.md"
+  },
+  "controls": {
+    "commit_strategy": "task",
+    "branch": null,
+    "independent_review": "off"
+  },
+  "approvals": {
+    "spec": {
+      "approver": "monstereat",
+      "evidence": "用户明确要求继续完成生产准备，并授权无需逐项确认。"
+    },
+    "plan": {
+      "approver": "monstereat",
+      "evidence": "按用户授权只同步本机数据库现状与生产环境差距，不连接生产。"
+    },
+    "acceptance": null
+  },
+  "acceptance_criteria": {
+    "AC-01": {
+      "description": "本机 Compose 单一数据库身份的陈述已移除。"
+    },
+    "AC-02": {
+      "description": "本机 bootstrap/runtime/migrator 分离与生产未验收边界准确记录。"
+    },
+    "AC-03": {
+      "description": "文档检查通过且没有提交凭据。"
+    }
+  },
+  "tasks": {
+    "T001": {
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+        "ROADMAP.md",
+        "specs/005-postgres-readiness-doc-sync/**"
+      ],
+      "commands": [
+        "rg -n 'local Compose uses one identity|local Compose stack still uses one test identity' examples/openobserve-aiops/PRODUCTION-READINESS.md",
+        "git diff --check"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T001-doc-sync-check"
+      ],
+      "scope_report": {
+        "path": "specs/005-postgres-readiness-doc-sync/scope-report-T001.json",
+        "sha256": "45e776a5cf294d978bbb50a5b5546f04aaf66bed65962a70d2ea41154353137f"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "T001-doc-sync-check",
+      "type": "command",
+      "task": "T001",
+      "command": "rg -n 'local Compose uses one identity|local Compose stack still uses one test identity' examples/openobserve-aiops/PRODUCTION-READINESS.md; git diff --check",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/005-postgres-readiness-doc-sync/evidence/T001.stdout.log",
+      "stderr_log": "specs/005-postgres-readiness-doc-sync/evidence/T001.stderr.log"
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-09-27T07:50:00Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed documentation synchronization."
+    },
+    {
+      "at": "2026-09-27T07:50:00Z",
+      "action": "begin_verify",
+      "status": "verifying",
+      "note": "Documentation checks passed."
+    }
+  ]
+}

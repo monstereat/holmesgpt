@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "base_commit": "8ce15d13e",
+  "initial_snapshots": {
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md": {
+      "kind": "file",
+      "sha256": "79d040b7ec1d485c7761131fd2b89130855f3ca39c898bcdd82469fe02f4614f"
+    }
+  },
+  "internal_patterns": [
+    "specs/005-postgres-readiness-doc-sync/**"
+  ]
+}

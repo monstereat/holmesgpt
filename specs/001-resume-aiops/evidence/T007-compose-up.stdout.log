@@ -1,0 +1,325 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [order-service internal] load build definition from Dockerfile
+#1 transferring dockerfile: 491B done
+#1 DONE 0.0s
+
+#2 [order-service internal] load .dockerignore
+#2 transferring context: 63B done
+#2 DONE 0.0s
+
+#3 [incident-migrate internal] load build definition from Dockerfile
+#3 transferring dockerfile: 622B done
+#3 DONE 0.0s
+
+#4 [incident-migrate internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [openobserve-proxy internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 0.0s
+
+#6 [openobserve-proxy internal] load build definition from Dockerfile
+#6 transferring dockerfile: 410B done
+#6 DONE 0.0s
+
+#7 [openobserve-proxy internal] load metadata for docker.io/library/python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
+#7 DONE 0.0s
+
+#8 [order-service internal] load metadata for docker.io/library/node:22-alpine
+#8 ...
+
+#9 [openobserve-proxy 1/6] FROM docker.io/library/python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
+#9 DONE 0.0s
+
+#10 [openobserve-proxy internal] load build context
+#10 transferring context: 308B done
+#10 DONE 0.0s
+
+#11 [openobserve-proxy 2/6] WORKDIR /app
+#11 CACHED
+
+#12 [openobserve-proxy 3/6] COPY requirements.txt ./
+#12 CACHED
+
+#13 [openobserve-proxy 4/6] RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
+#13 CACHED
+
+#14 [openobserve-proxy 5/6] COPY app.py ./app.py
+#14 CACHED
+
+#15 [openobserve-proxy 6/6] COPY tests ./tests
+#15 CACHED
+
+#16 [openobserve-proxy] exporting to image
+#16 exporting layers done
+#16 writing image sha256:ae6f806453bbe4745bbb6ce95139441b88ddec3dcd180076640c4322a2cf3cc5 done
+#16 naming to docker.io/library/holmesgpt-aiops-goal-openobserve-proxy done
+#16 DONE 0.0s
+
+#17 [holmes-api internal] load .dockerignore
+#17 transferring context: 1.05kB done
+#17 DONE 0.0s
+
+#18 [holmes-api internal] load build definition from Dockerfile
+#18 transferring dockerfile: 7.13kB done
+#18 DONE 0.0s
+
+#19 [incident-migrate internal] load metadata for docker.io/library/python:3.12-slim
+#19 DONE 0.3s
+
+#20 [holmes-api internal] load metadata for docker.io/library/python:3.11-alpine
+#20 ...
+
+#8 [order-service internal] load metadata for docker.io/library/node:22-alpine
+#8 DONE 0.3s
+
+#21 [order-service build 1/7] FROM docker.io/library/node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+#21 DONE 0.0s
+
+#22 [order-service internal] load build context
+#22 transferring context: 703B done
+#22 DONE 0.0s
+
+#23 [order-service build 6/7] COPY src ./src
+#23 CACHED
+
+#24 [order-service build 4/7] RUN npm ci --no-audit --no-fund
+#24 CACHED
+
+#25 [order-service build 5/7] COPY tsconfig.json ./
+#25 CACHED
+
+#26 [order-service build 7/7] RUN npm run build
+#26 CACHED
+
+#27 [order-service stage-1 4/6] RUN npm ci --omit=dev --no-audit --no-fund
+#27 CACHED
+
+#28 [order-service stage-1 5/6] COPY --from=build /app/dist ./dist
+#28 CACHED
+
+#29 [order-service build 3/7] COPY package.json package-lock.json ./
+#29 CACHED
+
+#30 [order-service build 2/7] WORKDIR /app
+#30 CACHED
+
+#31 [order-service stage-1 6/6] COPY public ./public
+#31 CACHED
+
+#32 [order-service] exporting to image
+#32 exporting layers done
+#32 writing image sha256:b79648594137ebd542a02aeca10e099b4923d31e483e3d610762b73f52c22f95 done
+#32 naming to docker.io/library/holmesgpt-aiops-goal-order-service done
+#32 DONE 0.0s
+
+#33 [incident-migrate base 1/4] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#33 DONE 0.0s
+
+#34 [incident-migrate internal] load build context
+#34 transferring context: 5.24kB done
+#34 DONE 0.0s
+
+#35 [incident-migrate runtime 1/2] RUN pip install --no-cache-dir -r requirements.txt
+#35 CACHED
+
+#36 [incident-migrate base 4/4] COPY requirements.txt requirements-test.txt ./
+#36 CACHED
+
+#37 [incident-migrate base 2/4] WORKDIR /app
+#37 CACHED
+
+#38 [incident-migrate base 3/4] RUN groupadd --system app && useradd --system --gid app --home-dir /app app
+#38 CACHED
+
+#39 [incident-migrate runtime 2/2] COPY . .
+#39 CACHED
+
+#40 [incident-migrate] exporting to image
+#40 exporting layers done
+#40 writing image sha256:3adb6b3172bdc586403789ec8277ed109f8df9e9c3e122418e473dcfda4deaf6 0.0s done
+#40 naming to docker.io/library/holmesgpt-aiops-goal-incident-migrate done
+#40 DONE 0.0s
+
+#20 [holmes-api internal] load metadata for docker.io/library/python:3.11-alpine
+#20 ...
+
+#41 [incident-api internal] load build definition from Dockerfile
+#41 transferring dockerfile: 622B done
+#41 DONE 0.0s
+
+#42 [incident-api internal] load .dockerignore
+#42 transferring context: 2B done
+#42 DONE 0.0s
+
+#19 [incident-api internal] load metadata for docker.io/library/python:3.12-slim
+#19 DONE 0.4s
+
+#33 [incident-api base 1/4] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#33 DONE 0.0s
+
+#43 [incident-api internal] load build context
+#43 transferring context: 5.24kB 0.0s done
+#43 DONE 0.0s
+
+#38 [incident-api base 3/4] RUN groupadd --system app && useradd --system --gid app --home-dir /app app
+#38 CACHED
+
+#44 [incident-api base 4/4] COPY requirements.txt requirements-test.txt ./
+#44 CACHED
+
+#37 [incident-api base 2/4] WORKDIR /app
+#37 CACHED
+
+#45 [incident-api runtime 1/2] RUN pip install --no-cache-dir -r requirements.txt
+#45 CACHED
+
+#46 [incident-api runtime 2/2] COPY . .
+#46 CACHED
+
+#47 [incident-api] exporting to image
+#47 exporting layers done
+#47 writing image sha256:42793fd7a26d404f3602c5e15e4409c6b52668d8f6c0f7f4ea48ac556ca5e676 done
+#47 naming to docker.io/library/holmesgpt-aiops-goal-incident-api done
+#47 DONE 0.0s
+
+#20 [holmes-api internal] load metadata for docker.io/library/python:3.11-alpine
+#20 DONE 2.7s
+
+#48 [holmes-api builder  1/15] FROM docker.io/library/python:3.11-alpine@sha256:cd04730b8511def3fbf14204d66a0c1536f290b8e896ed5a94cd64cb15ac1356
+#48 DONE 0.0s
+
+#49 [holmes-api internal] load build context
+#49 transferring context: 58.30kB 0.0s done
+#49 DONE 0.1s
+
+#50 [holmes-api stage-1 14/16] COPY ./holmes /app/holmes
+#50 CACHED
+
+#51 [holmes-api stage-1  5/16] COPY --from=builder /usr/local/bin/kubectl /usr/local/bin/kubectl
+#51 CACHED
+
+#52 [holmes-api stage-1 15/16] COPY ./server.py /app/server.py
+#52 CACHED
+
+#53 [holmes-api stage-1  9/16] COPY --from=builder /helm /usr/local/bin/helm
+#53 CACHED
+
+#54 [holmes-api builder 14/15] RUN if [ "none" != "none" ]; then     poetry source add --priority=primary artifactory "none";     fi     && poetry install --no-interaction --no-ansi --no-root --with otel
+#54 CACHED
+
+#55 [holmes-api builder 12/15] RUN poetry config virtualenvs.create false
+#55 CACHED
+
+#56 [holmes-api builder 11/15] RUN if [ "none" != "none" ]; then     pip config set global.index-url "none";     fi     && pip install poetry
+#56 CACHED
+
+#57 [holmes-api builder  6/15] COPY bin/go-cve-rebuild/arm64/argocd.gz.sha256 /tmp/argocd.gz.sha256
+#57 CACHED
+
+#58 [holmes-api stage-1 11/16] RUN git config --global core.symlinks false
+#58 CACHED
+
+#59 [holmes-api stage-1  2/16] WORKDIR /app
+#59 CACHED
+
+#60 [holmes-api builder  8/15] COPY bin/go-cve-rebuild/arm64/helm.gz /tmp/helm.gz
+#60 CACHED
+
+#61 [holmes-api builder  4/15] RUN cd /tmp     && curl -fsSLO "https://dl.k8s.io/release/v1.37.0/bin/linux/arm64/kubectl"     && curl -fsSL "https://dl.k8s.io/release/v1.37.0/bin/linux/arm64/kubectl.sha256" -o kubectl.sha256     && echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c -     && mv kubectl /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl     && rm -f kubectl.sha256     && kubectl version --client
+#61 CACHED
+
+#62 [holmes-api stage-1  8/16] RUN argocd --help
+#62 CACHED
+
+#63 [holmes-api stage-1 10/16] RUN helm version
+#63 CACHED
+
+#64 [holmes-api builder  7/15] RUN cd /tmp && sha256sum -c argocd.gz.sha256     && gunzip /tmp/argocd.gz && mv /tmp/argocd /argocd && chmod +x /argocd     && rm -f /tmp/argocd.gz.sha256
+#64 CACHED
+
+#65 [holmes-api stage-1  7/16] COPY --from=builder /argocd /usr/local/bin/argocd
+#65 CACHED
+
+#66 [holmes-api stage-1  6/16] RUN kubectl version --client
+#66 CACHED
+
+#67 [holmes-api stage-1 12/16] RUN /usr/local/bin/pip install --upgrade --no-cache-dir     "wheel>=0.46.2" "setuptools>=80.0.0" "pip>=26.1"     && /venv/bin/python -m pip uninstall -y pip     && /usr/local/bin/python -m pip uninstall -y pip
+#67 CACHED
+
+#68 [holmes-api stage-1  4/16] RUN apk upgrade --no-cache && apk add --no-cache     curl     jq     git     bash     coreutils     findutils     grep     gawk     sed     gzip     bind-tools     tcpdump     libstdc++     libgcc     && apk add --no-cache     --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community     --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main     librdkafka
+#68 CACHED
+
+#69 [holmes-api builder  5/15] COPY bin/go-cve-rebuild/arm64/argocd.gz /tmp/argocd.gz
+#69 CACHED
+
+#70 [holmes-api builder 13/15] COPY pyproject.toml poetry.lock /
+#70 CACHED
+
+#71 [holmes-api builder  9/15] COPY bin/go-cve-rebuild/arm64/helm.gz.sha256 /tmp/helm.gz.sha256
+#71 CACHED
+
+#72 [holmes-api builder  2/15] RUN apk add --no-cache     curl     git     unzip     build-base     libffi-dev     openssl-dev     cyrus-sasl-dev     && apk add --no-cache     --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community     --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main     librdkafka-dev
+#72 CACHED
+
+#73 [holmes-api builder 10/15] RUN cd /tmp && sha256sum -c helm.gz.sha256     && gunzip /tmp/helm.gz && mv /tmp/helm /helm && chmod +x /helm     && rm -f /tmp/helm.gz.sha256
+#73 CACHED
+
+#74 [holmes-api stage-1  3/16] COPY --from=builder /venv /venv
+#74 CACHED
+
+#75 [holmes-api builder  3/15] RUN python -m venv /venv --upgrade-deps &&     /venv/bin/pip install --upgrade "wheel>=0.46.2" "pip>=26.1"
+#75 CACHED
+
+#76 [holmes-api stage-1 13/16] COPY ./experimental/ag-ui/server-agui.py /app/experimental/ag-ui/server-agui.py
+#76 CACHED
+
+#77 [holmes-api stage-1 16/16] COPY ./holmes_cli.py /app/holmes_cli.py
+#77 CACHED
+
+#78 [holmes-api] exporting to image
+#78 exporting layers done
+#78 writing image sha256:c91af4aa051bfdc65436ffc23a3a33417f97c4116648e02491d4dce79c3aeed9 done
+#78 naming to docker.io/library/holmesgpt-aiops-goal-holmes-api done
+#78 DONE 0.0s
+
+#79 [incident-worker internal] load .dockerignore
+#79 transferring context: 2B done
+#79 DONE 0.0s
+
+#80 [incident-worker internal] load build definition from Dockerfile
+#80 transferring dockerfile: 622B done
+#80 DONE 0.0s
+
+#19 [incident-worker internal] load metadata for docker.io/library/python:3.12-slim
+#19 DONE 0.5s
+
+#33 [incident-worker base 1/4] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#33 DONE 0.0s
+
+#81 [incident-worker internal] load build context
+#81 transferring context: 5.24kB done
+#81 DONE 0.0s
+
+#82 [incident-worker runtime 1/2] RUN pip install --no-cache-dir -r requirements.txt
+#82 CACHED
+
+#38 [incident-worker base 3/4] RUN groupadd --system app && useradd --system --gid app --home-dir /app app
+#38 CACHED
+
+#37 [incident-worker base 2/4] WORKDIR /app
+#37 CACHED
+
+#83 [incident-worker base 4/4] COPY requirements.txt requirements-test.txt ./
+#83 CACHED
+
+#84 [incident-worker runtime 2/2] COPY . .
+#84 CACHED
+
+#85 [incident-worker] exporting to image
+#85 exporting layers done
+#85 writing image sha256:328cfaf28f6f4471c9023d30af7f733388aa6f34fa2596ee67bad8cdd671b1a2 done
+#85 naming to docker.io/library/holmesgpt-aiops-goal-incident-worker done
+#85 DONE 0.0s

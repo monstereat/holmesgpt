@@ -1,0 +1,14 @@
+{
+  "base_commit": "8ce15d13e",
+  "touched_files": [
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "ROADMAP.md"
+  ],
+  "allowed_paths": [
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "ROADMAP.md",
+    "specs/005-postgres-readiness-doc-sync/**"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

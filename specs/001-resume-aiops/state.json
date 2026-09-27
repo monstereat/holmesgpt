@@ -378,7 +378,11 @@
         "python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json"
       ],
       "status": "in_progress",
-      "check_ids": [],
+      "check_ids": [
+        "T007-compose-up-final",
+        "T007-incident-suite-final",
+        "T007-mock-evals-final"
+      ],
       "scope": {
         "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/001-resume-aiops/scope-baseline-T007.json",
         "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
@@ -908,6 +912,65 @@
         ],
         "diff_sha256": "7cf44861f30fa5c58affd6277fc5c958086f0b3d356e13bcd8e04085b8129492"
       }
+    },
+    {
+      "id": "T007-compose-up-final",
+      "type": "command",
+      "kind": "integration",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-08",
+        "AC-11"
+      ],
+      "command": "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml config --quiet && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T07:47:00Z",
+      "duration_ms": 12000,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T007-compose-up.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T007-compose-up.stderr.log"
+    },
+    {
+      "id": "T007-incident-suite-final",
+      "type": "command",
+      "kind": "integration",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-05",
+        "AC-06",
+        "AC-07"
+      ],
+      "command": "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T07:36:10Z",
+      "duration_ms": 66500,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/004-compose-db-role-separation/evidence/T006-incident-test.stdout.log",
+      "stderr_log": "specs/004-compose-db-role-separation/evidence/T006-incident-test.stderr.log",
+      "summary": "123 passed, 1 upstream deprecation warning, 26.54s"
+    },
+    {
+      "id": "T007-mock-evals-final",
+      "type": "command",
+      "kind": "integration",
+      "task": "T007",
+      "acceptance_criteria": [
+        "AC-10"
+      ],
+      "command": "python3 examples/openobserve-aiops/evals/run_evals.py --mode mock --output /tmp/holmes-aiops-mock-report.json",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T07:47:15Z",
+      "duration_ms": 300,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/001-resume-aiops/evidence/T007-mock-evals.stdout.log",
+      "stderr_log": "specs/001-resume-aiops/evidence/T007-mock-evals.stderr.log",
+      "summary": "20 mock cases generated; report parses as JSON; scoring remains not_scored"
     }
   ],
   "events": [
@@ -1288,8 +1351,20 @@
       "action": "resume",
       "status": "executing",
       "note": "策略代理 T008 已完成并在本机验证；继续执行原 AIOps 目标中尚未完成的浏览器验收与 live RCA。"
+    },
+    {
+      "at": "2026-09-27T07:48:46Z",
+      "action": "record_observation",
+      "status": "executing",
+      "note": "T007-local-regression: 123 incident tests passed; Compose API/worker/PostgreSQL/Redis healthy; readyz ready; mock report regenerated with 20 cases and scoring=not_scored."
+    },
+    {
+      "at": "2026-09-27T07:48:46Z",
+      "action": "record_observation",
+      "status": "executing",
+      "note": "T007 remains in progress: production platform/IAM/network/backup acceptance and independent two-reviewer RCA scoring remain unresolved external gates."
     }
   ],
   "created_at": "2026-09-25T03:20:15Z",
-  "updated_at": "2026-09-25T05:42:50Z"
+  "updated_at": "2026-09-27T07:48:46Z"
 }
