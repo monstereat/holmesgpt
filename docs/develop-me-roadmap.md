@@ -60,7 +60,7 @@
 - [x] **事故流程内存原型：** `examples/openobserve-aiops/incident_workflow.py` 实现状态转换、负责人、严重级别、幂等键、重复告警归并、审批事件和时间线；不执行处置命令。
 - [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox，以及严重级别和负责人；migration `0008_incident_triage` 已应用于获授权的本机测试数据库。operator/admin 才能管理，候选负责人必须是启用且有 order-service 范围的 operator/admin；状态流转由 API 按显式矩阵校验，并追加审计，closed 为终态。resolved/closed 事故冻结分级/指派。测试和本机 API/UI 验收通过；生产身份集成仍待规划。
 - [x] **内存 RCA 数据模型：** 已验证结论必须带 HTTPS 证据链接，未验证结论明确标为 assumption；原型只记录声明，不自动验证其真实性。
-- [ ] **真实 RCA 结果验收：** Holmes 调查 API、只读证据代理和带来源/查询信息的证据保存已实现，DeepSeek live 模型调用已实测；复核后的 20 案报告有 20/20 当前 run/case 证据查询命中、3/3 发布事件命中、0 个工具错误。真实模型输出的根因准确性仍待人工 rubric 评分，`not_scored` 不能等同于准确率通过。
+- [ ] **真实 RCA 结果验收：** Holmes 调查 API、只读证据代理和带来源/查询信息的证据保存已实现，DeepSeek live 模型调用已实测；最新报告 `9d27bceb636747d192b839868afae3c9` 有 20/20 当前 run/case 证据查询命中、3/3 发布事件命中、0 个未限定成功搜索、0 个跨案命中、0 个工具错误。真实模型输出的根因准确性仍待两名独立评审按 rubric 评分并裁决，`not_scored` 不能等同于准确率通过。
 - [x] **本地调查 Skill：** 使用当前支持的 `custom_skill_paths`/`SKILL.md` 提供订单故障只读调查步骤，并通过 Holmes `scan_skill_directory` 验证解析；真实 CLI 调查及证据引用仍待模型凭据和 OpenObserve 查询权限。旧 Catalog 仅留作迁移参考。
 - [x] **本机持久复盘：** 事故详情提供影响、根因、恢复措施和行动项表单；approver/admin 可保存草稿或标记已审核，viewer/operator 只读；PostgreSQL 保存审核人/时间并将变更写入事故审计时间线（隔离 API 集成测试通过）。
 - [x] **内存审批原型：** Agent 只能提交白名单建议，审批经外部授权回调验证；原型不执行运维命令。
@@ -294,7 +294,8 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 对仅有失败工具调用的调查，在稳定错误码失败关闭的同时保留已脱敏参数/状态；失败任务持久化该证据，重新 claim/手动重试清除旧 attempt 结果；live eval 报告也写入失败调用证据。
 - [x] 跨案例 fixture 审计现在同时查看 `openobserve_find_trace` 和 `openobserve_search_logs` 命中。
 - [x] 隔离 Compose incident suite **80 passed, 1 warning**，包括失败 worker 持久化脱敏轨迹及手动重试清空旧结果的验证。最新 DeepSeek 20 案 live 报告 schema 1.3 通过：20/20 当前 run/case 证据匹配、3/3 release 匹配、0 跨案 fixture、0 病例级错误，5 条失败工具轨迹留痕。
-- [ ] 本次 15 次成功日志搜索未带完整精确 run+case 条件，须让评测调用器或 query policy 拒绝/隔离这类搜索后再作为发布评测依据；诊断人工 rubric 仍未完成，`scoring=not_scored`。
+- [x] 历史 run 曾出现 15 次成功日志搜索未带完整精确 run+case 条件；当前服务端 query policy 已强制范围，最新 2026-09-27 run `9d27bceb636747d192b839868afae3c9` 的未限定成功搜索为 0。
+- [ ] 诊断人工 rubric 仍未完成，`scoring=not_scored`；需两名独立评审完成评分并裁决分歧。
 - 报告 `/tmp/holmes-aiops-live-report-trace-audit-v1.3.json`，run ID `52de154d9c3747e59fa5035b1f98bc6f`。
 
 ## 2026-09-25 增量：浏览器工作台角色与处置闭环验收

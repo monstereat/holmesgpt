@@ -1,8 +1,8 @@
 # T000–T009 本机验收记录
 
-日期：2026-09-26
+日期：2026-09-27
 目标环境：当前电脑 Docker Compose 测试环境
-整体状态：**本机 live 调用和检索覆盖已验证，整体验收仍未完成**。最新 2026-09-26 synthetic live run `3c1b6cb9bc124a579bdca7833b2ae5a6` 经当前字段策略代理完成 20/20 当前 run/case 证据命中、3/3 发布事件命中、0 个工具错误；报告 schema 1.3 校验通过。诊断质量仍未评分，生产部署未执行。
+整体状态：**本机 live 调用和检索覆盖已验证，整体验收仍未完成**。最新 2026-09-27 synthetic live run `9d27bceb636747d192b839868afae3c9` 经当前字段策略代理完成 20/20 当前 run/case 证据命中、3/3 发布事件命中、0 个工具错误、0 次未限定成功搜索和 0 个检测到的跨案例命中；报告 schema 1.3 校验通过，SHA-256 为 `50fef9dd604e962363c6b8f8b9bb247f3e50d04020393194d7518a30d91d8377`。诊断质量仍未评分，生产部署未执行。
 
 | 验收项 | 结果 | 证据与限制 |
 | --- | --- | --- |
@@ -15,7 +15,7 @@
 | AC-07 仅限 demo 的受控动作 | 通过（本机浏览器闭环） | 浏览器中 operator 请求动作、approver 批准、operator 执行并由 order-service owner 验证状态 OFF→ON；随后独立批准并执行恢复，验证 ON→OFF。审计时间线包含请求、审批和两条 `action.verified`；自动化测试另覆盖拒绝、验证失败和回退路径。 |
 | AC-08 本机部署、恢复和重复演示 | 通过（测试环境） | Holmes、incident API/worker、PostgreSQL、Redis、OpenObserve、order-service 在同一 Compose project 运行；健康端点均返回 200。隔离 `aiops_restore_test` 的 pg_dump/pg_restore 成功，活动数据库与 volume 未覆盖/删除。 |
 | AC-09 发布和知识上下文关联 | 通过（fixture/mock） | 三条本地发布/Runbook fixture 有来源标记并关联已知根因案例；真实 Git/CI 发布源仍未接入。 |
-| AC-10 20 例可重复评测 | **部分通过（诊断准确性未评分）** | 20 例 mock JSON 报告和结构/关联测试通过。最新 live 报告 schema 1.3 通过 Draft 2020-12 校验；40 条 synthetic 行在 Holmes 调用前确认可搜索；20 案完成，20/20 exact run/case 证据命中、3/3 release event 命中，未限定成功查询、跨案例命中和工具错误均为 0。Diagnosis scoring 仍为 `not_scored`，不能代表诊断准确率。当前临时报告 SHA-256：`e4aa1b79bfd3692f990add632f79fc4c4a1faddb16793f23a29f3ed95a148939`。 |
+| AC-10 20 例可重复评测 | **部分通过（诊断准确性未评分）** | 最新 live 报告 schema 1.3 通过 Draft 2020-12 校验；本轮 40 条 synthetic 行在 Holmes 调用前确认可搜索；20 案完成，20/20 exact run/case 证据命中、3/3 release event 命中，未限定成功查询、跨案例命中和工具错误均为 0。Diagnosis scoring 仍为 `not_scored`，不能代表诊断准确率。报告 [`live-2026-09-27.json`](../../examples/openobserve-aiops/evals/reports/live-2026-09-27.json) SHA-256：`50fef9dd604e962363c6b8f8b9bb247f3e50d04020393194d7518a30d91d8377`。 |
 | AC-11 正式环境边界 | 部分通过（准备文档；生产部署未执行） | 用户明确当前 macOS Docker Desktop 24.0.6 / Compose 2.23.0 仅是本地测试环境，正式生产平台尚未选择。身份、域名/TLS、数据服务身份、OpenObserve RBAC/租户、告警路由、SLO/RPO/RTO、动作责任人等仍待确认，尚无可执行生产 manifest 或生产凭据。 |
 
 ## 验证结果
@@ -28,7 +28,7 @@
 - PostgreSQL 备份恢复到独立数据库成功；恢复库 `incidents` 行数为 1。备份 `/tmp/aiops-test.dump` 和恢复数据库保留供检查。
 - Holmes/OpenObserve live 合成调查与 20 案 live 评测已实际运行，检索覆盖复核通过；不得把 API 健康、合成 fixture 或 `not_scored` 报告描述为诊断准确率或生产验证。
 - DeepSeek live 验证：已使用私有本机配置实际运行 20 案 synthetic live evaluation；该结果证明模型调用、工具检索和来源追踪链路运行，但不证明 production 模型质量。凭据值未写入报告或仓库。
-- 2026-09-26 当前 SQL 字段策略代理复验：24 项 proxy unittest 全部通过；隔离 OpenObserve v1.0.3 ingest/search 与字段策略验收通过；此前失败的精确 run/case `AND` 查询经运行中的 proxy 重放返回 HTTP 200；当前 proxy 上的 20 案 DeepSeek live run 完成，机器报告及 Draft 2020-12 schema 校验通过，根因诊断仍 `not_scored`。报告 `/tmp/holmes-aiops-live-report-post-and-fix.json` 仅在本机临时目录，SHA-256 见 AC-10。
+- 2026-09-27 当前 SQL 字段策略代理复验：本机 DeepSeek live run `9d27bceb636747d192b839868afae3c9` 完成，20/20 exact run/case 证据命中、3/3 发布事件命中、0 个工具错误、0 次未限定搜索和 0 个跨案例命中；报告 schema 1.3 通过 Draft 2020-12 校验。报告已保存在仓库 `examples/openobserve-aiops/evals/reports/live-2026-09-27.json`。两份 reviewer sheet 在 `/tmp/holmes-aiops-review-20260927-reviewer-{a,b}.json`，均未评分；诊断仍为 `not_scored`。
 - 2026-09-26 当前事故服务完整隔离 Compose suite：**103 passed, 1 Starlette/AnyIO deprecation warning**；临时 PostgreSQL 集成测试已启用。Compose 提醒存在既存 orphan `alert-trigger` 容器，本次没有删除它，测试进程退出码为 0。
 - 浏览器端到端手工验收：operator/approver 分别登录；operator 申请 `set-chaos-mode:on`，approver 批准，operator 执行并观察 owner 验证 OFF→ON；再经审批执行 OFF 恢复并验证 ON→OFF。operator 无复盘写入/审核按钮，approver 保存并审核含真实限制说明的合成复盘；审计时间线显示审批、动作核验和 `retrospective.reviewed`。合成事故的 Holmes 任务以 `holmes_unavailable` 到达重试上限，证明任务失败路径可见但不能替代 live RCA。
 - 正式环境准备：`examples/openobserve-aiops/PRODUCTION-READINESS.md` 列出服务职责、待确认部署输入、生产配置门槛、staging 分阶段验收和 go/no-go 证据。它是准备文档，不是可执行生产 manifest；未执行生产部署。
