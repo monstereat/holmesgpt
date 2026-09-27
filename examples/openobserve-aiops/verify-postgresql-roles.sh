@@ -11,6 +11,7 @@ cleanup() {
 trap cleanup EXIT
 
 docker run --detach --rm --network none --name "$container_name" \
+    --tmpfs /var/lib/postgresql/data:rw,size=256m \
     -e POSTGRES_HOST_AUTH_METHOD=trust "$postgres_image" >/dev/null
 
 ready=false
@@ -35,7 +36,23 @@ for migration in "$repo_dir"/alert-trigger/migrations/*.sql; do
 done
 
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postgres \
-    -c "INSERT INTO schema_migrations (version) VALUES ('0006_audit_events_append_only') ON CONFLICT DO NOTHING" >/dev/null
+    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only') ON CONFLICT DO NOTHING" >/dev/null
+
+migration_count=$(docker exec "$container_name" psql -At -U aiops_migrator -d postgres \
+    -c "SELECT count(*) FROM schema_migrations")
+if [[ "$migration_count" != "8" ]]; then
+    echo "migration runner applied $migration_count records instead of 8" >&2
+    exit 1
+fi
+
+triage_columns=$(docker exec "$container_name" psql -At -U aiops_migrator -d postgres -c "
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'incidents'
+      AND column_name IN ('severity', 'assignee_user_id')")
+if [[ "$triage_columns" != "2" ]]; then
+    echo "incident triage migration did not create both expected columns" >&2
+    exit 1
+fi
 
 # Re-running the bootstrap must not restore audit mutation privileges.
 docker exec -i "$container_name" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
@@ -47,6 +64,8 @@ privileges=$(docker exec "$container_name" psql -At -U aiops_runtime -d postgres
        AND NOT has_table_privilege(current_user, 'audit_events', 'UPDATE')
        AND NOT has_table_privilege(current_user, 'audit_events', 'DELETE')
        AND NOT has_table_privilege(current_user, 'audit_events', 'TRUNCATE')
+       AND has_column_privilege(current_user, 'incidents', 'severity', 'UPDATE')
+       AND has_column_privilege(current_user, 'incidents', 'assignee_user_id', 'UPDATE')
        AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
 ")
 if [[ "$privileges" != t ]]; then
@@ -71,4 +90,4 @@ for statement in \
     fi
 done
 
-echo "PostgreSQL role verification passed: audit append/read allowed; audit mutation and schema creation denied"
+echo "PostgreSQL role verification passed: 8 migrations including incident triage; runtime audit append/read and triage updates allowed; audit mutation and schema creation denied"
