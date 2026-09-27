@@ -78,12 +78,24 @@ docker exec "$container_name" env \
 
 stage="encrypt the backup with CMS AES-256-GCM"
 encrypted_backup_path="$backup_dir/aiops-backup-check.cms.der"
-bash "$repo_dir/encrypt-postgres-backup.sh" "$backup_dir/aiops-backup-check.dump" \
-    "$encrypted_backup_path" "$backup_dir/recipient.crt"
+if ! bash "$repo_dir/encrypt-postgres-backup.sh" "$backup_dir/aiops-backup-check.dump" \
+    "$encrypted_backup_path" "$backup_dir/recipient.crt" \
+    >"$backup_dir/encrypt.stdout" 2>"$backup_dir/encrypt.stderr"; then
+    error_detail="$(tr '\n' ' ' < "$backup_dir/encrypt.stderr" | cut -c 1-1000)"
+    echo "::error title=OpenSSL CMS encryption error::$error_detail"
+    cat "$backup_dir/encrypt.stderr" >&2
+    exit 1
+fi
 stage="decrypt the CMS AES-256-GCM backup"
-openssl cms -decrypt -binary -inform DER -in "$encrypted_backup_path" \
+if ! openssl cms -decrypt -binary -inform DER -in "$encrypted_backup_path" \
     -recip "$backup_dir/recipient.crt" -inkey "$backup_dir/recipient.key" \
-    -out "$backup_dir/aiops-encrypted-restore-check.dump"
+    -out "$backup_dir/aiops-encrypted-restore-check.dump" \
+    2>"$backup_dir/decrypt.stderr"; then
+    error_detail="$(tr '\n' ' ' < "$backup_dir/decrypt.stderr" | cut -c 1-1000)"
+    echo "::error title=OpenSSL CMS decryption error::$error_detail"
+    cat "$backup_dir/decrypt.stderr" >&2
+    exit 1
+fi
 
 stage="verify encrypted backup permissions and overwrite protection"
 encrypted_mode="$(docker exec "$container_name" stat -c '%a' \
