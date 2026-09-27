@@ -11,6 +11,11 @@ cleanup() {
     local result=$?
     if [[ "$result" -ne 0 ]]; then
         echo "PostgreSQL backup verification failed during: $stage" >&2
+        echo "::error title=PostgreSQL backup verification failed::$stage (exit $result)"
+        if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+            printf 'PostgreSQL backup verification failed during: `%s` (exit %s).\n' \
+                "$stage" "$result" >> "$GITHUB_STEP_SUMMARY"
+        fi
         docker logs "$container_name" >&2 || true
     fi
     docker stop "$container_name" >/dev/null 2>&1 || true
