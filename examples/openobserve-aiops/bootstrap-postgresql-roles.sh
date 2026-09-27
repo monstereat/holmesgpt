@@ -21,9 +21,9 @@ if [ "$AIOPS_DB_RUNTIME_PASSWORD" = "$AIOPS_DB_MIGRATOR_PASSWORD" ]; then
 fi
 
 export PGPASSWORD="$POSTGRES_ADMIN_PASSWORD"
-psql --host postgres --port 5432 --username aiops --dbname aiops \
+psql --host "${POSTGRES_HOST:-postgres}" --port 5432 --username aiops --dbname aiops \
     --set ON_ERROR_STOP=1 --file /bootstrap/postgresql-roles.psql >/dev/null
-psql --host postgres --port 5432 --username aiops --dbname aiops \
+psql --host "${POSTGRES_HOST:-postgres}" --port 5432 --username aiops --dbname aiops \
     --set ON_ERROR_STOP=1 \
     --set runtime_password="$AIOPS_DB_RUNTIME_PASSWORD" \
     --set migrator_password="$AIOPS_DB_MIGRATOR_PASSWORD" \

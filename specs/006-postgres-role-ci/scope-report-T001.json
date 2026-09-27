@@ -1,17 +1,24 @@
 {
-  "base_commit": "84fda3ee2",
+  "base_commit": "84fda3ee2059c6843025904f9a422603ca439ffe",
   "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/006-postgres-role-ci/scope-baseline-T001.json",
-  "new_files": [],
+  "new_files": [
+    "examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh"
+  ],
   "modified_preexisting_files": [
     ".github/workflows/develop-me-aiops.yml",
+    "examples/openobserve-aiops/bootstrap-postgresql-roles.sh",
     "ROADMAP.md"
   ],
   "touched_files": [
     ".github/workflows/develop-me-aiops.yml",
+    "examples/openobserve-aiops/bootstrap-postgresql-roles.sh",
+    "examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh",
     "ROADMAP.md"
   ],
   "allow_patterns": [
     ".github/workflows/develop-me-aiops.yml",
+    "examples/openobserve-aiops/bootstrap-postgresql-roles.sh",
+    "examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh",
     "ROADMAP.md",
     "specs/006-postgres-role-ci/**"
   ],

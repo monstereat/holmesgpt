@@ -1,5 +1,1 @@
-Command: ruby -e 'require "yaml"; YAML.load_file(".github/workflows/develop-me-aiops.yml"); puts "workflow YAML parsed"'
-Result: workflow YAML parsed
-
-Command: git diff --check
-Result: passed
+workflow YAML parsed

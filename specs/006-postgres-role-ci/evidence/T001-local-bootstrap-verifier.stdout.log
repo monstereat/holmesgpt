@@ -1,0 +1,1 @@
+PostgreSQL local bootstrap verification passed: idempotent setup, distinct role passwords, runtime DML, and schema creation denial.

@@ -35,7 +35,10 @@
       "description": "CI 执行隔离 role verifier。"
     },
     "AC-03": {
-      "description": "本机 verifier、YAML parse 和 diff check 通过。"
+      "description": "CI validates local password bootstrap idempotency, runtime/migrator authentication, and permissions in isolated no-network PostgreSQL."
+    },
+    "AC-04": {
+      "description": "Both local PostgreSQL verifiers and workflow YAML syntax validation pass."
     }
   },
   "tasks": {
@@ -44,26 +47,31 @@
       "acceptance_criteria": [
         "AC-01",
         "AC-02",
-        "AC-03"
+        "AC-03",
+        "AC-04"
       ],
       "allowed_paths": [
         ".github/workflows/develop-me-aiops.yml",
+        "examples/openobserve-aiops/bootstrap-postgresql-roles.sh",
+        "examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh",
         "ROADMAP.md",
         "specs/006-postgres-role-ci/**"
       ],
       "commands": [
         "bash examples/openobserve-aiops/verify-postgresql-roles.sh",
-        "ruby -e YAML parse workflow",
+        "bash examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh",
+        "Ruby Psych YAML parse workflow",
         "git diff --check"
       ],
       "status": "done",
       "check_ids": [
         "T001-postgresql-role-verifier",
+        "T001-local-bootstrap-verifier",
         "T001-workflow-parse"
       ],
       "scope_report": {
         "path": "specs/006-postgres-role-ci/scope-report-T001.json",
-        "sha256": "5f35398452f0e7581e419f062e9450ed3b22aa08d25596b08e822091f4ce916a"
+        "sha256": "3b27aed26550de83ed8aa51dc632553b0b3b86b481db49908fdf3a49b1501813"
       }
     }
   },
@@ -91,6 +99,19 @@
       "exit_code": 0,
       "result": "pass",
       "stdout_log": "specs/006-postgres-role-ci/evidence/T001-workflow-parse.txt"
+    },
+    {
+      "id": "T001-local-bootstrap-verifier",
+      "type": "command",
+      "kind": "integration",
+      "task": "T001",
+      "command": "bash examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/006-postgres-role-ci/evidence/T001-local-bootstrap-verifier.stdout.log",
+      "stderr_log": "specs/006-postgres-role-ci/evidence/T001-local-bootstrap-verifier.stderr.log",
+      "summary": "Idempotent bootstrap with distinct role credentials passed on PostgreSQL 16.6 using --network none and shared loopback; runtime DML permitted, schema creation denied, identical passwords rejected."
     }
   ],
   "events": [
@@ -105,8 +126,14 @@
       "action": "begin_verify",
       "status": "verifying",
       "note": "All task work is complete; hosted GitHub execution remains an external verification."
+    },
+    {
+      "at": "2026-09-27T08:10:00Z",
+      "action": "record_observation",
+      "status": "verifying",
+      "note": "Local password bootstrap verifier passed; temporary DB container was removed by its cleanup trap and had no network or persistent volume."
     }
   ],
   "created_at": "2026-09-27T07:56:06Z",
-  "updated_at": "2026-09-27T07:56:06Z"
+  "updated_at": "2026-09-27T08:10:00Z"
 }

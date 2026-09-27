@@ -21,6 +21,7 @@ on:
       - 'examples/openobserve-aiops/postgresql-local-role-passwords.psql'
       - 'examples/openobserve-aiops/bootstrap-postgresql-roles.sh'
       - 'examples/openobserve-aiops/verify-postgresql-roles.sh'
+      - 'examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh'
       - 'examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md'
       - '.github/workflows/develop-me-aiops.yml'
   workflow_dispatch:
@@ -75,3 +76,5 @@ jobs:
         run: bash examples/openobserve-aiops/verify-postgresql-backup.sh
       - name: Verify PostgreSQL role separation and runtime grants
         run: bash examples/openobserve-aiops/verify-postgresql-roles.sh
+      - name: Verify local PostgreSQL password bootstrap
+        run: bash examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh

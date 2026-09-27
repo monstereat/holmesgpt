@@ -5,6 +5,13 @@
     ".github/workflows/develop-me-aiops.yml": {
       "kind": "file",
       "sha256": "81cf4d6fb27911d9c9fca208e41bef05eee2a2389bf13d541888c1f460297ff0"
+    },
+    "examples/openobserve-aiops/bootstrap-postgresql-roles.sh": {
+      "kind": "file",
+      "sha256": "77cd66c6f099d462eeaf2ee75a777ae056fd0c620d12a5baed9c5ca6212f4029"
+    },
+    "examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh": {
+      "kind": "absent"
     }
   },
   "internal_patterns": [
