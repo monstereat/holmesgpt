@@ -48,7 +48,7 @@ counts remained unchanged. This is evidence for this local test volume only.
 The bootstrap ownership transfer is intentionally specific to the local
 `aiops` database and is not a managed-production migration procedure.
 
-On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; a direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. Counts remain 11 incidents, 11 tasks, 53 audit rows, and 11 outbox rows. The API is healthy locally; Holmes is currently unhealthy because `DEEPSEEK_API_KEY` is absent from the local runtime environment, so the Celery worker has not started. This is still test-only evidence.
+On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; a direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. After loading the documented mode-0600 local DeepSeek key file, Holmes and the Celery worker became healthy. A synthetic webhook then produced one incident/task; the worker completed the first attempt, persisted the matching Trace ID and OpenObserve query tool in the task result, and appended `task.completed` to audit history. Counts are 12 incidents, 12 tasks, 54 audit rows, and 12 outbox rows. This is still test-only evidence.
 
 ## Release migration sequence
 

@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境当前状态（2026-09-28）：Incident API `/readyz` healthy，地址 `http://localhost:8081`；PostgreSQL、Redis、策略代理、order-service healthy。PostgreSQL 已应用 migrations `0001`–`0010`，API 使用 `aiops_runtime`，Celery 使用独立 `aiops_worker`，migration 使用 `aiops_migrator`；worker 权限已实测不能访问用户表或修改事故/审计记录。本机业务数据保持 incidents/tasks/audit/outbox **11/11/53/11**。事故服务隔离全套 **126 passed，1 个上游弃用 warning**；独立 PostgreSQL 16 角色、bootstrap、明文/加密备份恢复验证通过。当前 Holmes API 因运行环境没有持久配置 `DEEPSEEK_API_KEY` 而 unhealthy，incident-worker 尚未启动；需将密钥写入本机受保护运行配置后才能恢复真实模型调查。Docker VM 磁盘使用率仍约 99%（约 1 GiB 可用）；仅清理了可重建构建缓存及本项目一张无容器引用的旧 Holmes API 镜像，没有删除数据卷或其他项目镜像/容器。评测根因诊断仍为 `not_scored`；正式生产平台未选定，当前仅是本机测试部署。**
+**本机 Docker 测试环境当前状态（2026-09-28）：Incident API `/readyz` healthy，地址 `http://localhost:8081`；Holmes API、incident-worker、PostgreSQL、Redis、策略代理、order-service healthy。DeepSeek key 从文档指定的本机私密文件 `~/.config/holmesgpt-aiops/deepseek.env` 加载，权限为 0600，未写入仓库。PostgreSQL 已应用 migrations `0001`–`0010`，API 使用 `aiops_runtime`，Celery 使用独立 `aiops_worker`，migration 使用 `aiops_migrator`；worker 权限已实测不能访问用户表或修改事故/审计记录。worker 隔离后新增一条本机合成告警，任务 `f38501b9-46d2-4cdc-b079-b3797c158e87` 首次尝试完成，持久结果包含告警 Trace ID 与 OpenObserve 查询工具名，审计有 `task.completed`。业务数据当前行数 incidents/tasks/audit/outbox **12/12/54/12**。事故服务隔离全套 **126 passed，1 个上游弃用 warning**；独立 PostgreSQL 16 角色、bootstrap、明文/加密备份恢复验证通过。Docker VM 磁盘使用率仍约 99%；清理过可重建构建缓存和本项目一张无容器引用的旧 Holmes API 镜像，没有删除数据卷或其他项目镜像/容器。评测根因诊断仍为 `not_scored`；正式生产平台未选定，当前仅是本机测试部署。**
 
 ## 已完成并验证
 
@@ -15,7 +15,9 @@
 ## 实施状态与验证
 
 - 2026-09-28 Celery worker 数据库权限隔离：新增 migration `0010_worker_database_privileges` 和 `aiops_worker` 角色；worker 仅能读取事故/任务/outbox、更新处理所需任务/outbox 字段、追加 worker audit，不能访问 `users`、更新事故、修改/删除审计或创建 schema。API 保留 OIDC 组映射同步所需的 `aiops_runtime` 权限，API 内的 outbox dispatcher 明确使用 API 数据库连接；Celery 消费端独立读取 `WORKER_DATABASE_URL`。隔离 PostgreSQL 角色 verifier、幂等密码 bootstrap、备份恢复 verifier 通过；事故服务全套 **126 passed，1 warning**。本机 PostgreSQL 已应用 migration 0010，角色权限查询为 worker `SELECT/UPDATE/INSERT` 正常项通过、users/incident/audit mutation 拒绝；行数保持 11/11/53/11。
-- 2026-09-28 本机服务恢复状态：更新 Compose 后 PostgreSQL 曾因 Docker VM 空间不足无法完成 recovery checkpoint；清理 1.642 GiB 可重建构建缓存和本项目一张已无容器引用的旧 Holmes API 镜像后，PostgreSQL WAL recovery 成功，迁移记录为 10、业务计数未变，Incident API `/readyz` 返回 200。当前 Holmes API healthcheck 因本机运行环境没有可持久读取的 `DEEPSEEK_API_KEY` 而失败，incident-worker 依赖 Holmes healthy 因此未启动；没有把 key 写入代码或提交。Docker VM 仍约 99% 使用率，须预留空间。
+- 2026-09-28 本机服务恢复状态：更新 Compose 后 PostgreSQL 曾因 Docker VM 空间不足无法完成 recovery checkpoint；清理 1.642 GiB 可重建构建缓存和本项目一张已无容器引用的旧 Holmes API 镜像后，PostgreSQL WAL recovery 成功，迁移记录为 10，Incident API `/readyz` 返回 200。此时未从 README 指定的 DeepSeek 私密 key 文件加载凭据，Holmes healthcheck 失败、worker 未启动；后续恢复情况见本机 smoke 验收。Docker VM 仍约 99% 使用率，须预留空间。
+- 2026-09-28 文档状态同步：修正 `docs/develop-me-roadmap.md` 顶部仍引用 migration 0008、105 项测试和不准确运行态的过期总结；更新为 migration 0001–0010、126 项隔离测试证据，以及 Holmes key 配置恢复前后的准确状态。历史 DeepSeek live 报告保留为历史证据，诊断分数仍为 `not_scored`。
+- 2026-09-28 worker 权限隔离后调查 smoke：从 README 指定的权限 0600 私密 key 文件加载 DeepSeek key，Compose 配置校验通过，Holmes `/readyz` HTTP 200、Celery worker healthy、Incident API `/readyz` HTTP 200。向本机 webhook 提交一条关联既有 synthetic fixture Trace ID/时间戳的测试告警，收到 202 并创建独立 incident/task；task 首次尝试 `completed`，持久结果包含准确 Trace ID 与 `openobserve_search_logs` 工具名，审计产生 `task.completed`。业务行数为 incidents/tasks/audit/outbox **12/12/54/12**。仅验证本机合成数据链路，不代表真实生产数据/平台验收或根因诊断质量评分。
 
 - 2026-09-27 镜像安全修复复验：Holmes AnyIO 更新为 4.15.1；事故 API 的 FastAPI/Starlette 更新到 0.141.1/1.3.1；订单服务升级 OpenTelemetry，固定 Multer 修复版本并改用 Node 24，运行镜像安装生产依赖后移除 npm/npx；GitPython 开发依赖锁到 3.1.62。`poetry check --lock` 通过；本机镜像 Trivy 扫描 incident API/worker、policy proxy、order-service 均为 0 个可修复 HIGH/CRITICAL，订单 Node 测试 **19 passed**，incident API 测试 **123 passed**；`npm audit --omit=dev` 对官方 npm registry 结果为 0 HIGH/CRITICAL、5 MODERATE、1 LOW。Docker TypeScript build 通过。GitHub Actions run [36311222026](https://github.com/monstereat/holmesgpt/actions/runs/36311222026) 对 Holmes、incident API/worker、policy proxy、order-service 全部完成构建、固定 HIGH/CRITICAL 扫描、SPDX SBOM 生成和上传，四个 job 均成功；该提交级镜像门禁已通过。
 - 2026-09-28 Docker Desktop 意外退出后恢复：宿主 Docker 引擎关闭时本机容器均停止；重新启动 Docker Desktop 后，本项目 Compose 服务恢复 healthy，incident API `/readyz` 返回 `ready`，Redis AOF 状态为 `ok`。核对 PostgreSQL 中事故/任务/审计/outbox 行数仍为 **11/11/53/11**，证明此次恢复未丢失本机测试数据。Docker Desktop 数据盘仍接近满载；当前未清理镜像、容器或卷，后续需先处理宿主磁盘容量再做大规模镜像构建/扫描。该事件仅记录单次本机恢复，不构成自动拉起或灾备能力验收。
@@ -141,14 +143,14 @@
 ## 阻塞与授权门槛
 
 - 本机测试 PostgreSQL schema/migration 已获用户明确授权；`0003_incident_retrospectives` 已应用于当前 Docker 测试库。授权不包含正式数据库或任何生产数据。
-- DeepSeek 凭据已配置在本机私有文件中，没有进入仓库。OpenObserve OSS 没有原生 RBAC；当前本机策略代理和 Docker 网络强制 Holmes 仅能访问两条受限只读路由，但不提供 OpenObserve 原生用户/租户隔离，也不能防止本机 Docker 管理员或代理被攻破。
+- DeepSeek key 位于 README 指定的本机私密文件 `~/.config/holmesgpt-aiops/deepseek.env`，未写入仓库；Holmes API 与 worker 当前 healthy。OpenObserve OSS 没有原生 RBAC；当前本机策略代理和 Docker 网络强制 Holmes 仅能访问两条受限只读路由，但不提供 OpenObserve 原生用户/租户隔离，也不能防止本机 Docker 管理员或代理被攻破。
 - 本机 Docker 服务已运行；每次从新 shell 管理 Compose 前需加载本机私有运行变量文件 `/tmp/holmesgpt-aiops-test-runtime.sh`（权限 0600）。该临时文件不在仓库中，系统清理 `/tmp` 后需重新生成配置。
 - 用户要求先在当前 Mac Docker Desktop/Compose 本地测试环境运行和验证；正式生产平台尚未选择。实现和本地验证不代表生产部署授权；实际启用生产流量、迁移生产数据或执行生产处置前，仍需依据具体部署包、风险和回退计划完成最终确认。
 
 ## 最近验证（2026-09-28）
 
-- 2026-09-28 提交 `207a75639` 远端 CI：`develop-me AIOps checks` run [36344328302](https://github.com/monstereat/holmesgpt/actions/runs/36344328302) 成功；`AIOps container build and security` run [36344328400](https://github.com/monstereat/holmesgpt/actions/runs/36344328400) 的 Holmes API、policy proxy、order-service、incident API/worker 四个构建与安全扫描 job 均成功。该证据覆盖仓库 CI，不表示本机 Holmes 已因缺失 DeepSeek key 恢复，也不表示生产环境已部署。
-- 2026-09-28 worker 数据库最小权限与本机恢复：隔离 PostgreSQL 角色/bootstrap/备份恢复 verifier 通过，事故服务隔离 Compose 套件 **126 passed，1 个上游弃用 warning**；本机 migration `0010` 已应用，业务计数保持 11/11/53/11，Incident API `/readyz` 为 healthy。Docker VM 曾因构建空间不足触发 PostgreSQL recovery checkpoint 异常；清理 1.642 GiB 可重建缓存和本项目一张无容器引用旧镜像后，WAL recovery 与 finalize 成功，未删除数据卷或其他项目资源。当前 Holmes API 因本机运行环境中缺少持久可用的 `DEEPSEEK_API_KEY` 未 healthy，incident worker 因依赖健康门禁未启动；需恢复本地私密密钥后复验模型调查链路。Docker VM 仍约 99% 使用率，暂停进一步大型镜像构建。
+- 2026-09-28 提交 `207a75639` 远端 CI：`develop-me AIOps checks` run [36344328302](https://github.com/monstereat/holmesgpt/actions/runs/36344328302) 成功；`AIOps container build and security` run [36344328400](https://github.com/monstereat/holmesgpt/actions/runs/36344328400) 的 Holmes API、policy proxy、order-service、incident API/worker 四个构建与安全扫描 job 均成功。该证据覆盖仓库 CI，不表示生产环境已部署。
+- 2026-09-28 worker 数据库最小权限与本机恢复：隔离 PostgreSQL 角色/bootstrap/备份恢复 verifier 通过，事故服务隔离 Compose 套件 **126 passed，1 个上游弃用 warning**；本机 migration `0010` 已应用。Docker VM 曾因构建空间不足触发 PostgreSQL recovery checkpoint 异常；清理 1.642 GiB 可重建缓存和本项目一张无容器引用旧镜像后，WAL recovery 与 finalize 成功，未删除数据卷或其他项目资源。随后从 README 指定的本机私密 key 文件恢复 Holmes/worker：Holmes 与 API readiness HTTP 200，worker healthy；合成告警调查 smoke 首次尝试完成，具体结果见相邻记录。Docker VM 仍约 99% 使用率，暂停进一步大型镜像构建。
 
 - 2026-09-27 RCA 盲评修复复验：Docker 隔离下 `test_review_scoring.py` **7 passed**。live report 生成 reviewer A/B 两份 20 案盲评表和独立答案 key；递归检查确认评审表不含参考字段、key 含 20 案、权限均为 `0600`。本机评审材料位于 `/tmp/holmes-aiops-review-20260927-blind-reviewer-{a,b}.json`，答案 key 为 `/tmp/holmes-aiops-review-20260927-answer-key.json`。此前 v1 sheet 含参考答案，不得继续用于盲评；两名独立人工评审和裁决仍未完成。
 

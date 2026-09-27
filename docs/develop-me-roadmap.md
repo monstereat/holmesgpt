@@ -1,12 +1,12 @@
 # AI 智能运维与故障诊断平台：二次开发路线图
 
-> 仓库：`monstereat/holmesgpt`｜固定开发分支：`develop-me`｜更新：2026-09-27
+> 仓库：`monstereat/holmesgpt`｜固定开发分支：`develop-me`｜更新：2026-09-28
 > 开源底座：HolmesGPT；集成 OpenObserve、前端监控 SDK、NestJS、OpenTelemetry，Keep 按需加入。  
 > 范围：先在当前电脑 Docker 测试环境围绕真实应用故障建立「采集 → 告警 → 调查 → 审批处置 → 验证 → 复盘」闭环；正式环境部署后续另行规划和授权；不自建日志数据库。
 
-> **当前验收状态（2026-09-27）：** T000–T009 的本机实现和测试环境编排已落地；incident API 已应用 migration `0008_incident_triage`，工作台支持事故分级、负责人指派和状态流转，服务端逐次校验 operator/admin 角色、order-service 资源范围及合法状态转换，并记录审计。状态规则为 open→investigating/closed、investigating→awaiting_approval/resolved/closed、awaiting_approval→investigating/resolved/closed、resolved→investigating/closed，closed 为终态；resolved/closed 不可分级或指派。当前事故服务隔离 Compose 套件 **105 passed、1 个上游弃用 warning**；8 个 migration 的 PostgreSQL 16 备份恢复验证、API `/healthz`/`readyz`、本地登录、11 条事故的新增字段和 UI 控件均已验收。事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务在同一个 Docker Compose project 运行。工作台角色审批、测试动作和复盘闭环已有浏览器验收。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新报告含 20 案、40 条合成记录、20/20 案例证据命中、3/3 发布事件命中、0 次未限定成功查询、0 个已识别的跨案例 fixture 命中和 0 个工具错误，schema 1.3 通过 Draft 2020-12 校验。诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
+> **当前验收状态（2026-09-28）：** 本机 incident API 的事故分级、负责人指派和状态流转仍由服务端逐次校验 operator/admin 角色、order-service 资源范围及合法状态转换，并记录审计；closed 为终态，resolved/closed 不可分级或指派。本机 PostgreSQL 已应用 migration `0001`–`0010`，API 使用 `aiops_runtime`、Celery worker 使用最小权限 `aiops_worker`、migration 使用 `aiops_migrator`；worker 数据库权限 verifier、幂等 bootstrap、明文/加密备份恢复 verifier 通过。事故服务隔离 Compose 套件 **126 passed、1 个上游弃用 warning**。本机业务行数为 incidents/tasks/audit/outbox **12/12/54/12**；Incident API 和 Holmes `/readyz` 返回 200，worker healthy。DeepSeek key 由本机 mode-0600 私密文件提供；worker 权限隔离后，一条 synthetic webhook 调查首试完成，结果含该事故 Trace ID 和 OpenObserve 搜索工具调用，并记录 `task.completed`。这只验证本机测试闭环；历史 20 案报告诊断仍 `not_scored`，不代表准确率或生产效果。Docker VM 约 99% 使用率。没有部署到生产环境。
 
-> **数据库上线差距：** 本机 PostgreSQL 16 的 migrations `0001`–`0008`、runtime/migrator 权限和隔离备份恢复均已验证；数据库发布顺序、迁移失败处理、应用回滚兼容边界和恢复步骤见 [`POSTGRESQL-OPERATIONS.md`](../examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md)。目标托管数据库尚未选定，因此 provider/IAM 兼容、加密异地备份、PITR、实测恢复时间及 staging 回滚演练未完成。
+> **数据库上线差距：** 本机 PostgreSQL 16 的 migrations `0001`–`0010`、API/worker/migrator 分权和隔离备份恢复均已验证；数据库发布顺序、迁移失败处理、应用回滚兼容边界和恢复步骤见 [`POSTGRESQL-OPERATIONS.md`](../examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md)。目标托管数据库尚未选定，因此 provider/IAM 兼容、加密异地备份、PITR、实测恢复时间及 staging 回滚演练未完成。
 
 ## 1. 功能边界
 
@@ -52,7 +52,7 @@
 - [x] `.github/workflows/develop-me-aiops.yml` 已提交独立工具集测试工作流定义。
 - [x] 本地 OpenObserve 验证：日志、前端错误流、Trace 均收到相同 Trace ID；生产凭据、RBAC 和查询兼容性仍待验。
 - [x] 浏览器 SDK → NestJS HTTP 500 → `app_logs` / `frontend_errors` / OpenTelemetry Trace 使用同一 Trace ID（真实浏览器 + 本机 OpenObserve 已验）。
-- [x] 告警 worker 已可调用本机 Holmes 非流式 API；DeepSeek live 调用与 20 案评测已运行，具体检索覆盖及工具错误见本文最新验收增量，根因诊断质量仍待人工 rubric 评分。
+- [x] 告警 worker 到本机 Holmes 非流式 API 的调查链路和 DeepSeek live 调用、20 案评测曾完成；当前本机 DeepSeek key 缺失，无法运行态复验。具体历史检索覆盖见留存报告，根因诊断质量仍待人工 rubric 评分。
 - [x] 建立可回放的订单 HTTP 500 故障注入；调查录像是可选演示材料，不作为产品验收项。
 
 ## 3. P1：展示工程可靠性的功能
