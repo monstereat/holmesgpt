@@ -24,6 +24,7 @@ on:
       - 'examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh'
       - 'examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md'
       - '.github/workflows/develop-me-aiops.yml'
+      - '.github/workflows/publish-aiops-images.yml'
   workflow_dispatch:
 
 permissions:

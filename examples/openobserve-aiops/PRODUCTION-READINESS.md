@@ -34,7 +34,7 @@ Do not fill in values until an owner has selected and approved each item. Store 
 | Telemetry | OpenObserve endpoint/org, least-privilege writer and read-only identities, tenant/stream allowlist | `ZO_ROOT_USER_EMAIL`, `ZO_ROOT_USER_PASSWORD`, proxy credentials |
 | Alert intake | Public or private webhook route, signature rotation, source allowlist, rate limits | `ALERT_WEBHOOK_TOKEN` |
 | Action owner | Service-specific action owner, resource allowlist, approval roles, idempotency, verification and rollback contract | `ORDER_ACTION_TOKEN`, demo-only `set-chaos-mode` action |
-| Images and release | Registry, immutable image digests, SBOM/signing policy, promotion path, source revision, caller deployment job, and protected webhook secrets | [AIOps container security workflow](../../.github/workflows/aiops-container-security.yml) builds the Holmes API, incident API/worker, policy proxy, and order-service images, fails on fixed HIGH/CRITICAL OS/library findings, and retains SPDX SBOM artifacts. It deliberately does not publish images; registry choice, immutable digest promotion, signatures/attestations, deployment caller, remote secret binding, and staging/production release acceptance remain unconfigured. [`publish-release-event.mjs`](demo/order-service/scripts/publish-release-event.mjs) remains a provider-neutral HMAC sender, and the local sender→NestJS→OpenObserve synthetic event path passes. |
+| Images and release | Registry, immutable image digests, SBOM/signing policy, promotion path, source revision, caller deployment job, and protected webhook secrets | [AIOps container security workflow](../../.github/workflows/aiops-container-security.yml) builds and scans the four app images, retaining SPDX SBOM artifacts. A separate [`publish-aiops-images.yml`](../../.github/workflows/publish-aiops-images.yml) reusable workflow now accepts the caller-selected OCI registry, repository namespace, target platforms, and credentials; it builds/pushes unique run-tagged images with BuildKit SBOM/provenance, scans the exact published digest, creates a GitHub provenance attestation, and uploads a digest deployment manifest per image. It has not been invoked against a registry; registry selection, protected caller/environment, credential binding, and staging release acceptance remain open. If a scan fails, the already-pushed candidate remains in the registry; only successful workflow digests may be promoted, and registry retention must remove abandoned candidates. The attestation uses GitHub's attestation service; public repositories can use it on current plans, while private/internal repositories require GitHub Enterprise Cloud. [`publish-release-event.mjs`](demo/order-service/scripts/publish-release-event.mjs) remains a provider-neutral HMAC sender, and the local sender→NestJS→OpenObserve synthetic event path passes. |
 | Operations | Service SLOs, alert thresholds, retention, incident owner, on-call, backup RPO/RTO, metrics scrape identity, task admission capacity | `AIOPS_METRICS_TOKEN`, `AIOPS_MAX_PENDING_TASKS`, and owner-selected `AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS` are required outside local mode; capacity must come from an approved load test |
 
 The current macOS Docker Desktop host is for local testing only; it has not been selected as a production host. Before generating an executable production deployment bundle, select the production platform and network boundary, identity provider, secret handling, PostgreSQL/Redis ownership and TLS material, OpenObserve edition/tenant model and least-privilege identity, model data-use policy, alert destination, retention, capacity/SLO/RPO/RTO, and production action owner. No values may be copied from the local test stack or invented.
@@ -81,6 +81,26 @@ Re-run the isolated PostgreSQL 16 role and migration check with `bash examples/o
 The eventual platform-specific bundle must satisfy all of the following before staging acceptance:
 
 The `develop-me AIOps checks` workflow listens to `develop-me` and `feature/openobserve-aiops`, runs the policy-proxy unit tests without network access, the Incident API/workbench suite against an isolated tmpfs PostgreSQL instance with ephemeral credentials, and the Collector, alert, backup, role, and local-bootstrap verifiers. Its checkout and Python setup actions are pinned to signed full commit SHAs and its `GITHUB_TOKEN` is limited to `contents: read`. GitHub Actions [run 36336743432](https://github.com/monstereat/holmesgpt/actions/runs/36336743432) for commit `284cca019` completed successfully. This remains repository-level CI coverage; confirm branch protection and required-check settings in the selected GitHub repository before treating it as a merge or release gate.
+
+The reusable image publisher is deliberately `workflow_call` only. After selecting the registry, create a protected GitHub Environment with required reviewers and deployment-branch restrictions; place `AIOPS_REGISTRY_USERNAME` and `AIOPS_REGISTRY_PASSWORD` in that environment. A caller can use this contract:
+
+```yaml
+jobs:
+  publish:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/publish-aiops-images.yml
+    with:
+      registry: ${{ vars.AIOPS_REGISTRY }}
+      image_namespace: ${{ vars.AIOPS_IMAGE_NAMESPACE }}
+      platforms: ${{ vars.AIOPS_IMAGE_PLATFORMS }}
+      release_environment: ${{ vars.AIOPS_RELEASE_ENVIRONMENT }}
+```
+
+The reusable job pauses on the named environment's protection rules before it accesses environment-scoped registry secrets. Restrict environment deployment branches to reviewed release refs; do not create an unprotected environment with this name. Download the four `aiops-image-*` manifest artifacts and deploy by each recorded `image@sha256:...` digest, never by the convenience tag. Verify GitHub provenance with `gh attestation verify oci://<image-reference> -R <owner/repository>` after registry publication. This workflow has no caller and has not been run; do not configure production secrets or treat it as a production release gate until a registry and caller are selected and the full workflow is rehearsed in staging.
 
 - Pin each application image by immutable digest; build and scan in CI, then promote the same artifact between environments. Do not use floating tags.
 - Run application containers as non-root, with a read-only root filesystem, all unnecessary Linux capabilities dropped, privilege escalation disabled, and only bounded writable temporary storage. Local Compose applies these controls to Holmes (UID 10001), incident API/worker (`app`), order-service (`node`), and OTel Collector (UID 10001). Validate equivalent controls and writable paths on the selected platform.
