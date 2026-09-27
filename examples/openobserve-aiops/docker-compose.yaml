@@ -100,7 +100,7 @@ services:
     networks:
       - app
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG && redis-cli --raw INFO persistence | grep -q '^aof_last_write_status:ok'"]
       interval: 5s
       timeout: 3s
       retries: 20

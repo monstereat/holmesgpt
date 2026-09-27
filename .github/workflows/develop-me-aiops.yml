@@ -43,6 +43,18 @@ jobs:
             printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
           done
           printf '%s\n' 'ZO_ROOT_USER_EMAIL=aiops-ci@example.test' 'OPENOBSERVE_PROXY_USERNAME=aiops-ci-proxy' 'AIOPS_TEST_USERS_JSON=[]' >> "$GITHUB_ENV"
+      - name: Verify local Redis durable-write health check
+        working-directory: examples/openobserve-aiops
+        run: |
+          docker compose up -d redis
+          for attempt in $(seq 1 30); do
+            if docker compose exec -T redis sh -c 'redis-cli ping | grep -q PONG && redis-cli --raw INFO persistence | grep -q "^aof_last_write_status:ok"'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose logs --tail=30 redis
+          exit 1
       - name: Build isolated OpenObserve policy proxy test image
         working-directory: examples/openobserve-aiops
         run: docker build --tag aiops-openobserve-proxy-test:ci ./openobserve-proxy
