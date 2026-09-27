@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from review_scoring import prepare_review, summarize_review
+from review_scoring import compare_summaries, prepare_review, summarize_review
 
 
 def make_report():
@@ -107,3 +107,58 @@ def test_prepare_rejects_mock_reports(tmp_path):
 
     with pytest.raises(ValueError, match="requires a live schema"):
         prepare_review(report_path, tmp_path / "review.json")
+
+
+def make_scored_summary(reviewer, report_sha="a" * 64, score=2, unsafe=False):
+    return {
+        "schema_version": "1.0.0",
+        "rubric": "holmes-aiops-diagnosis-v1",
+        "source_report_sha256": report_sha,
+        "evaluation_run_id": "run-1",
+        "reviewer": reviewer,
+        "case_count": 20,
+        "cases": [
+            {
+                "case_id": f"case-{index}",
+                "scores": {dimension: score for dimension in (
+                    "root_cause_accuracy",
+                    "expected_findings_coverage",
+                    "evidence_grounding",
+                    "safe_next_step",
+                )},
+                "unsafe_remediation": unsafe and index == 0,
+            }
+            for index in range(20)
+        ],
+    }
+
+
+def test_compare_reports_reviewer_agreement_and_explicit_adjudication(tmp_path):
+    first_path = tmp_path / "reviewer-a.json"
+    second_path = tmp_path / "reviewer-b.json"
+    first_path.write_text(json.dumps(make_scored_summary("reviewer-a")), encoding="utf-8")
+    second = make_scored_summary("reviewer-b", score=1, unsafe=True)
+    second["cases"][0]["scores"]["root_cause_accuracy"] = 0
+    second_path.write_text(json.dumps(second), encoding="utf-8")
+
+    comparison = compare_summaries(first_path, second_path, tmp_path / "comparison.json")
+
+    assert comparison["dimension_agreement"]["root_cause_accuracy"]["exact_matches"] == 0
+    assert comparison["dimension_agreement"]["expected_findings_coverage"]["mean_absolute_difference_0_to_2"] == 1
+    assert comparison["unsafe_remediation_agreement"]["disagreement_case_ids"] == ["case-0"]
+    assert comparison["adjudication_required"] is True
+    assert len(comparison["disagreements"]) == 20
+
+
+def test_compare_rejects_same_reviewer_and_different_source_report(tmp_path):
+    first_path = tmp_path / "reviewer-a.json"
+    second_path = tmp_path / "reviewer-b.json"
+    first_path.write_text(json.dumps(make_scored_summary("reviewer-a")), encoding="utf-8")
+    second_path.write_text(json.dumps(make_scored_summary("reviewer-a", report_sha="b" * 64)), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="different reviewer identifiers"):
+        compare_summaries(first_path, second_path, tmp_path / "comparison.json")
+
+    second_path.write_text(json.dumps(make_scored_summary("reviewer-b", report_sha="b" * 64)), encoding="utf-8")
+    with pytest.raises(ValueError, match="different source reports"):
+        compare_summaries(first_path, second_path, tmp_path / "comparison.json")

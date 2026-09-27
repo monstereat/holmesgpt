@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import math
+import string
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -204,6 +205,140 @@ def summarize_review(
     return summary
 
 
+def compare_summaries(
+    first_path: Path,
+    second_path: Path,
+    output_path: Path,
+) -> dict[str, Any]:
+    first = _read_json(first_path)
+    second = _read_json(second_path)
+    for summary in (first, second):
+        if not isinstance(summary, dict) or summary.get("schema_version") != "1.0.0":
+            raise ValueError("unsupported human review summary")
+        if summary.get("rubric") != "holmes-aiops-diagnosis-v1":
+            raise ValueError("unsupported scoring rubric")
+        if not isinstance(summary.get("reviewer"), str) or not summary["reviewer"].strip():
+            raise ValueError("review summary needs a reviewer identifier")
+        report_sha = summary.get("source_report_sha256")
+        if (
+            not isinstance(report_sha, str)
+            or len(report_sha) != 64
+            or any(character not in string.hexdigits for character in report_sha)
+        ):
+            raise ValueError("review summary needs a source report SHA-256")
+        if not isinstance(summary.get("evaluation_run_id"), str) or not summary["evaluation_run_id"]:
+            raise ValueError("review summary needs an evaluation run ID")
+        if summary.get("case_count") != 20 or not isinstance(summary.get("cases"), list):
+            raise ValueError("review summary must contain all 20 cases")
+
+    if first["reviewer"].strip().casefold() == second["reviewer"].strip().casefold():
+        raise ValueError("independent reviews must have different reviewer identifiers")
+    if first["source_report_sha256"] != second["source_report_sha256"]:
+        raise ValueError("review summaries refer to different source reports")
+    if first["evaluation_run_id"] != second["evaluation_run_id"]:
+        raise ValueError("review summaries refer to different evaluation runs")
+
+    def index_cases(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        indexed: dict[str, dict[str, Any]] = {}
+        for case in summary["cases"]:
+            if not isinstance(case, dict) or not isinstance(case.get("case_id"), str):
+                raise ValueError("review summary contains an invalid case")
+            case_id = case["case_id"]
+            if case_id in indexed:
+                raise ValueError("review summary contains duplicate case IDs")
+            scores = case.get("scores")
+            if not isinstance(scores, dict):
+                raise ValueError(f"case {case_id} is missing scores")
+            for dimension in DIMENSIONS:
+                value = scores.get(dimension)
+                if isinstance(value, bool) or not isinstance(value, int) or value not in {0, 1, 2}:
+                    raise ValueError(f"case {case_id} needs a 0, 1, or 2 for {dimension}")
+            if not isinstance(case.get("unsafe_remediation"), bool):
+                raise ValueError(f"case {case_id} needs a boolean unsafe_remediation score")
+            indexed[case_id] = case
+        if len(indexed) != 20:
+            raise ValueError("review summary must contain 20 unique case IDs")
+        return indexed
+
+    first_cases = index_cases(first)
+    second_cases = index_cases(second)
+    if first_cases.keys() != second_cases.keys():
+        raise ValueError("review summaries contain different case IDs")
+
+    dimension_comparison = {}
+    for dimension in DIMENSIONS:
+        differences = [
+            abs(first_cases[case_id]["scores"][dimension] - second_cases[case_id]["scores"][dimension])
+            for case_id in first_cases
+        ]
+        exact_matches = sum(difference == 0 for difference in differences)
+        dimension_comparison[dimension] = {
+            "exact_matches": exact_matches,
+            "exact_match_percent": round(100 * exact_matches / len(differences), 2),
+            "mean_absolute_difference_0_to_2": round(math.fsum(differences) / len(differences), 4),
+        }
+
+    unsafe_disagreements = [
+        case_id
+        for case_id in first_cases
+        if first_cases[case_id]["unsafe_remediation"] != second_cases[case_id]["unsafe_remediation"]
+    ]
+    case_disagreements = []
+    for case_id in first_cases:
+        first_case = first_cases[case_id]
+        second_case = second_cases[case_id]
+        differing_dimensions = {
+            dimension: {
+                first["reviewer"]: first_case["scores"][dimension],
+                second["reviewer"]: second_case["scores"][dimension],
+            }
+            for dimension in DIMENSIONS
+            if first_case["scores"][dimension] != second_case["scores"][dimension]
+        }
+        unsafe_differs = first_case["unsafe_remediation"] != second_case["unsafe_remediation"]
+        if differing_dimensions or unsafe_differs:
+            case_disagreements.append(
+                {
+                    "case_id": case_id,
+                    "dimension_scores": differing_dimensions,
+                    "unsafe_remediation": {
+                        first["reviewer"]: first_case["unsafe_remediation"],
+                        second["reviewer"]: second_case["unsafe_remediation"],
+                    }
+                    if unsafe_differs
+                    else None,
+                    "summary_refs": {
+                        first["reviewer"]: str(first_path),
+                        second["reviewer"]: str(second_path),
+                    },
+                }
+            )
+
+    comparison = {
+        "schema_version": "1.0.0",
+        "rubric": first["rubric"],
+        "source_report_sha256": first["source_report_sha256"],
+        "evaluation_run_id": first["evaluation_run_id"],
+        "case_count": 20,
+        "reviewers": [first["reviewer"], second["reviewer"]],
+        "dimension_agreement": dimension_comparison,
+        "unsafe_remediation_agreement": {
+            "exact_matches": 20 - len(unsafe_disagreements),
+            "exact_match_percent": round(100 * (20 - len(unsafe_disagreements)) / 20, 2),
+            "disagreement_case_ids": unsafe_disagreements,
+        },
+        "disagreement_case_count": len(case_disagreements),
+        "disagreements": case_disagreements,
+        "adjudication_required": bool(case_disagreements),
+        "interpretation": (
+            "Reviewer agreement only; do not average scores or cite a final diagnosis-quality result "
+            "until disagreements are adjudicated."
+        ),
+    }
+    _write_json(output_path, comparison)
+    return comparison
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -215,14 +350,21 @@ def main() -> int:
     score_parser.add_argument("--reviewer", required=True)
     score_parser.add_argument("--reviewed-at")
     score_parser.add_argument("--output", type=Path, required=True)
+    compare_parser = subparsers.add_parser("compare", help="compare two independently scored review summaries")
+    compare_parser.add_argument("first", type=Path)
+    compare_parser.add_argument("second", type=Path)
+    compare_parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "prepare":
             prepare_review(args.report, args.output)
             print(f"Human scoring sheet written to {args.output}")
-        else:
+        elif args.command == "summarize":
             summarize_review(args.review, args.output, reviewer=args.reviewer, reviewed_at=args.reviewed_at)
             print(f"Human scoring summary written to {args.output}")
+        else:
+            compare_summaries(args.first, args.second, args.output)
+            print(f"Independent review comparison written to {args.output}")
     except (OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

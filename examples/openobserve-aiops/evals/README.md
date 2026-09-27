@@ -53,6 +53,17 @@ python examples/openobserve-aiops/evals/review_scoring.py summarize \
 
 The summary preserves per-dimension scores, a human-reviewed overall score, unsafe-remediation rate, reviewer identity, and source report SHA-256. It does not change the original report's `not_scored` status. Use at least two independent reviewers and adjudicate disagreements before citing the result as a diagnosis-quality metric; the current synthetic corpus alone does not establish production performance.
 
+After both reviewers have separate validated summaries, compare agreement and list the cases requiring adjudication:
+
+```bash
+python examples/openobserve-aiops/evals/review_scoring.py compare \
+  /tmp/holmes-aiops-reviewer-a-summary.json \
+  /tmp/holmes-aiops-reviewer-b-summary.json \
+  --output /tmp/holmes-aiops-review-comparison.json
+```
+
+Comparison rejects the same reviewer identity, different report hashes/run IDs, and incomplete or mismatched case sets. It reports per-dimension exact agreement, mean absolute score difference, unsafe-remediation agreement, and case-level disagreements. It never averages the reviewers' scores; any disagreement keeps adjudication required. Reviewer identity is an audit field and does not itself prove that two people reviewed independently.
+
 The Compose example configures LiteLLM as `deepseek/deepseek-flash`; DeepSeek's current API model ID is `deepseek-flash`, which supports tool calls according to the [official model documentation](https://api-docs.deepseek.com/quick_start/pricing/). The `deepseek/` prefix selects LiteLLM's DeepSeek provider. The example Holmes config limits each investigation to 12 model steps so a single case cannot consume the default 100-step budget.
 
 ## Release and Runbook fixtures
