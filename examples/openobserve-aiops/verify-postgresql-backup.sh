@@ -76,10 +76,11 @@ docker exec "$container_name" env \
     PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=postgres \
     /usr/local/bin/backup-postgres.sh "$backup_path"
 
-stage="encrypt and decrypt the backup"
+stage="encrypt the backup with CMS AES-256-GCM"
 encrypted_backup_path="$backup_dir/aiops-backup-check.cms.der"
 bash "$repo_dir/encrypt-postgres-backup.sh" "$backup_dir/aiops-backup-check.dump" \
     "$encrypted_backup_path" "$backup_dir/recipient.crt"
+stage="decrypt the CMS AES-256-GCM backup"
 openssl cms -decrypt -binary -inform DER -in "$encrypted_backup_path" \
     -recip "$backup_dir/recipient.crt" -inkey "$backup_dir/recipient.key" \
     -out "$backup_dir/aiops-encrypted-restore-check.dump"
