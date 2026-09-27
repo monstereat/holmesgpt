@@ -118,6 +118,10 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 
 **状态说明：** [x] 只表示该条目的描述范围已在本机测试环境实现并有对应验证，不代表生产接入。后续章节记录更具体的实现边界、实测证据和未完成事项。当前 Holmes 查询由 AST 约束、allowlist 和网络隔离共同限定；OpenObserve OSS 本身仍无原生 RBAC。
 
+### 历史增量说明
+
+> 下方带日期的增量记录各次改动完成时的状态，保留当时的 `[ ]`/`[x]` 作为历史快照，不应单独当作当前待办清单。当前项目进度以根目录 [`ROADMAP.md`](../ROADMAP.md) 为准；生产环境输入和验收缺口以 [`PRODUCTION-READINESS.md`](../examples/openobserve-aiops/PRODUCTION-READINESS.md) 为准，简历可声称范围见 [`RESUME-CLAIMS.md`](../examples/openobserve-aiops/RESUME-CLAIMS.md)。
+
 ## 2026-09-24 增量：OpenObserve 严格范围及凭据保护
 
 - [x] 新增 `allowed_streams` 配置；配置后只允许单一白名单流的简单 SELECT 查询，拒绝 JOIN、UNION、子查询、CTE 和未授权流。
