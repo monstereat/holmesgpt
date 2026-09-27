@@ -112,17 +112,19 @@
           el("td", user.username),
           el("td", user.role),
           el("td", (user.resource_scopes || []).join(", ") || "无"),
-          el("td", user.active ? "启用" : "已停用", "status"),
+          el("td", user.active ? "启用" : user.reactivation_requested_at ? "已停用 · 待恢复" : "已停用", "status"),
         );
         const action = el("td");
-        const button = el("button", user.active ? "停用" : "已停用");
+        const pendingReactivation = !user.active && Boolean(user.reactivation_requested_at);
+        const button = el("button", user.active ? "停用" : pendingReactivation ? "恢复" : "已停用");
         button.type = "button";
-        button.disabled = !user.active || user.id === principal.user_id;
+        button.disabled = user.active ? user.id === principal.user_id : !pendingReactivation || user.id === principal.user_id;
         button.addEventListener("click", async () => {
-          if (!window.confirm(`停用 ${user.username} 的工作台访问？该操作不会移除其身份提供商账号。`)) return;
+          if (!window.confirm(user.active ? `停用 ${user.username} 的工作台访问？该操作不会移除其身份提供商账号。` : `批准恢复 ${user.username} 的工作台访问？角色和资源范围仍由身份提供商组映射决定。`)) return;
           button.disabled = true;
           try {
-            await api(`/api/users/${encodeURIComponent(user.id)}/disable`, { method: "POST" });
+            const endpoint = user.active ? "disable" : "reactivate";
+            await api(`/api/users/${encodeURIComponent(user.id)}/${endpoint}`, { method: "POST", ...(!user.active ? { body: "{}" } : {}) });
             await loadUsers();
           } catch (error) {
             showError(userAdminMessage, error);

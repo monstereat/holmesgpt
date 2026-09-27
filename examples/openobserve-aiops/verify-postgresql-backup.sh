@@ -129,8 +129,15 @@ fi
 
 restored_migrations="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_restore_test -c 'SELECT count(*) FROM schema_migrations')"
-if [[ "$restored_migrations" != "8" ]]; then
-    echo "restored database contained $restored_migrations migration records instead of 8" >&2
+if [[ "$restored_migrations" != "9" ]]; then
+    echo "restored database contained $restored_migrations migration records instead of 9" >&2
+    exit 1
+fi
+
+restored_identity_columns="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_restore_test -c "SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name IN ('session_generation', 'reactivation_requested_at') ORDER BY column_name")"
+if [[ "$restored_identity_columns" != $'reactivation_requested_at\nsession_generation' ]]; then
+    echo "restored database did not contain user reactivation columns" >&2
     exit 1
 fi
 
@@ -157,9 +164,16 @@ fi
 
 encrypted_migrations="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_encrypted_restore_test -c 'SELECT count(*) FROM schema_migrations')"
-if [[ "$encrypted_migrations" != "8" ]]; then
-    echo "encrypted backup restore contained $encrypted_migrations migration records instead of 8" >&2
+if [[ "$encrypted_migrations" != "9" ]]; then
+    echo "encrypted backup restore contained $encrypted_migrations migration records instead of 9" >&2
     exit 1
 fi
 
-echo "PostgreSQL backup verification passed: plaintext and AES-256-GCM encrypted archives both restored 8 migrations and a synthetic incident; overwrite protection held"
+encrypted_identity_columns="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_encrypted_restore_test -c "SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name IN ('session_generation', 'reactivation_requested_at') ORDER BY column_name")"
+if [[ "$encrypted_identity_columns" != $'reactivation_requested_at\nsession_generation' ]]; then
+    echo "encrypted backup restore did not contain user reactivation columns" >&2
+    exit 1
+fi
+
+echo "PostgreSQL backup verification passed: plaintext and AES-256-GCM encrypted archives both restored 9 migrations, user reactivation columns, and a synthetic incident; overwrite protection held"

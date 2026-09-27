@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import threading
+from datetime import datetime, timezone
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import MagicMock
@@ -51,6 +52,7 @@ class FakeOIDCClient:
 class FakeCursor:
     def __init__(self, result):
         self.result = result
+        self.results = iter(result) if isinstance(result, list) else None
         self.statements = []
 
     def __enter__(self):
@@ -63,6 +65,8 @@ class FakeCursor:
         self.statements.append((statement, params))
 
     def fetchone(self):
+        if self.results is not None:
+            return next(self.results, None)
         return self.result
 
 
@@ -106,7 +110,7 @@ def test_oidc_authorization_and_callback_use_bound_state_pkce_and_http_only_sess
     connections = [
         FakeConnection(None),
         FakeConnection(("code-verifier", "saved-nonce")),
-        FakeConnection(("00000000-0000-0000-0000-000000000007", "ops-user", "operator", ["order-service"], True)),
+        FakeConnection(("00000000-0000-0000-0000-000000000007", "ops-user", "operator", ["order-service"], True, 0, None)),
         FakeConnection(None),
     ]
     connect = MagicMock(side_effect=connections)
@@ -147,6 +151,50 @@ def test_oidc_authorization_and_callback_use_bound_state_pkce_and_http_only_sess
         assert any("DELETE FROM revoked_sessions" in statement for statement in statements)
         assert any("INSERT INTO revoked_sessions" in statement for statement in statements)
         assert len(connect.call_args_list) == 4
+
+
+def test_inactive_oidc_user_requests_reactivation_once_without_receiving_a_session(monkeypatch):
+    configure_oidc(monkeypatch)
+    fake = FakeOIDCClient("https://id.example.com/tenant")
+    monkeypatch.setattr(app_module, "_oidc_client", lambda _settings: fake)
+    user_id = "00000000-0000-0000-0000-000000000007"
+    requested_at = datetime(2026, 9, 27, tzinfo=timezone.utc)
+    disabled = (user_id, "ops-user", "operator", ["order-service"], False, 1, None)
+    pending = (user_id, "ops-user", "operator", ["order-service"], False, 1, requested_at)
+    connections = [
+        FakeConnection(None),
+        FakeConnection(("code-verifier", "saved-nonce")),
+        FakeConnection([disabled, (requested_at,), pending]),
+        FakeConnection(None),
+        FakeConnection(("code-verifier", "saved-nonce")),
+        FakeConnection([pending]),
+    ]
+    connect = MagicMock(side_effect=connections)
+    monkeypatch.setattr(app_module.psycopg, "connect", connect)
+
+    async def exchange(_settings, _metadata, code, verifier):
+        fake.token_params = {"code": code, "code_verifier": verifier}
+        return {"id_token": "signed-id-token"}
+
+    monkeypatch.setattr(app_module, "_exchange_oidc_code", exchange)
+    monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda: type("NoopDispatcher", (), {"stop": lambda self: None})())
+
+    with TestClient(app_module.app) as client:
+        for _ in range(2):
+            fake.authorization_params = None
+            client.get("/auth/login", follow_redirects=False)
+            callback = client.get(
+                "/auth/oidc/callback",
+                params={"code": "authorization-code", "state": fake.authorization_params["state"]},
+                follow_redirects=False,
+            )
+            assert callback.status_code == 403
+            assert "aiops_session=" not in callback.headers.get("set-cookie", "")
+
+    callback_sql = [statement for connection in (connections[2], connections[5]) for statement, _ in connection.cursor_instance.statements]
+    assert sum("UPDATE users SET reactivation_requested_at" in statement for statement in callback_sql) == 1
+    assert sum("user.reactivation_requested" in statement for statement in callback_sql) == 1
+    assert connect.call_count == 6
 
 
 def test_oidc_cookie_mutation_requires_exact_public_origin(monkeypatch):

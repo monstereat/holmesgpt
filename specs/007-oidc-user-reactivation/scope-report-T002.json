@@ -1,0 +1,16 @@
+{
+  "base_commit": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/007-oidc-user-reactivation/scope-baseline-T002.json",
+  "new_files": [],
+  "modified_preexisting_files": [],
+  "touched_files": [],
+  "allow_patterns": [
+    "specs/007-oidc-user-reactivation/**"
+  ],
+  "internal_patterns": [
+    "specs/007-oidc-user-reactivation/**",
+    "specs/007-oidc-user-reactivation/scope-baseline-T002.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

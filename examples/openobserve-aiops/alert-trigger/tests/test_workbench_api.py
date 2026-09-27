@@ -1,5 +1,7 @@
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from urllib.parse import urlparse
 
 import psycopg
@@ -76,6 +78,8 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert "/triage" in static_script.text
             assert "/status" in static_script.text
             assert "/api/users" in static_script.text
+            assert "/reactivate" in static_script.text
+            assert "待恢复" in static_script.text
             assert "保存并标记已审核" in static_script.text
 
             def login(username, password):
@@ -131,15 +135,55 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert disabled_user.status_code == 200
             assert disabled_user.json()["status"] == "disabled"
             assert client.get("/auth/me", headers=outsider).status_code == 401
-            assert client.get("/api/users", headers=admin).json()["items"]
+            assert client.post(f"/api/users/{admin_user_ids['demo-outsider']}/disable", headers=admin).json()["status"] == "already_disabled"
             with psycopg.connect(database_url) as conn:
-                event = conn.execute(
-                    "SELECT event_type FROM audit_events WHERE event_type = 'user.disabled' AND details->>'user_id' = %s",
+                generation, = conn.execute(
+                    "SELECT session_generation FROM users WHERE id = %s",
                     (admin_user_ids["demo-outsider"],),
                 ).fetchone()
-                assert event == ("user.disabled",)
-            assert client.post(f"/api/users/{admin_user_ids['demo-outsider']}/disable", headers=admin).json()["status"] == "already_disabled"
+                conn.execute(
+                    "UPDATE users SET reactivation_requested_at = now() WHERE id = %s",
+                    (admin_user_ids["demo-outsider"],),
+                )
+            assert generation == 1
+            users_after_request = client.get("/api/users", headers=admin).json()["items"]
+            outsider_row = next(user for user in users_after_request if user["username"] == "demo-outsider")
+            assert outsider_row["active"] is False
+            assert outsider_row["reactivation_requested_at"] is not None
+            reactivate_url = f"/api/users/{admin_user_ids['demo-outsider']}/reactivate"
+            assert client.post(reactivate_url, headers=viewer, json={}).status_code == 403
+            assert client.post(reactivate_url, headers=admin).status_code == 422
+            assert client.post(reactivate_url, headers=admin, json={"role": "admin"}).status_code == 422
+            self_reactivation = client.post(
+                f"/api/users/{admin_user_ids['demo-admin']}/reactivate", headers=admin, json={}
+            )
+            assert self_reactivation.status_code == 409
+            start = Barrier(2)
 
+            def reactivate_concurrently():
+                start.wait(timeout=10)
+                return client.post(reactivate_url, headers=admin, json={}).status_code
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                reactivation_statuses = sorted(pool.map(lambda _item: reactivate_concurrently(), range(2)))
+            assert reactivation_statuses == [200, 409]
+            assert client.get("/auth/me", headers=outsider).status_code == 401
+            monkeypatch.setenv("AIOPS_AUTH_MODE", "oidc")
+            client.cookies.set("aiops_session", outsider["Authorization"][7:])
+            assert client.get("/auth/me").status_code == 401
+            client.cookies.delete("aiops_session")
+            monkeypatch.setenv("AIOPS_AUTH_MODE", "local")
+            reauthenticated_outsider = login("demo-outsider", "outsider-passphrase-123")
+            assert client.get("/auth/me", headers=reauthenticated_outsider).status_code == 200
+            with psycopg.connect(database_url) as conn:
+                events = conn.execute(
+                    "SELECT actor_id, event_type, details->>'user_id', details->>'username' FROM audit_events WHERE event_type IN ('user.disabled', 'user.reactivated') AND details->>'user_id' = %s ORDER BY event_type",
+                    (admin_user_ids["demo-outsider"],),
+                ).fetchall()
+                assert events == [
+                    (uuid.UUID(admin_user_ids["demo-admin"]), "user.disabled", admin_user_ids["demo-outsider"], "demo-outsider"),
+                    (uuid.UUID(admin_user_ids["demo-admin"]), "user.reactivated", admin_user_ids["demo-outsider"], "demo-outsider"),
+                ]
             admin_2 = login("demo-admin-2", "admin2-passphrase-123")
             assert client.post(f"/api/users/{admin_user_ids['demo-admin-2']}/disable", headers=admin).status_code == 200
             assert client.get("/auth/me", headers=admin_2).status_code == 401

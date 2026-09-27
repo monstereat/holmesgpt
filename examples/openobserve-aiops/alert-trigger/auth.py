@@ -80,6 +80,7 @@ def create_session(
         "iat": issued,
         "exp": issued + ttl_seconds,
         "jti": secrets.token_urlsafe(16),
+        "sg": principal.session_generation,
     }
     body = _encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
     signature = hmac.new(_signing_key(key), body.encode(), hashlib.sha256).digest()
@@ -105,6 +106,7 @@ def parse_session(token: str, key: str | bytes, *, now: int | None = None) -> Pr
             username=str(payload["username"]),
             role=role,
             resource_scopes=tuple(scopes),
+            session_generation=int(payload.get("sg", 0)),
         )
     except (KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ValueError("Invalid session") from exc

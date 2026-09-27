@@ -20,7 +20,7 @@ from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.types.json import Jsonb
 
 from action_client import ActionServiceError, OrderActionClient
@@ -132,6 +132,10 @@ def _oldest_pending_task_age_slo_seconds() -> float | None:
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=1024)
+
+
+class EmptyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class ApprovalRequest(BaseModel):
@@ -263,18 +267,18 @@ def _load_principal(authorization: str | None, session_token: str | None = None)
     with psycopg.connect(_database_url()) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                """SELECT id, username, role, resource_scopes FROM users
-                   WHERE id = %s::uuid AND active = TRUE
+                """SELECT id, username, role, resource_scopes, session_generation FROM users
+                   WHERE id = %s::uuid AND active = TRUE AND session_generation = %s
                      AND NOT EXISTS (
                          SELECT 1 FROM revoked_sessions
                          WHERE token_hash = %s AND expires_at > now()
                      )""",
-                (token_principal.user_id, hashlib.sha256(token.encode()).hexdigest()),
+                (token_principal.user_id, token_principal.session_generation, hashlib.sha256(token.encode()).hexdigest()),
             )
             user = cursor.fetchone()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
-    return Principal(str(user[0]), user[1], user[2], tuple(user[3]))
+    return Principal(str(user[0]), user[1], user[2], tuple(user[3]), int(user[4]))
 
 
 def _authorize(principal, permission: str, resource: str) -> None:
@@ -608,15 +612,31 @@ async def oidc_callback(request: Request):
                        ON CONFLICT (oidc_issuer, oidc_subject) DO UPDATE SET
                            username = EXCLUDED.username, role = EXCLUDED.role,
                            resource_scopes = EXCLUDED.resource_scopes
-                       RETURNING id, username, role, resource_scopes, active""",
+                       RETURNING id, username, role, resource_scopes, active, session_generation, reactivation_requested_at""",
                     (str(uuid.uuid4()), username, role, scopes, issuer, subject),
                 )
                 user = cursor.fetchone()
+                if user and not user[4] and user[6] is None:
+                    cursor.execute(
+                        "UPDATE users SET reactivation_requested_at = now() WHERE id = %s AND active = FALSE AND reactivation_requested_at IS NULL RETURNING reactivation_requested_at",
+                        (user[0],),
+                    )
+                    requested_at = cursor.fetchone()
+                    if requested_at:
+                        cursor.execute(
+                            "INSERT INTO audit_events (actor_id, event_type, details) VALUES (%s, 'user.reactivation_requested', %s)",
+                            (user[0], Jsonb({"user_id": str(user[0]), "username": user[1]})),
+                        )
+                    cursor.execute(
+                        "SELECT id, username, role, resource_scopes, active, session_generation, reactivation_requested_at FROM users WHERE id = %s",
+                        (user[0],),
+                    )
+                    user = cursor.fetchone()
     except psycopg.errors.UniqueViolation:
         raise HTTPException(status_code=403, detail="OIDC identity is already mapped to another user") from None
     if not user or not user[4]:
         raise HTTPException(status_code=403, detail="OIDC user is inactive")
-    principal = Principal(str(user[0]), user[1], user[2], tuple(user[3]))
+    principal = Principal(str(user[0]), user[1], user[2], tuple(user[3]), int(user[5]))
     session_token = create_session(
         principal,
         os.environ["SESSION_SIGNING_KEY"],
@@ -683,13 +703,13 @@ def login(body: LoginRequest) -> dict[str, str]:
     with psycopg.connect(_database_url()) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, username, password_hash, role, resource_scopes FROM users WHERE username = %s AND active = TRUE",
+                "SELECT id, username, password_hash, role, resource_scopes, session_generation FROM users WHERE username = %s AND active = TRUE",
                 (body.username,),
             )
             user = cursor.fetchone()
     if not user or not user[2] or not verify_password(body.password, user[2]):
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    token = create_session(Principal(str(user[0]), user[1], user[3], tuple(user[4])), key)
+    token = create_session(Principal(str(user[0]), user[1], user[3], tuple(user[4]), int(user[5])), key)
     return {"access_token": token, "token_type": "Bearer"}
 
 
@@ -700,7 +720,7 @@ def list_users(request: Request, authorization: str | None = Header(default=None
     with psycopg.connect(_database_url()) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, username, role, resource_scopes, active, created_at FROM users ORDER BY username"
+                "SELECT id, username, role, resource_scopes, active, created_at, reactivation_requested_at FROM users ORDER BY username"
             )
             rows = cursor.fetchall()
     return {
@@ -712,6 +732,7 @@ def list_users(request: Request, authorization: str | None = Header(default=None
                 "resource_scopes": list(row[3]),
                 "active": row[4],
                 "created_at": row[5].isoformat(),
+                "reactivation_requested_at": row[6].isoformat() if row[6] else None,
             }
             for row in rows
         ]
@@ -761,12 +782,55 @@ def disable_user(user_id: str, request: Request, authorization: str | None = Hea
                     return {"user_id": user_uuid, "status": "already_disabled"}
                 if user[2] == "admin" and len(active_admin_ids) <= 1:
                     raise HTTPException(status_code=409, detail="The last active administrator cannot be disabled")
-                cursor.execute("UPDATE users SET active = FALSE WHERE id = %s", (user_uuid,))
+                cursor.execute(
+                    "UPDATE users SET active = FALSE, session_generation = session_generation + 1, reactivation_requested_at = NULL WHERE id = %s",
+                    (user_uuid,),
+                )
                 cursor.execute(
                     "INSERT INTO audit_events (actor_id, event_type, details) VALUES (%s, 'user.disabled', %s)",
                     (principal.user_id, Jsonb({"user_id": user_uuid, "username": user[1]})),
                 )
     return {"user_id": user_uuid, "status": "disabled"}
+
+
+@app.post("/api/users/{user_id}/reactivate")
+def reactivate_user(
+    user_id: str,
+    body: EmptyRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> dict[str, str]:
+    del body
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
+    _authorize(principal, "user:manage", "order-service")
+    try:
+        user_uuid = str(uuid.UUID(user_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="User not found") from None
+    if user_uuid == principal.user_id:
+        raise HTTPException(status_code=409, detail="You cannot reactivate your own account")
+
+    with psycopg.connect(_database_url()) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, username, active, reactivation_requested_at FROM users WHERE id = %s FOR UPDATE",
+                    (user_uuid,),
+                )
+                user = cursor.fetchone()
+                if not user:
+                    raise HTTPException(status_code=404, detail="User not found")
+                if user[2] or user[3] is None:
+                    raise HTTPException(status_code=409, detail="No pending reactivation request")
+                cursor.execute(
+                    "UPDATE users SET active = TRUE, reactivation_requested_at = NULL WHERE id = %s AND active = FALSE AND reactivation_requested_at IS NOT NULL",
+                    (user_uuid,),
+                )
+                cursor.execute(
+                    "INSERT INTO audit_events (actor_id, event_type, details) VALUES (%s, 'user.reactivated', %s)",
+                    (principal.user_id, Jsonb({"user_id": user_uuid, "username": user[1]})),
+                )
+    return {"user_id": user_uuid, "status": "reactivated"}
 
 
 @app.get("/auth/me")

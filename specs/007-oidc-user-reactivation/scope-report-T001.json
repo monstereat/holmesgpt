@@ -1,0 +1,50 @@
+{
+  "base_commit": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/007-oidc-user-reactivation/scope-baseline-T001.json",
+  "new_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/auth.py",
+    "examples/openobserve-aiops/alert-trigger/migrations/0009_user_reactivation.sql",
+    "examples/openobserve-aiops/alert-trigger/models.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py"
+  ],
+  "modified_preexisting_files": [],
+  "touched_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/auth.py",
+    "examples/openobserve-aiops/alert-trigger/migrations/0009_user_reactivation.sql",
+    "examples/openobserve-aiops/alert-trigger/models.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/alert-trigger/auth.py",
+    "examples/openobserve-aiops/alert-trigger/models.py",
+    "examples/openobserve-aiops/alert-trigger/app.py",
+    "examples/openobserve-aiops/alert-trigger/migrations/0009_user_reactivation.sql",
+    "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "examples/openobserve-aiops/README.md",
+    "ROADMAP.md"
+  ],
+  "internal_patterns": [
+    "specs/007-oidc-user-reactivation/**",
+    "specs/007-oidc-user-reactivation/scope-baseline-T001.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

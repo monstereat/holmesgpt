@@ -1,5 +1,9 @@
 # Resume claims: HolmesGPT/OpenObserve AIOps
 
+- 2026-09-27 local identity lifecycle: added OIDC-requested/admin-approved account reactivation with user-level session generation so disabled sessions remain revoked after restore. The isolated PostgreSQL incident/workbench suite passes **123 tests**; migration 0009 is applied to the current local test database, preserving 11 incidents, 11 tasks, 53 audit events and 11 outbox rows. Production IdP and rollout behavior are not yet validated.
+
+- 2026-09-27 local identity lifecycle: added OIDC-requested/admin-approved account reactivation with user-level session generation so disabled sessions remain revoked after restore. The isolated PostgreSQL incident/workbench suite passes **123 tests**; migration 0009 is applied to the current local test database, preserving 11 incidents, 11 tasks, 53 audit events and 11 outbox rows. Production IdP and rollout behavior are not yet validated.
+
 Use the wording below only for the work and evidence currently present in this repository. The system has been exercised as a local Docker test environment; it has **not** been deployed to a production environment.
 
 ## Resume-ready project entry

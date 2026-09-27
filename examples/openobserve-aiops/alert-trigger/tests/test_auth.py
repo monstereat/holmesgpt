@@ -1,3 +1,8 @@
+import base64
+import hashlib
+import hmac
+import json
+
 import pytest
 
 from auth import authorize, create_session, hash_password, parse_session, require_permission, session_expiration, verify_password
@@ -45,3 +50,15 @@ def test_oidc_session_lifetime_is_bounded():
     assert parse_session(token, "x" * 32, now=999) == principal
     with pytest.raises(ValueError, match="between 60 seconds and 8 hours"):
         create_session(principal, "x" * 32, ttl_seconds=0)
+
+
+def test_session_generation_is_signed_and_legacy_tokens_default_to_zero():
+    principal = Principal("u1", "user", "viewer", ("order-service",), session_generation=4)
+    token = create_session(principal, "x" * 32, now=100)
+    assert parse_session(token, "x" * 32, now=101).session_generation == 4
+
+    encode = lambda value: base64.urlsafe_b64encode(value).decode().rstrip("=")
+    payload = {"sub": "u1", "username": "user", "role": "viewer", "scopes": ["order-service"], "iat": 100, "exp": 200}
+    body = encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
+    signature = encode(hmac.new(b"x" * 32, body.encode(), hashlib.sha256).digest())
+    assert parse_session(f"{body}.{signature}", "x" * 32, now=101).session_generation == 0

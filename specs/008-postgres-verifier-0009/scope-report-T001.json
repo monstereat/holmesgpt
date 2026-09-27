@@ -1,0 +1,42 @@
+{
+  "base_commit": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/008-postgres-verifier-0009/scope-baseline-T001.json",
+  "new_files": [
+    "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+    "examples/openobserve-aiops/RESUME-CLAIMS.md",
+    "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+    "examples/openobserve-aiops/verify-postgresql-backup.sh",
+    "examples/openobserve-aiops/verify-postgresql-roles.sh"
+  ],
+  "modified_preexisting_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "examples/openobserve-aiops/README.md"
+  ],
+  "touched_files": [
+    "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+    "examples/openobserve-aiops/RESUME-CLAIMS.md",
+    "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+    "examples/openobserve-aiops/verify-postgresql-backup.sh",
+    "examples/openobserve-aiops/verify-postgresql-roles.sh",
+    "ROADMAP.md",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "examples/openobserve-aiops/README.md"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/verify-postgresql-roles.sh",
+    "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+    "examples/openobserve-aiops/verify-postgresql-backup.sh",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+    "examples/openobserve-aiops/README.md",
+    "examples/openobserve-aiops/RESUME-CLAIMS.md",
+    "ROADMAP.md"
+  ],
+  "internal_patterns": [
+    "specs/008-postgres-verifier-0009/**",
+    "specs/008-postgres-verifier-0009/scope-baseline-T001.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

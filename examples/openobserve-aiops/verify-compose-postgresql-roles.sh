@@ -23,8 +23,14 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
                   has_table_privilege(current_user, 'schema_migrations', 'INSERT')"""
     ).fetchone()
     assert current_user == "aiops_runtime", "Incident API is not using the runtime role"
-    assert migration_count == 8, f"expected 8 migrations, found {migration_count}"
+    assert migration_count == 9, f"expected 9 migrations, found {migration_count}"
     assert not can_create and not can_update_audit and not can_update_ledger and not can_insert_ledger
+    identity_columns = conn.execute(
+        "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('session_generation', 'reactivation_requested_at')"
+    ).fetchone()[0]
+    assert identity_columns == 2, "user reactivation migration columns are missing"
+    assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')").fetchone()[0]
+    assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')").fetchone()[0]
 
     denied_statements = (
         "CREATE TABLE public.compose_role_probe (id integer)",
@@ -71,4 +77,4 @@ if [[ "$migrator_user" != "aiops_migrator" ]]; then
     exit 1
 fi
 
-echo "Compose PostgreSQL role verification passed: API/worker=aiops_runtime; migrations=aiops_migrator."
+echo "Compose PostgreSQL role verification passed: 9 migrations; API/worker=aiops_runtime; migrations=aiops_migrator."

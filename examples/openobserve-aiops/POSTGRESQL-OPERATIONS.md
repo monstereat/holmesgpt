@@ -15,7 +15,7 @@ command at its credentials or volume.
 - A one-shot migration job uses the separate migration identity. It must finish
   successfully before application replicas start. The migration runner takes a
   PostgreSQL advisory transaction lock and records each applied migration.
-- The current migrations are numbered `0001` through `0008`. They run in
+- The current migrations are numbered `0001` through `0009`. They run in
   transactions. There are no automatic down migrations: do not delete migration
   records or manually reverse DDL to make an older binary start.
 
@@ -157,8 +157,8 @@ constraints, indexes, application readiness, and an end-to-end synthetic task
 before any owner-approved cutover. The repository verifier
 [`verify-postgresql-backup.sh`](verify-postgresql-backup.sh) passed on an
 isolated PostgreSQL 16.6 container with no network or persistent volume. It
-restored migrations `0001`–`0008`, the task duration index, incident triage
-columns, and a synthetic incident; it checked mode `0600`, archive validation,
+restored migrations `0001`–`0009`, the task duration index, incident triage and
+user session-generation/reactivation columns, and a synthetic incident; it checked mode `0600`, archive validation,
 and overwrite refusal. The same verifier creates an ephemeral recipient
 certificate, encrypts the archive, decrypts it, and restores it into a second
 isolated database. It also checks mode `0600`, overwrite refusal, and rejection

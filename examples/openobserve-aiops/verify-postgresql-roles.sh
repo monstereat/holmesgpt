@@ -36,12 +36,12 @@ for migration in "$repo_dir"/alert-trigger/migrations/*.sql; do
 done
 
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postgres \
-    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only') ON CONFLICT DO NOTHING" >/dev/null
+    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only'), ('0009_user_reactivation') ON CONFLICT DO NOTHING" >/dev/null
 
 migration_count=$(docker exec "$container_name" psql -At -U aiops_migrator -d postgres \
     -c "SELECT count(*) FROM schema_migrations")
-if [[ "$migration_count" != "8" ]]; then
-    echo "migration runner applied $migration_count records instead of 8" >&2
+if [[ "$migration_count" != "9" ]]; then
+    echo "migration runner applied $migration_count records instead of 9" >&2
     exit 1
 fi
 
@@ -51,6 +51,15 @@ triage_columns=$(docker exec "$container_name" psql -At -U aiops_migrator -d pos
       AND column_name IN ('severity', 'assignee_user_id')")
 if [[ "$triage_columns" != "2" ]]; then
     echo "incident triage migration did not create both expected columns" >&2
+    exit 1
+fi
+
+identity_columns=$(docker exec "$container_name" psql -At -U aiops_migrator -d postgres -c "
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'users'
+      AND column_name IN ('session_generation', 'reactivation_requested_at')")
+if [[ "$identity_columns" != "2" ]]; then
+    echo "user reactivation migration did not create both expected columns" >&2
     exit 1
 fi
 
@@ -71,6 +80,8 @@ privileges=$(docker exec "$container_name" psql -At -U aiops_runtime -d postgres
        AND NOT has_table_privilege(current_user, 'schema_migrations', 'TRUNCATE')
        AND has_column_privilege(current_user, 'incidents', 'severity', 'UPDATE')
        AND has_column_privilege(current_user, 'incidents', 'assignee_user_id', 'UPDATE')
+       AND has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')
+       AND has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')
        AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
 ")
 if [[ "$privileges" != t ]]; then
@@ -99,4 +110,4 @@ for statement in \
     fi
 done
 
-echo "PostgreSQL role verification passed: 8 migrations including incident triage; runtime business access and audit append allowed; audit/ledger mutation and schema creation denied"
+echo "PostgreSQL role verification passed: 9 migrations including incident triage and user reactivation; runtime business access and audit append allowed; audit/ledger mutation and schema creation denied"

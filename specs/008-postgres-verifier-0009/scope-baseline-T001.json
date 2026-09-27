@@ -1,0 +1,102 @@
+{
+  "schema_version": 2,
+  "base_commit": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+  "initial_snapshots": {
+    "ROADMAP.md": {
+      "kind": "file",
+      "sha256": "51ab6393fc66d440be151836196e3edbf81cf6657b64243ef0fbd7c4970ac1a6"
+    },
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md": {
+      "kind": "file",
+      "sha256": "6c383ba66173b06ad49a3e7e42aa2e40bd4142d170a1771e902a85b918a4fcdc"
+    },
+    "examples/openobserve-aiops/README.md": {
+      "kind": "file",
+      "sha256": "21c09c242240588ae430f87ba0598adbccfc95d0b0eab8e0d9818e3402638289"
+    },
+    "examples/openobserve-aiops/alert-trigger/app.py": {
+      "kind": "file",
+      "sha256": "68b3140812c2ffd2437f5b7a6588d89f76c7fa68c8d5081a6ed65a579e777f7f"
+    },
+    "examples/openobserve-aiops/alert-trigger/auth.py": {
+      "kind": "file",
+      "sha256": "3610fb67cec09a2833e9e058c79cad9e946556ced21031e023d9294c632f39e3"
+    },
+    "examples/openobserve-aiops/alert-trigger/migrations/0009_user_reactivation.sql": {
+      "kind": "file",
+      "sha256": "9881db8f0c34c3156516c377fea46caade819af5aaa4771447887cece19ee5ce"
+    },
+    "examples/openobserve-aiops/alert-trigger/models.py": {
+      "kind": "file",
+      "sha256": "cbbe29990405f14a6ca231c484da55d40e4283e42fc28831c3623d662b94e82c"
+    },
+    "examples/openobserve-aiops/alert-trigger/public/incidents.js": {
+      "kind": "file",
+      "sha256": "65e757f85ae97b682f5e3fcb091fb1c39893242ce8f341e22873c8d441f7e82d"
+    },
+    "examples/openobserve-aiops/alert-trigger/tests/test_auth.py": {
+      "kind": "file",
+      "sha256": "309ed9104ce29b9aa3468160cbb87261a46116236d29d17cf98bc54c1eb5599d"
+    },
+    "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py": {
+      "kind": "file",
+      "sha256": "9ddb0faa0541911aaafcb7f59f377b664bcab8ff6fc5247a849a639db3b951e6"
+    },
+    "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py": {
+      "kind": "file",
+      "sha256": "6b2a00b845e711194c9c282547782bd4205446ed721746514c983132df4b780e"
+    },
+    "specs/001-resume-aiops/state-plan-draft-before-user-steering.json": {
+      "kind": "file",
+      "sha256": "c62c4ae5ec627a72f2e4a7bef033ca8e3e28e3079f26b63f47fa53086f3e436e"
+    },
+    "specs/001-resume-aiops/state-production-scope-draft.json": {
+      "kind": "file",
+      "sha256": "04d31f6c721a422f6f87bae6cf3ce07336fbb4b98bd06b8e4bf6025ad51db153"
+    },
+    "specs/007-oidc-user-reactivation/plan.md": {
+      "kind": "file",
+      "sha256": "7e3f2647821974201ed6993b4332aeda35bf4204f7d85a42925556b1542d2c98"
+    },
+    "specs/007-oidc-user-reactivation/scope-baseline-T001.json": {
+      "kind": "file",
+      "sha256": "59afafc0c5b5d1232fedc324b255c925b50cd09568a9b753b1de121769dab7ba"
+    },
+    "specs/007-oidc-user-reactivation/scope-baseline-T002.json": {
+      "kind": "file",
+      "sha256": "49065315fcf6860dcc05091aac090b42763a8ed1e69f16720526cdf7b103edef"
+    },
+    "specs/007-oidc-user-reactivation/scope-report-T001.json": {
+      "kind": "file",
+      "sha256": "f8cdd651050389784134f2d5ca2e76eeeb445aa0852e097d8ccca9c4ab5daebf"
+    },
+    "specs/007-oidc-user-reactivation/scope-report-T002.json": {
+      "kind": "file",
+      "sha256": "0e7bb7241d92d5f72cd1d1e1cef0ab58fd59f5e7321db1c1a9bf5354cd11fe29"
+    },
+    "specs/007-oidc-user-reactivation/spec-review.md": {
+      "kind": "file",
+      "sha256": "48ae56acc82c552c86f1af1ca7dd7269aa44c281e88367f4e15b229622ab6391"
+    },
+    "specs/007-oidc-user-reactivation/spec.md": {
+      "kind": "file",
+      "sha256": "0849cfc4f8ad7e93f430d5cd8e627c79d30c9a32ca3d01d1d665f65feb783962"
+    },
+    "specs/007-oidc-user-reactivation/state.json": {
+      "kind": "file",
+      "sha256": "d52d5e6040a3172f4647343b60eee5fd4db2b19a0cc8c9f7df0474d76b11ab30"
+    },
+    "specs/007-oidc-user-reactivation/tasks.md": {
+      "kind": "file",
+      "sha256": "3476d8da22c50cd23c0e418c4f7f5b7a627e6daec35b85c30ffb44c11830df79"
+    },
+    "specs/007-oidc-user-reactivation/verify.md": {
+      "kind": "file",
+      "sha256": "17bd534bd2fe82dbf7e0cb9fe16537761ab357b28993389a58b07604bbe866c4"
+    }
+  },
+  "internal_patterns": [
+    "specs/008-postgres-verifier-0009/**",
+    "specs/008-postgres-verifier-0009/scope-baseline-T001.json"
+  ]
+}

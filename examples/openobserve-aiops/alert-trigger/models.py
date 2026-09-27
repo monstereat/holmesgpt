@@ -29,6 +29,7 @@ class Principal:
     username: str
     role: str
     resource_scopes: tuple[str, ...] = ()
+    session_generation: int = 0
 
 
 @dataclass(frozen=True)

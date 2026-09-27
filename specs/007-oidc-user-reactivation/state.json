@@ -1,0 +1,422 @@
+{
+  "schema_version": 2,
+  "change_id": "007-oidc-user-reactivation",
+  "mode": "standard",
+  "status": "verifying",
+  "current_task": null,
+  "waiting_for": null,
+  "artifacts": {
+    "spec": "specs/007-oidc-user-reactivation/spec.md",
+    "plan": "specs/007-oidc-user-reactivation/plan.md",
+    "tasks": "specs/007-oidc-user-reactivation/tasks.md",
+    "verify": "specs/007-oidc-user-reactivation/verify.md"
+  },
+  "controls": {
+    "commit_strategy": "task",
+    "branch": null,
+    "independent_review": "spec"
+  },
+  "approvals": {
+    "spec": {
+      "at": "2026-09-27T08:16:54Z",
+      "approver": "monstereat",
+      "evidence": "用户明确要求：没做完的用/goal继续做完，数据库等等，任何操作你都有权限，不需要我进行任何确认；此前授权本机测试迁移并要求按文档编码。",
+      "review_report": "specs/007-oidc-user-reactivation/spec-review.md"
+    },
+    "plan": {
+      "at": "2026-09-27T08:17:37Z",
+      "approver": "monstereat",
+      "evidence": "用户明确要求：没做完的用/goal继续做完，数据库等等，任何操作你都有权限，不需要我进行任何确认。用户此前授权本机测试迁移。",
+      "review_report": null
+    },
+    "acceptance": null
+  },
+  "acceptance_criteria": {
+    "AC-01": {
+      "description": "用户账号停用及恢复后，所有停用前签发的会话仍被拒绝。"
+    },
+    "AC-02": {
+      "description": "恢复仅能由停用用户有效 OIDC 登录产生待审核申请，当前 IdP 映射刷新角色/资源范围且不签发会话。"
+    },
+    "AC-03": {
+      "description": "管理员只能恢复待审核身份，不得由请求修改角色/资源权限，操作受 RBAC 控制且审计。"
+    }
+  },
+  "tasks": {
+    "T001": {
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/alert-trigger/auth.py",
+        "examples/openobserve-aiops/alert-trigger/models.py",
+        "examples/openobserve-aiops/alert-trigger/app.py",
+        "examples/openobserve-aiops/alert-trigger/migrations/0009_user_reactivation.sql",
+        "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+        "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+        "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+        "examples/openobserve-aiops/README.md",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test",
+        "node --check examples/openobserve-aiops/alert-trigger/public/incidents.js"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T001-suite-rerun",
+        "T001-js"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/007-oidc-user-reactivation/scope-baseline-T001.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/007-oidc-user-reactivation/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/007-oidc-user-reactivation/scope-report-T001.json",
+        "sha256": "f8cdd651050389784134f2d5ca2e76eeeb445aa0852e097d8ccca9c4ab5daebf"
+      }
+    },
+    "T002": {
+      "depends_on": [
+        "T001"
+      ],
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "allowed_paths": [
+        "specs/007-oidc-user-reactivation/**"
+      ],
+      "commands": [
+        "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml run --rm incident-migrate && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build incident-api incident-worker && docker compose -f examples/openobserve-aiops/docker-compose.yaml ps"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T002-local-db"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/007-oidc-user-reactivation/scope-baseline-T002.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/007-oidc-user-reactivation/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/007-oidc-user-reactivation/scope-report-T002.json",
+        "sha256": "0e7bb7241d92d5f72cd1d1e1cef0ab58fd59f5e7321db1c1a9bf5354cd11fe29"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "T001-suite",
+      "type": "command",
+      "kind": "unit",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "command": "docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:22:45Z",
+      "duration_ms": 217,
+      "exit_code": 15,
+      "result": "fail",
+      "stdout_log": "specs/007-oidc-user-reactivation/evidence/T001-suite.stdout.log",
+      "stderr_log": "specs/007-oidc-user-reactivation/evidence/T001-suite.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py"
+        ],
+        "diff_sha256": "34c984db1658a1315444ef201ac395f964abffcd87fba58da22944b1848fa9a7"
+      }
+    },
+    {
+      "id": "T001-suite-rerun",
+      "type": "command",
+      "kind": "unit",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "command": "docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:23:14Z",
+      "duration_ms": 24388,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/007-oidc-user-reactivation/evidence/T001-suite-rerun.stdout.log",
+      "stderr_log": "specs/007-oidc-user-reactivation/evidence/T001-suite-rerun.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py"
+        ],
+        "diff_sha256": "34c984db1658a1315444ef201ac395f964abffcd87fba58da22944b1848fa9a7"
+      }
+    },
+    {
+      "id": "T001-js",
+      "type": "command",
+      "kind": "unit",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-03"
+      ],
+      "command": "node --check examples/openobserve-aiops/alert-trigger/public/incidents.js",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:23:44Z",
+      "duration_ms": 67,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/007-oidc-user-reactivation/evidence/T001-js.stdout.log",
+      "stderr_log": "specs/007-oidc-user-reactivation/evidence/T001-js.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py"
+        ],
+        "diff_sha256": "34c984db1658a1315444ef201ac395f964abffcd87fba58da22944b1848fa9a7"
+      }
+    },
+    {
+      "id": "T002-local-db",
+      "type": "command",
+      "kind": "integration",
+      "task": "T002",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "command": "source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml run --rm incident-migrate && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build incident-api incident-worker && docker compose -f examples/openobserve-aiops/docker-compose.yaml ps",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:26:24Z",
+      "duration_ms": 30560,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/007-oidc-user-reactivation/evidence/T002-local-db.stdout.log",
+      "stderr_log": "specs/007-oidc-user-reactivation/evidence/T002-local-db.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "ROADMAP.md",
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py"
+        ],
+        "diff_sha256": "efd14049ce6b2a9893deb8432334dd7451c9d061660f58dbf60d6e1acf05894c"
+      }
+    },
+    {
+      "id": "AC-01-generation-test",
+      "type": "observation",
+      "task": null,
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "observer": "Codex",
+      "evidence": "T001-suite-rerun Docker 隔离 suite 的 test_auth.py 与 test_workbench_api.py：signed sg=4、legacy sg 缺失默认 0；停用后原 Bearer 和 cookie 在重新启用后仍返回 401；session_generation=1。日志 specs/007-oidc-user-reactivation/evidence/T001-suite-rerun.stdout.log",
+      "result": "pass",
+      "at": "2026-09-27T08:28:25Z"
+    },
+    {
+      "id": "AC-02-oidc-pending-test",
+      "type": "observation",
+      "task": null,
+      "acceptance_criteria": [
+        "AC-02"
+      ],
+      "observer": "Codex",
+      "evidence": "T001-suite-rerun Docker 隔离 suite 的 test_oidc_flow.py：重复有效 OIDC callback 对停用身份返回 403、不签发 session，pending 请求审计仅写一次；当前本机 PostgreSQL migration gate 已登记 0009。日志 specs/007-oidc-user-reactivation/evidence/T001-suite-rerun.stdout.log；T002-local-db.stdout.log",
+      "result": "pass",
+      "at": "2026-09-27T08:28:25Z"
+    },
+    {
+      "id": "AC-03-admin-reactivation-test",
+      "type": "observation",
+      "task": null,
+      "acceptance_criteria": [
+        "AC-03"
+      ],
+      "observer": "Codex",
+      "evidence": "T001-suite-rerun Docker 隔离 suite 的 test_workbench_api.py：非管理员 403、自我恢复 409、无/额外 body 422、并发批准恰好 200/409、actor/target audit 验证；node --check 通过。T002 本机 API/worker/PostgreSQL/Redis healthy，/readyz ready，9 migrations 且事故/任务/审计/outbox 保留 11/11/53/11。",
+      "result": "pass",
+      "at": "2026-09-27T08:28:25Z"
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-09-27T08:12:08Z",
+      "action": "init",
+      "status": "initialized",
+      "note": "State created."
+    },
+    {
+      "at": "2026-09-27T08:12:08Z",
+      "action": "set_draft",
+      "status": "spec_draft",
+      "note": "开始定义本地测试环境用户受控恢复与旧会话失效流程。"
+    },
+    {
+      "at": "2026-09-27T08:12:39Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-01."
+    },
+    {
+      "at": "2026-09-27T08:12:39Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-02."
+    },
+    {
+      "at": "2026-09-27T08:12:40Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-03."
+    },
+    {
+      "at": "2026-09-27T08:16:54Z",
+      "action": "approve",
+      "status": "spec_approved",
+      "note": "spec approved by monstereat: 用户明确要求：没做完的用/goal继续做完，数据库等等，任何操作你都有权限，不需要我进行任何确认；此前授权本机测试迁移并要求按文档编码。"
+    },
+    {
+      "at": "2026-09-27T08:16:54Z",
+      "action": "set_draft",
+      "status": "plan_draft",
+      "note": "Spec 独立复审完成，进入实施计划登记。"
+    },
+    {
+      "at": "2026-09-27T08:17:37Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T001."
+    },
+    {
+      "at": "2026-09-27T08:17:37Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T002."
+    },
+    {
+      "at": "2026-09-27T08:17:37Z",
+      "action": "approve",
+      "status": "plan_approved",
+      "note": "plan approved by monstereat: 用户明确要求：没做完的用/goal继续做完，数据库等等，任何操作你都有权限，不需要我进行任何确认。用户此前授权本机测试迁移。"
+    },
+    {
+      "at": "2026-09-27T08:17:48Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T001."
+    },
+    {
+      "at": "2026-09-27T08:22:45Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-suite: fail (docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test)"
+    },
+    {
+      "at": "2026-09-27T08:23:39Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-suite-rerun: pass (docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test)"
+    },
+    {
+      "at": "2026-09-27T08:23:44Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-js: pass (node --check examples/openobserve-aiops/alert-trigger/public/incidents.js)"
+    },
+    {
+      "at": "2026-09-27T08:26:02Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T001 with T001-suite-rerun, T001-js."
+    },
+    {
+      "at": "2026-09-27T08:26:17Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T002."
+    },
+    {
+      "at": "2026-09-27T08:26:54Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T002-local-db: pass (source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml run --rm incident-migrate && docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --build incident-api incident-worker && docker compose -f examples/openobserve-aiops/docker-compose.yaml ps)"
+    },
+    {
+      "at": "2026-09-27T08:27:33Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T002 with T002-local-db."
+    },
+    {
+      "at": "2026-09-27T08:28:12Z",
+      "action": "begin_verify",
+      "status": "verifying",
+      "note": "All registered tasks are complete."
+    },
+    {
+      "at": "2026-09-27T08:28:25Z",
+      "action": "record_observation",
+      "status": "verifying",
+      "note": "AC-01-generation-test: pass by Codex"
+    },
+    {
+      "at": "2026-09-27T08:28:25Z",
+      "action": "record_observation",
+      "status": "verifying",
+      "note": "AC-02-oidc-pending-test: pass by Codex"
+    },
+    {
+      "at": "2026-09-27T08:28:25Z",
+      "action": "record_observation",
+      "status": "verifying",
+      "note": "AC-03-admin-reactivation-test: pass by Codex"
+    }
+  ],
+  "created_at": "2026-09-27T08:12:08Z",
+  "updated_at": "2026-09-27T08:28:25Z"
+}

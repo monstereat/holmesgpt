@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "base_commit": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+  "initial_snapshots": {
+    "specs/001-resume-aiops/state-plan-draft-before-user-steering.json": {
+      "kind": "file",
+      "sha256": "c62c4ae5ec627a72f2e4a7bef033ca8e3e28e3079f26b63f47fa53086f3e436e"
+    },
+    "specs/001-resume-aiops/state-production-scope-draft.json": {
+      "kind": "file",
+      "sha256": "04d31f6c721a422f6f87bae6cf3ce07336fbb4b98bd06b8e4bf6025ad51db153"
+    }
+  },
+  "internal_patterns": [
+    "specs/007-oidc-user-reactivation/**",
+    "specs/007-oidc-user-reactivation/scope-baseline-T001.json"
+  ]
+}

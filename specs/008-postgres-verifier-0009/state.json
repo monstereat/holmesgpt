@@ -1,0 +1,498 @@
+{
+  "schema_version": 2,
+  "change_id": "008-postgres-verifier-0009",
+  "mode": "standard",
+  "status": "verifying",
+  "current_task": null,
+  "waiting_for": null,
+  "artifacts": {
+    "spec": "specs/008-postgres-verifier-0009/spec.md",
+    "plan": "specs/008-postgres-verifier-0009/plan.md",
+    "tasks": "specs/008-postgres-verifier-0009/tasks.md",
+    "verify": "specs/008-postgres-verifier-0009/verify.md"
+  },
+  "controls": {
+    "commit_strategy": "task",
+    "branch": null,
+    "independent_review": "off"
+  },
+  "approvals": {
+    "spec": {
+      "at": "2026-09-27T08:30:13Z",
+      "approver": "monstereat",
+      "evidence": "用户明确授权继续完成 Goal 中未完成事项及相关本机数据库操作，无需逐项确认。",
+      "review_report": null
+    },
+    "plan": {
+      "at": "2026-09-27T08:31:13Z",
+      "approver": "monstereat",
+      "evidence": "用户明确授权继续完成 Goal 所需工作和本机数据库操作，无需逐项确认。",
+      "review_report": null
+    },
+    "acceptance": null
+  },
+  "acceptance_criteria": {
+    "AC-01": {
+      "description": "隔离权限及本机 Compose verifier 对 0009 schema 验证通过，并继续拒绝 runtime DDL/ledger/audit 写入。"
+    },
+    "AC-02": {
+      "description": "明文/加密备份恢复 verifier 验证 9 migrations 与 0009 新增用户列。"
+    },
+    "AC-03": {
+      "description": "运维文档及 ROADMAP 准确反映最新 schema、实际验证和仅限本机的边界。"
+    }
+  },
+  "tasks": {
+    "T001": {
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/verify-postgresql-roles.sh",
+        "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+        "examples/openobserve-aiops/verify-postgresql-backup.sh",
+        "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+        "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+        "examples/openobserve-aiops/README.md",
+        "examples/openobserve-aiops/RESUME-CLAIMS.md",
+        "ROADMAP.md"
+      ],
+      "commands": [
+        "bash examples/openobserve-aiops/verify-postgresql-roles.sh",
+        "bash examples/openobserve-aiops/verify-postgresql-backup.sh",
+        "source /tmp/holmesgpt-aiops-test-runtime.sh && bash examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+        "git diff --check"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T001-roles-rerun",
+        "T001-backup",
+        "T001-compose-roles",
+        "T001-diff-rerun"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/008-postgres-verifier-0009/scope-baseline-T001.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/008-postgres-verifier-0009/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/008-postgres-verifier-0009/scope-report-T001.json",
+        "sha256": "d1e8628882aa16769edd6ee039040250e13f57189c3238dcb84439833382776f"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "T001-roles",
+      "type": "command",
+      "kind": "integration",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "bash examples/openobserve-aiops/verify-postgresql-roles.sh",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:35:06Z",
+      "duration_ms": 2939,
+      "exit_code": 1,
+      "result": "fail",
+      "stdout_log": "specs/008-postgres-verifier-0009/evidence/T001-roles.stdout.log",
+      "stderr_log": "specs/008-postgres-verifier-0009/evidence/T001-roles.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "ROADMAP.md",
+          "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/RESUME-CLAIMS.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+          "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+          "examples/openobserve-aiops/verify-postgresql-backup.sh",
+          "examples/openobserve-aiops/verify-postgresql-roles.sh"
+        ],
+        "diff_sha256": "03044615bf610ec64f91b667714dad11b3ff1022736e8226d198ada104ee8066"
+      }
+    },
+    {
+      "id": "T001-roles-rerun",
+      "type": "command",
+      "kind": "integration",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "bash examples/openobserve-aiops/verify-postgresql-roles.sh",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:35:37Z",
+      "duration_ms": 3575,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/008-postgres-verifier-0009/evidence/T001-roles-rerun.stdout.log",
+      "stderr_log": "specs/008-postgres-verifier-0009/evidence/T001-roles-rerun.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "ROADMAP.md",
+          "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/RESUME-CLAIMS.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+          "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+          "examples/openobserve-aiops/verify-postgresql-backup.sh",
+          "examples/openobserve-aiops/verify-postgresql-roles.sh"
+        ],
+        "diff_sha256": "7312b39d66a185c6ae5e5f1652dfb6b46b992688f3e28e14387c40df383dee20"
+      }
+    },
+    {
+      "id": "T001-backup",
+      "type": "command",
+      "kind": "integration",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-02"
+      ],
+      "command": "bash examples/openobserve-aiops/verify-postgresql-backup.sh",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:35:49Z",
+      "duration_ms": 5055,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/008-postgres-verifier-0009/evidence/T001-backup.stdout.log",
+      "stderr_log": "specs/008-postgres-verifier-0009/evidence/T001-backup.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "ROADMAP.md",
+          "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/RESUME-CLAIMS.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+          "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+          "examples/openobserve-aiops/verify-postgresql-backup.sh",
+          "examples/openobserve-aiops/verify-postgresql-roles.sh"
+        ],
+        "diff_sha256": "7312b39d66a185c6ae5e5f1652dfb6b46b992688f3e28e14387c40df383dee20"
+      }
+    },
+    {
+      "id": "T001-compose-roles",
+      "type": "command",
+      "kind": "integration",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-03"
+      ],
+      "command": "source /tmp/holmesgpt-aiops-test-runtime.sh && bash examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:36:08Z",
+      "duration_ms": 2006,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/008-postgres-verifier-0009/evidence/T001-compose-roles.stdout.log",
+      "stderr_log": "specs/008-postgres-verifier-0009/evidence/T001-compose-roles.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "ROADMAP.md",
+          "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/RESUME-CLAIMS.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+          "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+          "examples/openobserve-aiops/verify-postgresql-backup.sh",
+          "examples/openobserve-aiops/verify-postgresql-roles.sh"
+        ],
+        "diff_sha256": "7312b39d66a185c6ae5e5f1652dfb6b46b992688f3e28e14387c40df383dee20"
+      }
+    },
+    {
+      "id": "T001-diff",
+      "type": "command",
+      "kind": "static",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-03"
+      ],
+      "command": "git diff --check",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:36:21Z",
+      "duration_ms": 21,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/008-postgres-verifier-0009/evidence/T001-diff.stdout.log",
+      "stderr_log": "specs/008-postgres-verifier-0009/evidence/T001-diff.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "ROADMAP.md",
+          "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/RESUME-CLAIMS.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+          "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+          "examples/openobserve-aiops/verify-postgresql-backup.sh",
+          "examples/openobserve-aiops/verify-postgresql-roles.sh"
+        ],
+        "diff_sha256": "7312b39d66a185c6ae5e5f1652dfb6b46b992688f3e28e14387c40df383dee20"
+      }
+    },
+    {
+      "id": "T001-diff-rerun",
+      "type": "command",
+      "kind": "static",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-03"
+      ],
+      "command": "git diff --check",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T08:37:53Z",
+      "duration_ms": 33,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/008-postgres-verifier-0009/evidence/T001-diff-rerun.stdout.log",
+      "stderr_log": "specs/008-postgres-verifier-0009/evidence/T001-diff-rerun.stderr.log",
+      "git": {
+        "head": "3e7978ce8dfdc34700376ee9faecff8ee8af907a",
+        "changed_files": [
+          "ROADMAP.md",
+          "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md",
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+          "examples/openobserve-aiops/README.md",
+          "examples/openobserve-aiops/RESUME-CLAIMS.md",
+          "examples/openobserve-aiops/alert-trigger/app.py",
+          "examples/openobserve-aiops/alert-trigger/auth.py",
+          "examples/openobserve-aiops/alert-trigger/models.py",
+          "examples/openobserve-aiops/alert-trigger/public/incidents.js",
+          "examples/openobserve-aiops/alert-trigger/tests/test_auth.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_oidc_flow.py",
+          "examples/openobserve-aiops/alert-trigger/tests/test_workbench_api.py",
+          "examples/openobserve-aiops/verify-compose-postgresql-roles.sh",
+          "examples/openobserve-aiops/verify-postgresql-backup.sh",
+          "examples/openobserve-aiops/verify-postgresql-roles.sh"
+        ],
+        "diff_sha256": "a5c2c78214b6449f1d671173859baa277da736e61679307ae5f8a032e1b9d32d"
+      }
+    },
+    {
+      "id": "AC-01-role-verifiers",
+      "type": "observation",
+      "task": null,
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "observer": "Codex",
+      "evidence": "T001-roles-rerun 与 T001-compose-roles 均通过：隔离与当前 Compose 均核验 9 migrations、session_generation/reactivation_requested_at 列、runtime 最小权限与拒绝 DDL/ledger/audit 写入；API/worker 为 aiops_runtime，migration 为 aiops_migrator。",
+      "result": "pass",
+      "at": "2026-09-27T08:38:32Z"
+    },
+    {
+      "id": "AC-02-backup-restore",
+      "type": "observation",
+      "task": null,
+      "acceptance_criteria": [
+        "AC-02"
+      ],
+      "observer": "Codex",
+      "evidence": "T001-backup 通过：隔离 PostgreSQL 16 中明文与 AES-256-GCM 加密归档分别恢复 9 migrations、新身份列、task duration index、triage columns 与 synthetic incident；校验归档、0600、覆盖保护与篡改拒绝。",
+      "result": "pass",
+      "at": "2026-09-27T08:38:32Z"
+    },
+    {
+      "id": "AC-03-doc-sync",
+      "type": "observation",
+      "task": null,
+      "acceptance_criteria": [
+        "AC-03"
+      ],
+      "observer": "Codex",
+      "evidence": "Roadmap、生产准备、README、PostgreSQL 运维说明和简历证据页同步到 0009 当前状态；所有文字区分本机测试与未验收生产环境。git diff --check 通过。",
+      "result": "pass",
+      "at": "2026-09-27T08:38:32Z"
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-09-27T08:29:48Z",
+      "action": "init",
+      "status": "initialized",
+      "note": "State created."
+    },
+    {
+      "at": "2026-09-27T08:29:48Z",
+      "action": "set_draft",
+      "status": "spec_draft",
+      "note": "为新增用户生命周期 migration 更新隔离权限/备份 verifier 和当前文档。"
+    },
+    {
+      "at": "2026-09-27T08:30:13Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-01."
+    },
+    {
+      "at": "2026-09-27T08:30:13Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-02."
+    },
+    {
+      "at": "2026-09-27T08:30:13Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-03."
+    },
+    {
+      "at": "2026-09-27T08:30:13Z",
+      "action": "approve",
+      "status": "spec_approved",
+      "note": "spec approved by monstereat: 用户明确授权继续完成 Goal 中未完成事项及相关本机数据库操作，无需逐项确认。"
+    },
+    {
+      "at": "2026-09-27T08:31:13Z",
+      "action": "set_draft",
+      "status": "plan_draft",
+      "note": "Spec 范围为 verifier 向前兼容和证据文档同步。"
+    },
+    {
+      "at": "2026-09-27T08:31:13Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T001."
+    },
+    {
+      "at": "2026-09-27T08:31:13Z",
+      "action": "approve",
+      "status": "plan_approved",
+      "note": "plan approved by monstereat: 用户明确授权继续完成 Goal 所需工作和本机数据库操作，无需逐项确认。"
+    },
+    {
+      "at": "2026-09-27T08:31:13Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T001."
+    },
+    {
+      "at": "2026-09-27T08:35:09Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-roles: fail (bash examples/openobserve-aiops/verify-postgresql-roles.sh)"
+    },
+    {
+      "at": "2026-09-27T08:35:41Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-roles-rerun: pass (bash examples/openobserve-aiops/verify-postgresql-roles.sh)"
+    },
+    {
+      "at": "2026-09-27T08:35:54Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-backup: pass (bash examples/openobserve-aiops/verify-postgresql-backup.sh)"
+    },
+    {
+      "at": "2026-09-27T08:36:10Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-compose-roles: pass (source /tmp/holmesgpt-aiops-test-runtime.sh && bash examples/openobserve-aiops/verify-compose-postgresql-roles.sh)"
+    },
+    {
+      "at": "2026-09-27T08:36:21Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-diff: pass (git diff --check)"
+    },
+    {
+      "at": "2026-09-27T08:37:53Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-diff-rerun: pass (git diff --check)"
+    },
+    {
+      "at": "2026-09-27T08:38:05Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T001 with T001-roles-rerun, T001-backup, T001-compose-roles, T001-diff-rerun."
+    },
+    {
+      "at": "2026-09-27T08:38:32Z",
+      "action": "begin_verify",
+      "status": "verifying",
+      "note": "All registered tasks are complete."
+    },
+    {
+      "at": "2026-09-27T08:38:32Z",
+      "action": "record_observation",
+      "status": "verifying",
+      "note": "AC-01-role-verifiers: pass by Codex"
+    },
+    {
+      "at": "2026-09-27T08:38:32Z",
+      "action": "record_observation",
+      "status": "verifying",
+      "note": "AC-02-backup-restore: pass by Codex"
+    },
+    {
+      "at": "2026-09-27T08:38:32Z",
+      "action": "record_observation",
+      "status": "verifying",
+      "note": "AC-03-doc-sync: pass by Codex"
+    },
+    {
+      "at": "2026-09-27T08:40:17Z",
+      "action": "block",
+      "status": "blocked",
+      "note": "在 T001 尚未 complete-task 时误进入 verifying；需要返回执行态以完成已验证任务。"
+    },
+    {
+      "at": "2026-09-27T08:40:59Z",
+      "action": "resume",
+      "status": "verifying",
+      "note": "T001 已有 done 状态、全部命令证据和 scope report；从误标的 blocked 恢复到原验证阶段。"
+    }
+  ],
+  "created_at": "2026-09-27T08:29:48Z",
+  "updated_at": "2026-09-27T08:40:59Z"
+}
