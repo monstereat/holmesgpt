@@ -1,7 +1,7 @@
 name: develop-me AIOps checks
 on:
   push:
-    branches: [develop-me]
+    branches: [develop-me, feature/openobserve-aiops]
     paths:
       - 'holmes/plugins/toolsets/openobserve/**'
       - 'holmes/plugins/toolsets/__init__.py'
