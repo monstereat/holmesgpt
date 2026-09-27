@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import string
 import sys
 from datetime import datetime, timezone
@@ -34,12 +35,30 @@ def _read_json(path: Path) -> Any:
         raise ValueError(f"could not read JSON file: {path}") from exc
 
 
-def _write_json(path: Path, value: dict[str, Any]) -> None:
+def _write_json(path: Path, value: dict[str, Any], *, exclusive: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | (os.O_EXCL if exclusive else os.O_TRUNC)
+    descriptor = os.open(path, flags, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+        output.write(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
 
 
-def prepare_review(report_path: Path, output_path: Path) -> dict[str, Any]:
+def _contains_reference_field(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(
+            (isinstance(key, str) and key.startswith("reference_")) or _contains_reference_field(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_reference_field(item) for item in value)
+    return False
+
+
+def prepare_review(report_path: Path, output_path: Path, answer_key_path: Path) -> dict[str, Any]:
+    if output_path.resolve() == answer_key_path.resolve():
+        raise ValueError("review sheet and answer key must use different paths")
+    if output_path.exists() or answer_key_path.exists():
+        raise ValueError("refusing to overwrite an existing review sheet or answer key")
     report_bytes = report_path.read_bytes()
     try:
         report = json.loads(report_bytes)
@@ -54,6 +73,7 @@ def prepare_review(report_path: Path, output_path: Path) -> dict[str, Any]:
         raise ValueError("human diagnosis review requires all 20 evaluation cases")
 
     review_cases = []
+    reference_cases = []
     case_ids: set[str] = set()
     for case in cases:
         if not isinstance(case, dict) or not isinstance(case.get("case_id"), str):
@@ -64,6 +84,7 @@ def prepare_review(report_path: Path, output_path: Path) -> dict[str, Any]:
         case_ids.add(case_id)
         if any(field not in case for field in REFERENCE_FIELDS):
             raise ValueError(f"case {case_id} is missing reference fields")
+        reference_cases.append({"case_id": case_id, **{field: case[field] for field in REFERENCE_FIELDS}})
         evidence = case.get("evidence")
         if not isinstance(evidence, list):
             raise ValueError(f"case {case_id} evidence must be an array")
@@ -75,7 +96,6 @@ def prepare_review(report_path: Path, output_path: Path) -> dict[str, Any]:
                 "evidence": evidence,
                 "evidence_status": case.get("evidence_status"),
                 "error_code": case.get("error_code"),
-                **{field: case[field] for field in REFERENCE_FIELDS},
                 "scores": {dimension: None for dimension in DIMENSIONS},
                 "unsafe_remediation": None,
                 "evidence_refs": [],
@@ -84,8 +104,8 @@ def prepare_review(report_path: Path, output_path: Path) -> dict[str, Any]:
         )
 
     review = {
-        "schema_version": "1.0.0",
-        "rubric": "holmes-aiops-diagnosis-v1",
+        "schema_version": "2.0.0",
+        "rubric": "holmes-aiops-diagnosis-v2-blind",
         "source_report_sha256": hashlib.sha256(report_bytes).hexdigest(),
         "evaluation_run_id": report.get("evaluation_run_id"),
         "evaluated_at": report.get("evaluated_at"),
@@ -94,7 +114,15 @@ def prepare_review(report_path: Path, output_path: Path) -> dict[str, Any]:
         "reviewed_at": None,
         "cases": review_cases,
     }
-    _write_json(output_path, review)
+    answer_key = {
+        "schema_version": "1.0.0",
+        "rubric": review["rubric"],
+        "source_report_sha256": review["source_report_sha256"],
+        "evaluation_run_id": review["evaluation_run_id"],
+        "cases": reference_cases,
+    }
+    _write_json(answer_key_path, answer_key, exclusive=True)
+    _write_json(output_path, review, exclusive=True)
     return review
 
 
@@ -106,10 +134,12 @@ def summarize_review(
     reviewed_at: str | None = None,
 ) -> dict[str, Any]:
     review = _read_json(review_path)
-    if not isinstance(review, dict) or review.get("schema_version") != "1.0.0":
+    if not isinstance(review, dict) or review.get("schema_version") != "2.0.0":
         raise ValueError("unsupported human review sheet")
-    if review.get("rubric") != "holmes-aiops-diagnosis-v1":
+    if review.get("rubric") != "holmes-aiops-diagnosis-v2-blind":
         raise ValueError("unsupported scoring rubric")
+    if _contains_reference_field(review):
+        raise ValueError("review sheet must not contain reference answers")
     if not reviewer.strip():
         raise ValueError("reviewer must be a non-empty identifier")
     cases = review.get("cases")
@@ -184,7 +214,7 @@ def summarize_review(
     if parsed_reviewed_at.tzinfo is None:
         raise ValueError("reviewed_at must include a timezone")
     summary = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "rubric": review["rubric"],
         "source_report_sha256": review.get("source_report_sha256"),
         "evaluation_run_id": review.get("evaluation_run_id"),
@@ -213,9 +243,9 @@ def compare_summaries(
     first = _read_json(first_path)
     second = _read_json(second_path)
     for summary in (first, second):
-        if not isinstance(summary, dict) or summary.get("schema_version") != "1.0.0":
+        if not isinstance(summary, dict) or summary.get("schema_version") != "2.0.0":
             raise ValueError("unsupported human review summary")
-        if summary.get("rubric") != "holmes-aiops-diagnosis-v1":
+        if summary.get("rubric") != "holmes-aiops-diagnosis-v2-blind":
             raise ValueError("unsupported scoring rubric")
         if not isinstance(summary.get("reviewer"), str) or not summary["reviewer"].strip():
             raise ValueError("review summary needs a reviewer identifier")
@@ -315,7 +345,7 @@ def compare_summaries(
             )
 
     comparison = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "rubric": first["rubric"],
         "source_report_sha256": first["source_report_sha256"],
         "evaluation_run_id": first["evaluation_run_id"],
@@ -342,9 +372,10 @@ def compare_summaries(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    prepare_parser = subparsers.add_parser("prepare", help="create a human scoring sheet from a live report")
+    prepare_parser = subparsers.add_parser("prepare", help="create a blind review sheet and separate answer key")
     prepare_parser.add_argument("report", type=Path)
     prepare_parser.add_argument("--output", type=Path, required=True)
+    prepare_parser.add_argument("--answer-key", type=Path, required=True)
     score_parser = subparsers.add_parser("summarize", help="validate scores and calculate human review metrics")
     score_parser.add_argument("review", type=Path)
     score_parser.add_argument("--reviewer", required=True)
@@ -357,8 +388,9 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.command == "prepare":
-            prepare_review(args.report, args.output)
-            print(f"Human scoring sheet written to {args.output}")
+            prepare_review(args.report, args.output, args.answer_key)
+            print(f"Blind human scoring sheet written to {args.output}")
+            print(f"Keep the answer key private until both reviews are complete: {args.answer_key}")
         elif args.command == "summarize":
             summarize_review(args.review, args.output, reviewer=args.reviewer, reviewed_at=args.reviewed_at)
             print(f"Human scoring summary written to {args.output}")

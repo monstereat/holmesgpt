@@ -15,6 +15,7 @@
 ## 实施状态与验证
 
 - 2026-09-27 webhook 准入并发回归：将 PostgreSQL admission 集成测试升级为 barrier 同步 16 个唯一请求竞争 capacity 4，验证恰好放行 4 个且满载后的重复 fingerprint 仍幂等；用隔离 Docker PostgreSQL 单独运行通过 **1 passed (10.82s)**。测试自行对 tmpfs 数据库应用迁移，消除了依赖其他用例先建表的顺序要求。该用例证明并发正确性，不是吞吐压测，也不提供生产容量/SLO。完整 incident suite 一次运行在 9 分 43 秒、82 passed 后未结束，人工中断；随后其余 **104 passed、1 deselected、1 warning in 293.20s**，被排除的 JWKS OIDC 用例及整个 3 用例 OIDC 模块单独通过（3 passed in 8.18s）。因此 105 个不同用例均有通过记录，但本轮没有一次完整 105 项的单次全绿结果。
+- 2026-09-27 RCA 盲评材料修复：审查发现旧 review sheet 同时暴露 Holmes 诊断和 `reference_*` 答案，无法用于独立评审。`review_scoring.py prepare` 现生成不带参考答案的 v2 评审表和独立答案 key，输出为 mode `0600` 且拒绝覆盖；汇总器递归拒绝任何层级含参考答案的评审表。README 改为要求先由两名评审者盲评、再解封答案 key 作分歧裁决。隔离 Docker 单测 **7 passed**；从仓库 live 报告生成两份 20 案空白盲评表和独立答案 key，确认评审表没有 `reference_*` 字段且三份文件权限均为 `0600`。人工评分与裁决未完成，诊断评分继续为 `not_scored`。
 - 2026-09-27 PostgreSQL 加密备份演练：新增 `encrypt-postgres-backup.sh`，使用未过期接收方证书对既有 custom-format dump 创建 CMS DER / AES-256-GCM 文件，校验封装并原子写入 mode `0600` 新文件，不覆盖现有目标；明文输入由调用方保留并自行按平台策略处置。扩展隔离 PostgreSQL 16 verifier，生成临时证书后解密真实 8-migration 归档并恢复到第二个临时数据库，核对迁移与合成事故；同时验证密文权限、覆盖拒绝及篡改密文的认证拒绝，完整备份验证通过。专用 GitHub Actions 现会在相关脚本、运维文档或规则变更时运行该隔离恢复 verifier。此验证不代表生产密钥托管、异地传输/留存、托管备份、PITR 或实测 RPO/RTO 已配置。
 - 2026-09-27 Collector 运行监控增量：生产 Collector 模板在 `8888` 暴露内部 Prometheus metrics reader；生产准备文档限定该端口只对目标私有 scraper 开放。新增 Collector 抓取失联、队列满载和实际入队失败三条告警及独立 `promtool` firing tests，CI 会校验模板与两组告警规则。固定 Collector digest 的模板配置校验和 Prometheus 告警规则/firing tests 均通过；此外，在本机专用 Docker 内网启动临时 Collector、从同网段 order-service 抓取 `/metrics` 返回 HTTP 200，实测 `otelcol_exporter_queue_size` 与 `otelcol_exporter_queue_capacity` 名称及 exporter 标签符合满载告警表达式，临时容器与凭据已清理。该冒烟验证不代表真实 OpenObserve 出口、故障注入或生产 scraper 已验收。上游队列及入队指标为 Alpha；生产 scraper、通知路由、目标网络策略及升级时指标兼容仍待 staging/平台验收。
 - 2026-09-27 工作台浏览器走查：用户浏览器遗留在 `localhost:8082` 的页面可显示缓存 UI，但该端口当前无监听，因此事故详情请求报 `Failed to fetch`；当前 Compose 实际将 Incident API loopback 映射到 `8081`。将两个旧工作台标签都切到 `http://localhost:8081/` 后，本机 operator 默认登录成功，事故列表和详情均正常加载；详情中的 Holmes 调查结果标记 `verified`，引用的 Trace ID 与事故一致，并能显示审批与审计时间线。operator 视图将复盘字段设为只读且不展示审核按钮。approver 在浏览器实际保存并审核复盘已于 2026-09-25 验收（见下方浏览器闭环记录）；本次没有修改事故状态、审批或复盘内容。
@@ -110,7 +111,9 @@
 - 本机 Docker 服务已运行；每次从新 shell 管理 Compose 前需加载本机私有运行变量文件 `/tmp/holmesgpt-aiops-test-runtime.sh`（权限 0600）。该临时文件不在仓库中，系统清理 `/tmp` 后需重新生成配置。
 - 用户要求先在当前 Mac Docker Desktop/Compose 本地测试环境运行和验证；正式生产平台尚未选择。实现和本地验证不代表生产部署授权；实际启用生产流量、迁移生产数据或执行生产处置前，仍需依据具体部署包、风险和回退计划完成最终确认。
 
-## 最近验证（2026-09-25）
+## 最近验证（2026-09-27）
+
+- 2026-09-27 RCA 盲评修复复验：Docker 隔离下 `test_review_scoring.py` **7 passed**。live report 生成 reviewer A/B 两份 20 案盲评表和独立答案 key；递归检查确认评审表不含参考字段、key 含 20 案、权限均为 `0600`。本机评审材料位于 `/tmp/holmes-aiops-review-20260927-blind-reviewer-{a,b}.json`，答案 key 为 `/tmp/holmes-aiops-review-20260927-answer-key.json`。此前 v1 sheet 含参考答案，不得继续用于盲评；两名独立人工评审和裁决仍未完成。
 
 - OIDC 增量：隔离 Compose 全套测试 **70 passed，1 warning**；其中 19 项身份定向测试包含本地 RSA/JWKS 签名提供方的 Authlib 回调验证。已在获授权的本机 Docker 测试数据库执行迁移，`schema_migrations` 登记 0001–0004；重建 incident API/worker 后容器均为 healthy，API `/healthz`、`/readyz`、`/auth/mode` 返回成功，浏览器登录模式为 local；前端 `node --check` 和 `docker compose config --quiet` 通过。真实企业 IdP 和生产流量尚未测试。
 

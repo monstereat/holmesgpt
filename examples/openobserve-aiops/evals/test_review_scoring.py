@@ -33,25 +33,31 @@ def make_report():
     }
 
 
-def test_prepare_review_keeps_references_separate_and_leaves_scores_empty(tmp_path):
+def test_prepare_review_blinds_references_and_leaves_scores_empty(tmp_path):
     report_path = tmp_path / "report.json"
     review_path = tmp_path / "review.json"
+    answer_key_path = tmp_path / "answer-key.json"
     report_path.write_text(json.dumps(make_report()), encoding="utf-8")
 
-    review = prepare_review(report_path, review_path)
+    review = prepare_review(report_path, review_path, answer_key_path)
+    answer_key = json.loads(answer_key_path.read_text(encoding="utf-8"))
 
     assert review["source_report_sha256"]
     assert len(review["cases"]) == 20
-    assert review["cases"][0]["reference_diagnosis"] == "reference-0"
+    assert all(not any(field.startswith("reference_") for field in case) for case in review["cases"])
+    assert answer_key["cases"][0]["reference_diagnosis"] == "reference-0"
     assert review["cases"][0]["scores"]["root_cause_accuracy"] is None
+    assert review_path.stat().st_mode & 0o777 == 0o600
+    assert answer_key_path.stat().st_mode & 0o777 == 0o600
 
 
 def test_summary_calculates_human_scores_and_unsafe_rate(tmp_path):
     report_path = tmp_path / "report.json"
     review_path = tmp_path / "review.json"
+    answer_key_path = tmp_path / "answer-key.json"
     summary_path = tmp_path / "summary.json"
     report_path.write_text(json.dumps(make_report()), encoding="utf-8")
-    review = prepare_review(report_path, review_path)
+    review = prepare_review(report_path, review_path, answer_key_path)
     for case in review["cases"]:
         case["scores"] = {
             "root_cause_accuracy": 2,
@@ -76,14 +82,28 @@ def test_summary_calculates_human_scores_and_unsafe_rate(tmp_path):
 def test_summary_rejects_missing_scores_and_unreferenced_grounding(tmp_path):
     report_path = tmp_path / "report.json"
     review_path = tmp_path / "review.json"
+    answer_key_path = tmp_path / "answer-key.json"
     report_path.write_text(json.dumps(make_report()), encoding="utf-8")
-    review = prepare_review(report_path, review_path)
+    review = prepare_review(report_path, review_path, answer_key_path)
     for case in review["cases"]:
         case["scores"] = {"root_cause_accuracy": 1}
         case["reviewer_notes"] = "reviewed"
         case["unsafe_remediation"] = False
     review_path.write_text(json.dumps(review), encoding="utf-8")
 
+    review["cases"][0]["reference_diagnosis"] = "leaked answer"
+    review_path.write_text(json.dumps(review), encoding="utf-8")
+    with pytest.raises(ValueError, match="must not contain reference answers"):
+        summarize_review(review_path, tmp_path / "leaked-summary.json", reviewer="reviewer-a")
+
+    del review["cases"][0]["reference_diagnosis"]
+    review["metadata"] = {"nested": [{"reference_expected_findings": ["leaked"]}]}
+    review_path.write_text(json.dumps(review), encoding="utf-8")
+    with pytest.raises(ValueError, match="must not contain reference answers"):
+        summarize_review(review_path, tmp_path / "nested-leaked-summary.json", reviewer="reviewer-a")
+
+    del review["metadata"]
+    review_path.write_text(json.dumps(review), encoding="utf-8")
     with pytest.raises(ValueError, match="needs a 0, 1, or 2"):
         summarize_review(review_path, tmp_path / "summary.json", reviewer="reviewer-a")
 
@@ -106,13 +126,29 @@ def test_prepare_rejects_mock_reports(tmp_path):
     report_path.write_text(json.dumps(report), encoding="utf-8")
 
     with pytest.raises(ValueError, match="requires a live schema"):
-        prepare_review(report_path, tmp_path / "review.json")
+        prepare_review(report_path, tmp_path / "review.json", tmp_path / "answer-key.json")
+
+
+def test_prepare_refuses_colliding_or_overwriting_outputs(tmp_path):
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(make_report()), encoding="utf-8")
+    same_path = tmp_path / "same.json"
+
+    with pytest.raises(ValueError, match="different paths"):
+        prepare_review(report_path, same_path, same_path)
+
+    existing_review = tmp_path / "review.json"
+    existing_key = tmp_path / "answer-key.json"
+    existing_review.write_text("preserve", encoding="utf-8")
+    with pytest.raises(ValueError, match="refusing to overwrite"):
+        prepare_review(report_path, existing_review, existing_key)
+    assert existing_review.read_text(encoding="utf-8") == "preserve"
 
 
 def make_scored_summary(reviewer, report_sha="a" * 64, score=2, unsafe=False):
     return {
-        "schema_version": "1.0.0",
-        "rubric": "holmes-aiops-diagnosis-v1",
+        "schema_version": "2.0.0",
+        "rubric": "holmes-aiops-diagnosis-v2-blind",
         "source_report_sha256": report_sha,
         "evaluation_run_id": "run-1",
         "reviewer": reviewer,
