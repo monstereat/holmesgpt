@@ -71,14 +71,30 @@ VALUES (
 );
 SQL
 
-backup_path="/backups/aiops-backup-check.dump"
+backup_path="/tmp/aiops-backup-check.dump"
+host_backup_path="$backup_dir/aiops-backup-check.dump"
 docker exec "$container_name" env \
     PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=postgres \
     /usr/local/bin/backup-postgres.sh "$backup_path"
 
+stage="copy the mode-restricted dump to the host for encryption"
+docker cp "$container_name:$backup_path" "$host_backup_path"
+python3 - "$host_backup_path" <<'PY'
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+metadata = os.stat(path)
+if stat.S_IMODE(metadata.st_mode) != 0o600 or not os.access(path, os.R_OK):
+    raise SystemExit("host-side backup copy must be readable and mode 0600")
+if metadata.st_uid != os.getuid():
+    raise SystemExit("host-side backup copy must belong to the verifier process")
+PY
+
 stage="encrypt the backup with CMS AES-256-GCM"
 encrypted_backup_path="$backup_dir/aiops-backup-check.cms.der"
-if ! bash "$repo_dir/encrypt-postgres-backup.sh" "$backup_dir/aiops-backup-check.dump" \
+if ! bash "$repo_dir/encrypt-postgres-backup.sh" "$host_backup_path" \
     "$encrypted_backup_path" "$backup_dir/recipient.crt" \
     >"$backup_dir/encrypt.stdout" 2>"$backup_dir/encrypt.stderr"; then
     error_detail="$(tr '\n' ' ' < "$backup_dir/encrypt.stderr" | cut -c 1-1000)"
@@ -106,7 +122,7 @@ if [[ "$encrypted_mode" != "600" ]]; then
 fi
 
 if bash "$repo_dir/encrypt-postgres-backup.sh" \
-    "$backup_dir/aiops-backup-check.dump" "$encrypted_backup_path" \
+    "$host_backup_path" "$encrypted_backup_path" \
     "$backup_dir/recipient.crt" >/dev/null 2>&1; then
     echo "encrypted backup command unexpectedly overwrote an existing file" >&2
     exit 1
