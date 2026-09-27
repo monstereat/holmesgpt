@@ -61,7 +61,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
         with conn.cursor() as cursor:
             cursor.execute(
                 """UPDATE tasks SET status = 'failed', attempt = 1,
-                          error_code = 'holmes_unavailable', result = '{\"evidence_status\":\"unavailable\"}'::jsonb,
+                          error_code = 'holmes_outcome_unknown', result = '{\"evidence_status\":\"unavailable\"}'::jsonb,
                           completed_at = now() WHERE id = %s""",
                 (incident["task_id"],),
             )
@@ -82,6 +82,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert "/api/users/${encodeURIComponent(user.id)}/${endpoint}" in static_script.text
             assert "待恢复" in static_script.text
             assert "保存并标记已审核" in static_script.text
+            assert "可能产生重复费用" in static_script.text
 
             def login(username, password):
                 response = client.post("/auth/login", json={"username": username, "password": password})
@@ -101,7 +102,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert details.status_code == 200
             assert details.json()["severity"] == "medium"
             assert details.json()["assignee_username"] is None
-            assert details.json()["tasks"][0]["error_code"] == "holmes_unavailable"
+            assert details.json()["tasks"][0]["error_code"] == "holmes_outcome_unknown"
             triage_url = f"/api/incidents/{incident['incident_id']}/triage"
             status_url = f"/api/incidents/{incident['incident_id']}/status"
             assert client.patch(triage_url, headers=viewer, json={"severity": "high"}).status_code == 403
@@ -261,7 +262,8 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             after_retry = client.get(f"/api/incidents/{incident['incident_id']}", headers=operator).json()
             assert after_retry["tasks"][0]["status"] == "queued"
             assert after_retry["tasks"][0]["result"] is None
-            assert any(event["event_type"] == "task.manual_retry_requested" for event in after_retry["timeline"])
+            manual_retry = next(event for event in after_retry["timeline"] if event["event_type"] == "task.manual_retry_requested")
+            assert manual_retry["details"] == {"previous_error_code": "holmes_outcome_unknown"}
             assert {event["event_type"] for event in after_retry["timeline"]} >= {"retrospective.draft", "retrospective.reviewed"}
 
             logout = client.post("/auth/logout", headers=viewer)

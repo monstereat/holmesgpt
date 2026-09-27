@@ -255,9 +255,11 @@
         const line = document.createElement("div");
         line.className = "task";
         line.append(el("span", `${task.task_type} · ${task.status} · 尝试 ${task.attempt}/${task.max_attempts}`));
+        const outcomeUnknown = ["holmes_outcome_unknown", "worker_outcome_unknown"].includes(task.error_code);
         if (["operator", "admin"].includes(principal.role) && task.status === "failed") {
           const retry = el("button", "重试调查");
           retry.addEventListener("click", async () => {
+            if (outcomeUnknown && !window.confirm("上次 Holmes 调查是否完成无法确认。重试会再次调用模型，可能产生重复费用。仍要继续吗？")) return;
             retry.disabled = true;
             try {
               await api(`/api/tasks/${encodeURIComponent(task.id)}/retry`, { method: "POST" });
@@ -268,7 +270,11 @@
           line.append(retry);
         }
         tasks.append(line);
-        if (task.error_code) tasks.append(el("p", `错误代码：${task.error_code}`, "muted"));
+        if (outcomeUnknown) {
+          tasks.append(el("p", "调查结果未知：Holmes 请求可能已完成并计费，人工重试可能再次产生费用。", "muted"));
+        } else if (task.error_code) {
+          tasks.append(el("p", `错误代码：${task.error_code}`, "muted"));
+        }
         if (task.result) {
           const result = task.result;
           if (result.analysis) tasks.append(el("pre", result.analysis));

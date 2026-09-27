@@ -1152,6 +1152,14 @@ def retry_task(task_id: str, request: Request, authorization: str | None = Heade
         with conn.transaction():
             with conn.cursor() as cursor:
                 cursor.execute(
+                    "SELECT error_code FROM tasks WHERE id = %s AND status = 'failed' FOR UPDATE",
+                    (task_uuid,),
+                )
+                failed_task = cursor.fetchone()
+                if not failed_task:
+                    raise HTTPException(status_code=409, detail="Only failed tasks can be retried")
+                previous_error_code = failed_task[0]
+                cursor.execute(
                     """UPDATE tasks SET status = 'queued', attempt = 0, max_attempts = 4,
                               error_code = NULL, result = NULL, completed_at = NULL, available_at = now(),
                               lease_expires_at = NULL, updated_at = now()
@@ -1167,8 +1175,8 @@ def retry_task(task_id: str, request: Request, authorization: str | None = Heade
                     (task_uuid,),
                 )
                 cursor.execute(
-                    "INSERT INTO audit_events (incident_id, task_id, actor_id, event_type) VALUES (%s, %s, %s, 'task.manual_retry_requested')",
-                    (incident_id, task_uuid, principal.user_id),
+                    "INSERT INTO audit_events (incident_id, task_id, actor_id, event_type, details) VALUES (%s, %s, %s, 'task.manual_retry_requested', %s)",
+                    (incident_id, task_uuid, principal.user_id, Jsonb({"previous_error_code": previous_error_code})),
                 )
     return {"task_id": task_uuid, "status": "queued"}
 
