@@ -2,14 +2,14 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境已恢复：当前工作树对应的 incident API、worker、policy proxy 均 healthy，API loopback 端口为 8081；operator/approver 登录、权限拒绝、带精确 Trace 的成功调查和本机 500 故障调查均有实时证据，最终演示状态为 OFF。incident API 已在本机测试 PostgreSQL 应用 migration `0008_incident_triage`，持久化事故严重级别与负责人，提供带权限校验和审计的工作台操作及事故状态流转；API、readyz、登录、事故列表和 UI 控件实测通过。当前源代码的事故服务隔离 Compose 套件为 **105 passed，1 个 Starlette/AnyIO 弃用 warning**，独立 PostgreSQL 16 备份恢复验证覆盖 8 个 migration 并通过。policy proxy 已替换为当前源码并通过 Holmes toolset enabled 检查；隔离 OpenObserve v1.0.3 集成验收通过，另有一条本机合成日志经当前 Holmes/代理链路返回 `verified` 且证据匹配 trace 与 marker。此状态只代表本机测试，不等于生产部署。当前 Mac 的 Docker Desktop/Compose 明确是本地测试环境；正式生产平台和部署范围仍未选择。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。2026-09-27 当前工作树 live 合成评测 run `9d27bceb636747d192b839868afae3c9`：20/20 精确案例证据、3/3 发布事件匹配，未限定成功查询、跨案例命中、工具错误均为 0；报告 schema 1.3 校验通过，SHA-256 `50fef9dd604e962363c6b8f8b9bb247f3e50d04020393194d7518a30d91d8377`。诊断评分仍为 `not_scored`，不能声明准确率。评测专用策略按服务端 run/case 上下文拒绝缺少精确条件或含 OR 的搜索；大小写无关头读取与字符串字面量边界均有回归测试。Incident API 现要求生产显式配置待处理任务容量，并以 PostgreSQL 事务锁限制并发 webhook admission；容量必须由压测确定。代理源码逐流配置 SQL 字段 allowlist，并在返回结果中过滤非允许字段；生产字段选择和自由文本分类仍待数据所有者确认。新增通用签名发布事件发送脚本并通过订单服务定向测试（19 passed）；部署 workflow 调用、远端 secret binding 和真实发布事件验收仍待完成。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。用户授权仅覆盖本机测试 schema/migration 和测试部署，不包含正式环境。
+**本机 Docker 测试环境已恢复：当前工作树对应的 incident API、worker、policy proxy 均 healthy，API loopback 端口为 8081；operator/approver 登录、权限拒绝、带精确 Trace 的成功调查和本机 500 故障调查均有实时证据，最终演示状态为 OFF。incident API 已在本机测试 PostgreSQL 应用 migration `0008_incident_triage`，持久化事故严重级别与负责人，提供带权限校验和审计的工作台操作及事故状态流转；API、readyz、登录、事故列表和 UI 控件实测通过。当前源代码的事故服务隔离 Compose 套件为 **105 passed，1 个 Starlette/AnyIO 弃用 warning**，独立 PostgreSQL 16 备份恢复验证覆盖 8 个 migration 并通过。policy proxy 已替换为当前源码并通过 Holmes toolset enabled 检查；隔离 OpenObserve v1.0.3 集成验收通过，另有一条本机合成日志经当前 Holmes/代理链路返回 `verified` 且证据匹配 trace 与 marker。此状态只代表本机测试，不等于生产部署。当前 Mac 的 Docker Desktop/Compose 明确是本地测试环境；正式生产平台和部署范围仍未选择。** Holmes 默认使用 `deepseek/deepseek-flash`，以 `MODEL` 和 `DEEPSEEK_API_KEY` 配置；每次调查限制为 12 个模型步骤。2026-09-27 当前工作树 live 合成评测 run `9d27bceb636747d192b839868afae3c9`：20/20 精确案例证据、3/3 发布事件匹配，未限定成功查询、跨案例命中、工具错误均为 0；报告 schema 1.3 校验通过，SHA-256 `50fef9dd604e962363c6b8f8b9bb247f3e50d04020393194d7518a30d91d8377`。这验证的是受限检索和证据可见性，诊断评分仍为 `not_scored`，不能声明准确率。Incident API 现要求生产显式配置待处理任务容量，并以 PostgreSQL 事务锁限制并发 webhook admission；容量必须由目标环境压测确定。代理源码逐流配置 SQL 字段 allowlist，并在返回结果中过滤非允许字段；生产字段选择和自由文本分类仍待数据所有者确认。通用 HMAC 发布发送器和 GitHub reusable workflow 已提供；本机 sender→NestJS→OpenObserve 唯一事件端到端通过，但无真实部署 caller、远端 secret binding 或 staging/production 事件验收。OpenObserve OSS 自身仍不提供原生 RBAC；代理只收窄 Holmes 的访问路径。生产平台、数据服务、身份、网络、SLO/RPO/RTO 等未选定，不能生成目标专属生产部署包。
 
 ## 已完成并验证
 
 - OpenObserve Toolset 支持有界只读查询、Trace 检索和流范围约束。
 - 本地 Compose 编排 OpenObserve、订单服务和告警接收器；浏览器错误、NestJS 日志与 Trace 可用 Trace ID 关联。
 - 告警鉴权、进程内去重/任务查询、签名发布事件原型及事故流程内存模型已有定向测试。
-- 20 个合成根因证据样本及结构校验已提交；它们尚未用于 Holmes 诊断质量评测。
+- 20 个合成根因证据样本及结构校验已提交，并在 live DeepSeek 运行中用于检索/证据匹配评测；根因诊断质量仍为 `not_scored`，不能据此声明准确率。
 - T000：order-service 新增仅限 `set-chaos-mode` 的内部测试动作接口；服务端验证 token、资源、参数和幂等键；4 项定向 Node 测试通过，TypeScript build 通过。
 
 ## 实施状态与验证
