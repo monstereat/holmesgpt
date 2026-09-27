@@ -2,6 +2,15 @@ groups:
   - name: aiops-otel-collector
     interval: 30s
     rules:
+      - alert: AIOpsCollectorUnavailable
+        expr: up{job="aiops-otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: AIOps telemetry Collector scrape target is unavailable
+          description: The configured Collector metrics target has failed Prometheus scrapes for two minutes.
+
       - alert: AIOpsCollectorExportQueueFull
         expr: otelcol_exporter_queue_size >= on (instance, exporter) otelcol_exporter_queue_capacity
         for: 1m

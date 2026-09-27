@@ -6,6 +6,8 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
+      - series: 'up{job="aiops-otel-collector",instance="collector-1"}'
+        values: "1 0 0 0 0"
       - series: 'otelcol_exporter_queue_size{instance="collector-1",exporter="otlp_http/openobserve"}'
         values: "0 10 10 10"
       - series: 'otelcol_exporter_queue_capacity{instance="collector-1",exporter="otlp_http/openobserve"}'
@@ -13,6 +15,16 @@ tests:
       - series: 'otelcol_exporter_enqueue_failed_spans{instance="collector-1",exporter="otlp_http/openobserve"}'
         values: "0 1 1 1"
     alert_rule_test:
+      - eval_time: 3m
+        alertname: AIOpsCollectorUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: aiops-otel-collector
+              instance: collector-1
+              severity: critical
+            exp_annotations:
+              summary: AIOps telemetry Collector scrape target is unavailable
+              description: The configured Collector metrics target has failed Prometheus scrapes for two minutes.
       - eval_time: 2m
         alertname: AIOpsCollectorExportQueueFull
         exp_alerts:
