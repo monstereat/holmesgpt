@@ -20,6 +20,7 @@
 
 ## 验证结果
 
+- 2026-09-27 T007 完整 Incident API/workbench 隔离 Compose suite：`source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test`，**105 passed，1 个 Starlette/AnyIO 上游弃用 warning，21.52s**。测试 PostgreSQL 使用无持久卷隔离容器，测试后停止；本机 API `/readyz` 返回 `ready`，Holmes、API、worker、Redis、PostgreSQL、proxy 与 order-service 均 healthy。发现的既存 orphan `alert-trigger` 未清理。生产目标尚未选择，T007 整体验收仍未完成。
 - 2026-09-27 发布事件端到端复验：`bash -n examples/openobserve-aiops/verify-release-event-e2e.sh` 与脚本实际运行通过；一次临时订单服务副本只绑定 loopback 随机端口，使用随机测试 secret 接收发布脚本签名事件，显式 flush 后在现有本机 OpenObserve 以唯一 version+commit 精确检索到 1 条 `release_deployed`。临时副本退出，现有 Compose 服务仍健康。此为本机 synthetic integration，不代表 GitHub workflow、staging 或生产发布已接通。
 - 2026-09-27 PostgreSQL 上线操作边界：新增 [`POSTGRESQL-OPERATIONS.md`](../../examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md)，将已验证的 migration `0001`–`0008`、角色权限与隔离恢复证据和未验证的 provider IAM、加密异地保留、PITR、staging rollback/PITR 演练分开说明。变更通过 `git diff --check`，文档链接目标存在；未执行生产数据库操作。
 - 2026-09-27 OTel Collector 生产配置：新增独立的 TLS/Bearer-token 接收和 HTTPS/文件式 upstream auth、带界限的磁盘发送队列模板；`bash -n examples/openobserve-aiops/verify-production-otel-config.sh && bash examples/openobserve-aiops/verify-production-otel-config.sh` 通过固定 digest 的 Collector `validate`，临时容器使用 `--network none`，未连接服务端。真实证书、令牌轮换、加密持久卷、私网边界、File Storage beta 支持状态接受度及容量需在目标 staging 环境验收。
