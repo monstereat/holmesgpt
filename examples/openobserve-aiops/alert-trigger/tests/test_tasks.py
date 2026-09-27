@@ -91,6 +91,7 @@ def test_worker_persists_failure_evidence_on_permanent_error(monkeypatch):
         "data": None,
     }]
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("WORKER_DATABASE_URL", database_url)
 
     def fail_investigation(_task):
         raise PermanentTaskError("holmes_tool_error", evidence=evidence)

@@ -9,6 +9,7 @@ export POSTGRES_ADMIN_PASSWORD="$(openssl rand -hex 32)"
 export POSTGRES_PASSWORD="$POSTGRES_ADMIN_PASSWORD"
 export AIOPS_DB_RUNTIME_PASSWORD="$(openssl rand -hex 32)"
 export AIOPS_DB_MIGRATOR_PASSWORD="$(openssl rand -hex 32)"
+export AIOPS_DB_WORKER_PASSWORD="$(openssl rand -hex 32)"
 
 cleanup() {
     docker rm --force "$db_name" >/dev/null 2>&1 || true
@@ -50,6 +51,7 @@ run_bootstrap() {
         --env POSTGRES_HOST=127.0.0.1 \
         --env AIOPS_DB_RUNTIME_PASSWORD \
         --env AIOPS_DB_MIGRATOR_PASSWORD \
+        --env AIOPS_DB_WORKER_PASSWORD \
         --volume "$repo_dir/bootstrap-postgresql-roles.sh:/bootstrap/bootstrap-postgresql-roles.sh:ro" \
         --volume "$repo_dir/postgresql-roles.psql:/bootstrap/postgresql-roles.psql:ro" \
         --volume "$repo_dir/postgresql-local-role-passwords.psql:/bootstrap/postgresql-local-role-passwords.psql:ro" \
@@ -77,7 +79,8 @@ psql_as() {
 
 runtime_user="$(psql_as aiops_runtime "$AIOPS_DB_RUNTIME_PASSWORD" 'SELECT current_user')"
 migrator_user="$(psql_as aiops_migrator "$AIOPS_DB_MIGRATOR_PASSWORD" 'SELECT current_user')"
-if [[ "$runtime_user" != "aiops_runtime" || "$migrator_user" != "aiops_migrator" ]]; then
+worker_user="$(psql_as aiops_worker "$AIOPS_DB_WORKER_PASSWORD" 'SELECT current_user')"
+if [[ "$runtime_user" != "aiops_runtime" || "$migrator_user" != "aiops_migrator" || "$worker_user" != "aiops_worker" ]]; then
     echo "database role password authentication returned an unexpected identity" >&2
     exit 1
 fi
@@ -101,6 +104,7 @@ fi
 if POSTGRES_ADMIN_PASSWORD="$POSTGRES_ADMIN_PASSWORD" \
     AIOPS_DB_RUNTIME_PASSWORD="$AIOPS_DB_RUNTIME_PASSWORD" \
     AIOPS_DB_MIGRATOR_PASSWORD="$AIOPS_DB_RUNTIME_PASSWORD" \
+    AIOPS_DB_WORKER_PASSWORD="$AIOPS_DB_WORKER_PASSWORD" \
     docker run --rm --network "container:$db_name" --read-only \
     --cap-drop ALL --security-opt no-new-privileges \
     --tmpfs /tmp:rw,noexec,nosuid,size=16m \
@@ -109,6 +113,7 @@ if POSTGRES_ADMIN_PASSWORD="$POSTGRES_ADMIN_PASSWORD" \
     --env POSTGRES_HOST=127.0.0.1 \
     --env AIOPS_DB_RUNTIME_PASSWORD \
     --env AIOPS_DB_MIGRATOR_PASSWORD \
+    --env AIOPS_DB_WORKER_PASSWORD \
     --volume "$repo_dir/bootstrap-postgresql-roles.sh:/bootstrap/bootstrap-postgresql-roles.sh:ro" \
     --volume "$repo_dir/postgresql-roles.psql:/bootstrap/postgresql-roles.psql:ro" \
     --volume "$repo_dir/postgresql-local-role-passwords.psql:/bootstrap/postgresql-local-role-passwords.psql:ro" \

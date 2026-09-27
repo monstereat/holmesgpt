@@ -9,13 +9,15 @@ command at its credentials or volume.
 
 - PostgreSQL is the durable source for incidents, tasks, approvals, identity
   mappings, audit events, retrospectives, session revocations, and the outbox.
-- The API and worker use the runtime identity. It can read and write application
-  data and append audit events, but cannot create schema objects, alter the
-  migration ledger, or change/delete audit history.
+- The API uses `aiops_runtime` to perform authenticated business and OIDC
+  identity lifecycle operations. The worker uses the separate `aiops_worker`
+  identity, limited to reading incidents/tasks, updating task and outbox
+  processing fields, and appending worker audit events. Neither can create
+  schema objects, alter the migration ledger, or change/delete audit history.
 - A one-shot migration job uses the separate migration identity. It must finish
   successfully before application replicas start. The migration runner takes a
   PostgreSQL advisory transaction lock and records each applied migration.
-- The current migrations are numbered `0001` through `0009`. They run in
+- The current migrations are numbered `0001` through `0010`. They run in
   transactions. There are no automatic down migrations: do not delete migration
   records or manually reverse DDL to make an older binary start.
 
@@ -26,25 +28,27 @@ verify equivalent permissions in staging before production.
 
 The local Compose stack uses a PostgreSQL administrator only for its idempotent
 role bootstrap/finalize jobs. Incident API and worker connect as
-`aiops_runtime`; the migration job connects as `aiops_migrator`. The two role
-passwords are independent random values in the private mode-0600 local runtime
-configuration. The migration job completes before the post-migration finalize
+`aiops_runtime`; the worker connects as `aiops_worker`; the migration job
+connects as `aiops_migrator`. Each role has a distinct random password in the
+private mode-0600 local runtime configuration. The migration job completes before the post-migration finalize
 job, which re-applies grants and removes runtime DML privileges from
 `schema_migrations`, including on a fresh database. This validates role wiring
 against the local Compose volume; it does not prove managed-database IAM or
 production secret injection.
 
-On 2026-09-27 the existing local Compose database was switched to these roles
-without recreating its volume. The local bootstrap transferred ownership of
-existing `public` relations and schema to `aiops_migrator` so later migrations
-can run; sequences owned by tables are transferred with their table. The role
-verifier confirmed that the API and worker connect as `aiops_runtime`, the
-migration job connects as `aiops_migrator`, an authenticated operator can read
-the workbench, and runtime DDL, migration-ledger mutation, and audit mutation
-are denied. All eight migration records and the pre-existing incident, task,
-audit, and outbox counts remained unchanged. This is evidence for this local
-test volume only. The bootstrap ownership transfer is intentionally specific to
-the local `aiops` database and is not a managed-production migration procedure.
+On 2026-09-27 the existing local Compose database was switched to separate API
+and migration identities without recreating its volume. At that point the
+worker still shared the API identity; the dedicated `aiops_worker` grants were
+added and verified on 2026-09-28 as recorded below. The local bootstrap
+transferred ownership of existing `public` relations and schema to
+`aiops_migrator` so later migrations can run; sequences owned by tables are
+transferred with their table. Runtime DDL, migration-ledger mutation, and audit
+mutation were denied, and the pre-existing incident, task, audit, and outbox
+counts remained unchanged. This is evidence for this local test volume only.
+The bootstrap ownership transfer is intentionally specific to the local
+`aiops` database and is not a managed-production migration procedure.
+
+On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; a direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. Counts remain 11 incidents, 11 tasks, 53 audit rows, and 11 outbox rows. The API is healthy locally; Holmes is currently unhealthy because `DEEPSEEK_API_KEY` is absent from the local runtime environment, so the Celery worker has not started. This is still test-only evidence.
 
 ## Release migration sequence
 

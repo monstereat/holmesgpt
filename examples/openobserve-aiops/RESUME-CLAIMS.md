@@ -3,6 +3,8 @@
 
 - 2026-09-27 local identity lifecycle: added OIDC-requested/admin-approved account reactivation with user-level session generation so disabled sessions remain revoked after restore. The isolated PostgreSQL incident/workbench suite passes **123 tests**; migration 0009 is applied to the current local test database, preserving 11 incidents, 11 tasks, 53 audit events and 11 outbox rows. Production IdP and rollout behavior are not yet validated.
 
+- 2026-09-28 worker database isolation: added migration `0010_worker_database_privileges`, separate `aiops_worker` credentials and a dedicated `WORKER_DATABASE_URL`; the API-owned outbox dispatcher uses the API identity while Celery task execution uses restricted worker grants. PostgreSQL 16 isolated permission/bootstrap/backup checks passed, local migration 0010 is applied, and business row counts remain 11/11/53/11. The current incident-service suite is **126 passed, 1 upstream deprecation warning**. The worker is not currently running because the DeepSeek key is absent from the persisted local runtime configuration; this change is not production deployment evidence.
+
 Use the wording below only for the work and evidence currently present in this repository. The system has been exercised as a local Docker test environment; it has **not** been deployed to a production environment.
 
 ## Resume-ready project entry

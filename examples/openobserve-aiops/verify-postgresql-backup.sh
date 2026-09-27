@@ -179,8 +179,8 @@ fi
 
 restored_migrations="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_restore_test -c 'SELECT count(*) FROM schema_migrations')"
-if [[ "$restored_migrations" != "9" ]]; then
-    echo "restored database contained $restored_migrations migration records instead of 9" >&2
+if [[ "$restored_migrations" != "10" ]]; then
+    echo "restored database contained $restored_migrations migration records instead of 10" >&2
     exit 1
 fi
 
@@ -214,8 +214,8 @@ fi
 
 encrypted_migrations="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_encrypted_restore_test -c 'SELECT count(*) FROM schema_migrations')"
-if [[ "$encrypted_migrations" != "9" ]]; then
-    echo "encrypted backup restore contained $encrypted_migrations migration records instead of 9" >&2
+if [[ "$encrypted_migrations" != "10" ]]; then
+    echo "encrypted backup restore contained $encrypted_migrations migration records instead of 10" >&2
     exit 1
 fi
 
@@ -226,4 +226,4 @@ if [[ "$encrypted_identity_columns" != $'reactivation_requested_at\nsession_gene
     exit 1
 fi
 
-echo "PostgreSQL backup verification passed: plaintext and AES-256-GCM encrypted archives both restored 9 migrations, user reactivation columns, and a synthetic incident; overwrite protection held"
+echo "PostgreSQL backup verification passed: plaintext and AES-256-GCM encrypted archives both restored 10 migrations, user reactivation columns, and a synthetic incident; overwrite protection held"

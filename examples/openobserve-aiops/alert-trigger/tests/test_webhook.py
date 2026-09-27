@@ -77,7 +77,7 @@ def test_webhook_persists_and_deduplicates_on_local_postgres(monkeypatch):
         def stop(self):
             pass
 
-    monkeypatch.setattr("worker.start_outbox_dispatcher", lambda: NoopDispatcher())
+    monkeypatch.setattr("worker.start_outbox_dispatcher", lambda *_args: NoopDispatcher())
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("ALERT_WEBHOOK_TOKEN", "local-integration-token")
     trace_id = "d" * 32

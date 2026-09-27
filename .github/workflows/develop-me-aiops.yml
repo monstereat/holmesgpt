@@ -47,7 +47,7 @@ jobs:
         run: poetry run pytest -q --no-cov tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
       - name: Generate ephemeral local Compose credentials
         run: |
-          for key in POSTGRES_PASSWORD AIOPS_DB_RUNTIME_PASSWORD AIOPS_DB_MIGRATOR_PASSWORD ZO_ROOT_USER_PASSWORD OPENOBSERVE_PROXY_PASSWORD HOLMES_API_KEY ORDER_ACTION_TOKEN ALERT_WEBHOOK_TOKEN SESSION_SIGNING_KEY; do
+          for key in POSTGRES_PASSWORD AIOPS_DB_RUNTIME_PASSWORD AIOPS_DB_MIGRATOR_PASSWORD AIOPS_DB_WORKER_PASSWORD ZO_ROOT_USER_PASSWORD OPENOBSERVE_PROXY_PASSWORD HOLMES_API_KEY ORDER_ACTION_TOKEN ALERT_WEBHOOK_TOKEN SESSION_SIGNING_KEY; do
             value="$(openssl rand -hex 32)"
             echo "::add-mask::$value"
             printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"

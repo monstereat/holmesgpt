@@ -23,7 +23,7 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
                   has_table_privilege(current_user, 'schema_migrations', 'INSERT')"""
     ).fetchone()
     assert current_user == "aiops_runtime", "Incident API is not using the runtime role"
-    assert migration_count == 9, f"expected 9 migrations, found {migration_count}"
+    assert migration_count == 10, f"expected 10 migrations, found {migration_count}"
     assert not can_create and not can_update_audit and not can_update_ledger and not can_insert_ledger
     identity_columns = conn.execute(
         "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('session_generation', 'reactivation_requested_at')"
@@ -31,6 +31,7 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
     assert identity_columns == 2, "user reactivation migration columns are missing"
     assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')").fetchone()[0]
     assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')").fetchone()[0]
+    assert conn.execute("SELECT has_table_privilege(current_user, 'users', 'UPDATE')").fetchone()[0]
 
     denied_statements = (
         "CREATE TABLE public.compose_role_probe (id integer)",
@@ -65,9 +66,9 @@ with urlopen(request, timeout=5) as response:
 print("Incident API runtime identity, denied DDL/ledger/audit mutation, and authenticated workbench read passed.")
 PY
 
-worker_user="$("${compose[@]}" exec -T incident-worker python -c 'import os,psycopg; conn=psycopg.connect(os.environ["DATABASE_URL"]); print(conn.execute("SELECT current_user").fetchone()[0]); conn.close()')"
-if [[ "$worker_user" != "aiops_runtime" ]]; then
-    echo "Incident worker is not using the runtime role" >&2
+worker_user="$("${compose[@]}" exec -T incident-worker python -c 'import os,psycopg; conn=psycopg.connect(os.environ["WORKER_DATABASE_URL"]); print(conn.execute("SELECT current_user").fetchone()[0]); conn.close()')"
+if [[ "$worker_user" != "aiops_worker" ]]; then
+    echo "Incident worker is not using the worker role" >&2
     exit 1
 fi
 
@@ -77,4 +78,4 @@ if [[ "$migrator_user" != "aiops_migrator" ]]; then
     exit 1
 fi
 
-echo "Compose PostgreSQL role verification passed: 9 migrations; API/worker=aiops_runtime; migrations=aiops_migrator."
+echo "Compose PostgreSQL role verification passed: 10 migrations; API=aiops_runtime, worker=aiops_worker, migrations=aiops_migrator."

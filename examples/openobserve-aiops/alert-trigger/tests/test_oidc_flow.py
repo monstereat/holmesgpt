@@ -119,7 +119,7 @@ def test_oidc_authorization_and_callback_use_bound_state_pkce_and_http_only_sess
         fake.token_params = {"code": code, "code_verifier": verifier}
         return {"id_token": "signed-id-token"}
     monkeypatch.setattr(app_module, "_exchange_oidc_code", exchange)
-    monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda: type("NoopDispatcher", (), {"stop": lambda self: None})())
+    monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda *_args: type("NoopDispatcher", (), {"stop": lambda self: None})())
 
     with TestClient(app_module.app) as client:
         login = client.get("/auth/login", follow_redirects=False)
@@ -177,7 +177,7 @@ def test_inactive_oidc_user_requests_reactivation_once_without_receiving_a_sessi
         return {"id_token": "signed-id-token"}
 
     monkeypatch.setattr(app_module, "_exchange_oidc_code", exchange)
-    monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda: type("NoopDispatcher", (), {"stop": lambda self: None})())
+    monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda *_args: type("NoopDispatcher", (), {"stop": lambda self: None})())
 
     with TestClient(app_module.app) as client:
         for _ in range(2):
@@ -305,7 +305,7 @@ def test_oidc_callback_verifies_signed_id_token_against_discovered_jwks(monkeypa
         FakeConnection(("00000000-0000-0000-0000-000000000007", "signed-user", "operator", ["order-service"], True, 0, None)),
     ]
     monkeypatch.setattr(app_module.psycopg, "connect", MagicMock(side_effect=connections))
-    monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda: type("NoopDispatcher", (), {"stop": lambda self: None})())
+    monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda *_args: type("NoopDispatcher", (), {"stop": lambda self: None})())
 
     try:
         with TestClient(app_module.app) as client:

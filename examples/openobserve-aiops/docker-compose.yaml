@@ -52,6 +52,7 @@ x-postgresql-access-setup: &postgresql-access-setup
     POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}
     AIOPS_DB_RUNTIME_PASSWORD: ${AIOPS_DB_RUNTIME_PASSWORD:?Export AIOPS_DB_RUNTIME_PASSWORD before starting the local demo}
     AIOPS_DB_MIGRATOR_PASSWORD: ${AIOPS_DB_MIGRATOR_PASSWORD:?Export AIOPS_DB_MIGRATOR_PASSWORD before starting the local demo}
+    AIOPS_DB_WORKER_PASSWORD: ${AIOPS_DB_WORKER_PASSWORD:?Export AIOPS_DB_WORKER_PASSWORD before starting the local demo}
   volumes:
     - ./bootstrap-postgresql-roles.sh:/bootstrap/bootstrap-postgresql-roles.sh:ro
     - ./postgresql-roles.psql:/bootstrap/postgresql-roles.psql:ro
@@ -364,7 +365,7 @@ services:
     command: ["python", "worker_entrypoint.py", "worker", "--loglevel=INFO", "--concurrency=2"]
     environment:
       AIOPS_ENV: local
-      DATABASE_URL: postgresql://aiops_runtime:${AIOPS_DB_RUNTIME_PASSWORD:?Export AIOPS_DB_RUNTIME_PASSWORD before starting the local demo}@postgres:5432/aiops
+      WORKER_DATABASE_URL: postgresql://aiops_worker:${AIOPS_DB_WORKER_PASSWORD:?Export AIOPS_DB_WORKER_PASSWORD before starting the local demo}@postgres:5432/aiops
       REDIS_URL: redis://redis:6379/0
       HOLMES_API_URL: http://holmes-api:5050
       HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}

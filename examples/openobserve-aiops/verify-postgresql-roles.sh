@@ -36,12 +36,12 @@ for migration in "$repo_dir"/alert-trigger/migrations/*.sql; do
 done
 
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postgres \
-    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only'), ('0009_user_reactivation') ON CONFLICT DO NOTHING" >/dev/null
+    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only'), ('0009_user_reactivation'), ('0010_worker_database_privileges') ON CONFLICT DO NOTHING" >/dev/null
 
 migration_count=$(docker exec "$container_name" psql -At -U aiops_migrator -d postgres \
     -c "SELECT count(*) FROM schema_migrations")
-if [[ "$migration_count" != "9" ]]; then
-    echo "migration runner applied $migration_count records instead of 9" >&2
+if [[ "$migration_count" != "10" ]]; then
+    echo "migration runner applied $migration_count records instead of 10" >&2
     exit 1
 fi
 
@@ -82,6 +82,7 @@ privileges=$(docker exec "$container_name" psql -At -U aiops_runtime -d postgres
        AND has_column_privilege(current_user, 'incidents', 'assignee_user_id', 'UPDATE')
        AND has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')
        AND has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')
+       AND has_table_privilege(current_user, 'users', 'UPDATE')
        AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
 ")
 if [[ "$privileges" != t ]]; then
@@ -93,6 +94,33 @@ docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgr
     -c "INSERT INTO audit_events (event_type) VALUES ('permission.test')" >/dev/null
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
     -c "SELECT count(*) FROM audit_events" >/dev/null
+docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postgres \
+    -c "INSERT INTO users (id, username, role) VALUES ('00000000-0000-0000-0000-000000000010', 'permission-test', 'viewer')" >/dev/null
+docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
+    -c "UPDATE users SET session_generation = session_generation + 1 WHERE username = 'permission-test'" >/dev/null
+
+worker_privileges=$(docker exec "$container_name" psql -At -U aiops_worker -d postgres -c "
+    SELECT has_table_privilege(current_user, 'incidents', 'SELECT')
+       AND has_table_privilege(current_user, 'tasks', 'SELECT')
+       AND has_column_privilege(current_user, 'tasks', 'status', 'UPDATE')
+       AND has_column_privilege(current_user, 'outbox_events', 'delivery_attempts', 'UPDATE')
+       AND has_column_privilege(current_user, 'audit_events', 'event_type', 'INSERT')
+       AND has_sequence_privilege(current_user, 'audit_events_id_seq', 'USAGE')
+       AND NOT has_table_privilege(current_user, 'users', 'SELECT')
+       AND NOT has_table_privilege(current_user, 'users', 'UPDATE')
+       AND NOT has_table_privilege(current_user, 'incidents', 'UPDATE')
+       AND NOT has_table_privilege(current_user, 'tasks', 'DELETE')
+       AND NOT has_table_privilege(current_user, 'audit_events', 'UPDATE')
+       AND NOT has_table_privilege(current_user, 'audit_events', 'DELETE')
+       AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
+")
+if [[ "$worker_privileges" != t ]]; then
+    echo "worker role has unexpected database privileges" >&2
+    exit 1
+fi
+
+docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_worker -d postgres \
+    -c "INSERT INTO audit_events (event_type) VALUES ('worker.permission.test')" >/dev/null
 
 for statement in \
     "UPDATE audit_events SET event_type = 'tampered'" \
@@ -110,4 +138,17 @@ for statement in \
     fi
 done
 
-echo "PostgreSQL role verification passed: 9 migrations including incident triage and user reactivation; runtime business access and audit append allowed; audit/ledger mutation and schema creation denied"
+for statement in \
+    "SELECT * FROM users" \
+    "UPDATE incidents SET status = status WHERE false" \
+    "DELETE FROM tasks WHERE false" \
+    "UPDATE audit_events SET event_type = event_type WHERE false" \
+    "CREATE TABLE worker_must_not_create (id integer)"; do
+    if docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_worker -d postgres \
+        -c "$statement" >/dev/null 2>&1; then
+        echo "worker role unexpectedly succeeded: $statement" >&2
+        exit 1
+    fi
+done
+
+echo "PostgreSQL role verification passed: 10 migrations; worker task/outbox updates and audit inserts allowed while user access, incident mutation, audit mutation, and schema creation are denied"

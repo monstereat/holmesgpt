@@ -327,7 +327,7 @@ async def lifespan(_app: FastAPI):
         raw_users = _test_users_configuration()
         if raw_users:
             _seed_test_users(database_url, raw_users)
-        dispatcher = start_outbox_dispatcher()
+        dispatcher = start_outbox_dispatcher(database_url)
         try:
             yield
         finally:

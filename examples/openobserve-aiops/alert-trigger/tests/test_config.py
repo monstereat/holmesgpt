@@ -129,6 +129,7 @@ def test_database_url_is_required_outside_local_and_optional_locally(monkeypatch
 def test_api_and_worker_reject_non_tls_database_urls(monkeypatch):
     monkeypatch.setenv("AIOPS_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql://aiops:secret@db.internal/aiops")
+    monkeypatch.setenv("WORKER_DATABASE_URL", "postgresql://worker:secret@db.internal/aiops")
 
     with pytest.raises(HTTPException, match="sslmode=verify-full"):
         api_database_url()
@@ -138,7 +139,7 @@ def test_api_and_worker_reject_non_tls_database_urls(monkeypatch):
 
 def test_worker_configuration_fails_before_consuming_tasks_without_holmes(monkeypatch):
     monkeypatch.setenv("AIOPS_ENV", "production")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://runtime:secret@db.internal/aiops?sslmode=verify-full")
+    monkeypatch.setenv("WORKER_DATABASE_URL", "postgresql://worker:secret@db.internal/aiops?sslmode=verify-full")
     monkeypatch.delenv("HOLMES_API_URL", raising=False)
     monkeypatch.delenv("HOLMES_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="HOLMES_API_URL and HOLMES_API_KEY"):
@@ -155,11 +156,19 @@ def test_worker_requires_https_holmes_endpoint_outside_local_mode(monkeypatch):
 
 def test_worker_accepts_valid_production_holmes_configuration(monkeypatch):
     monkeypatch.setenv("AIOPS_ENV", "production")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://runtime:secret@db.internal/aiops?sslmode=verify-full")
+    monkeypatch.setenv("WORKER_DATABASE_URL", "postgresql://worker:secret@db.internal/aiops?sslmode=verify-full")
     monkeypatch.setenv("HOLMES_API_URL", "https://holmes.internal")
     monkeypatch.setenv("HOLMES_API_KEY", "worker-key")
     monkeypatch.setenv("HOLMES_TIMEOUT_SECONDS", "120")
     validate_worker_configuration()
+
+
+def test_worker_database_url_is_required_and_independent_outside_local(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://runtime:secret@db.internal/aiops?sslmode=verify-full")
+    monkeypatch.delenv("WORKER_DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="WORKER_DATABASE_URL is required"):
+        worker_database_url()
 
 
 def test_non_local_broker_url_requires_tls_auth_and_hostname_verification(monkeypatch):
@@ -239,6 +248,7 @@ def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     monkeypatch.setenv("AIOPS_MAX_PENDING_TASKS", "250")
     monkeypatch.setenv("AIOPS_OLDEST_PENDING_TASK_AGE_SLO_SECONDS", "90")
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    monkeypatch.setenv("WORKER_DATABASE_URL", "postgresql://worker-unused")
     cursor = MagicMock()
     cursor.fetchall.return_value = [("queued", 2), ("completed", 4)]
     cursor.fetchone.side_effect = [(5, 1.5, 9.2), (7.5,), (3,)]

@@ -105,12 +105,12 @@ class OutboxDispatcher:
             self._stop.wait(self.interval_seconds)
 
 
-def start_outbox_dispatcher() -> OutboxDispatcher:
-    return OutboxDispatcher(_database_url()).start()
+def start_outbox_dispatcher(database_url: str) -> OutboxDispatcher:
+    return OutboxDispatcher(database_url).start()
 
 
 def _database_url() -> str:
-    return validate_database_url(os.getenv("DATABASE_URL", ""), "DATABASE_URL", required=True)
+    return validate_database_url(os.getenv("WORKER_DATABASE_URL", ""), "WORKER_DATABASE_URL", required=True)
 
 
 def _holmes_client() -> HolmesClient:

@@ -35,7 +35,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
         def stop(self):
             pass
 
-    monkeypatch.setattr("worker.start_outbox_dispatcher", lambda: NoopDispatcher())
+    monkeypatch.setattr("worker.start_outbox_dispatcher", lambda *_args: NoopDispatcher())
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("SESSION_SIGNING_KEY", "local-test-session-signing-key-123456")
     apply_migrations(database_url)
