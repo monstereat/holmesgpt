@@ -49,6 +49,20 @@
   }
 
   const severityLabels = { critical: "严重", high: "高", medium: "中", low: "低" };
+  const statusLabels = {
+    open: "未处理",
+    investigating: "调查中",
+    awaiting_approval: "等待审批",
+    resolved: "已解决",
+    closed: "已关闭",
+  };
+  const statusTransitions = {
+    open: ["investigating", "closed"],
+    investigating: ["awaiting_approval", "resolved", "closed"],
+    awaiting_approval: ["investigating", "resolved", "closed"],
+    resolved: ["investigating", "closed"],
+    closed: [],
+  };
 
   async function loadIncidents() {
     pageMessage.textContent = "";
@@ -70,7 +84,7 @@
         row.dataset.id = incident.id;
         row.append(
           el("td", incident.alert_name),
-          el("td", incident.status, "status"),
+          el("td", statusLabels[incident.status] || incident.status, "status"),
           el("td", severityLabels[incident.severity] || incident.severity),
           el("td", incident.assignee_username || "未指派"),
           el("td", (incident.trace_ids || []).join(", ") || "无 Trace"),
@@ -130,7 +144,7 @@
       const incident = await api(`/api/incidents/${encodeURIComponent(id)}`);
       detail.replaceChildren();
       detail.append(el("h2", incident.alert_name));
-      detail.append(el("p", `${incident.status} · ${new Date(incident.created_at).toLocaleString()} · Trace: ${(incident.trace_ids || []).join(", ") || "无"}`, "muted"));
+      detail.append(el("p", `${statusLabels[incident.status] || incident.status} · ${new Date(incident.created_at).toLocaleString()} · Trace: ${(incident.trace_ids || []).join(", ") || "无"}`, "muted"));
       const summary = document.createElement("section");
       summary.append(el("h3", "告警信息"), el("pre", JSON.stringify(incident.summary || {}, null, 2)));
       detail.append(summary);
@@ -138,7 +152,8 @@
       const triage = document.createElement("section");
       triage.append(el("h3", "分级与负责人"));
       triage.append(el("p", `严重度：${severityLabels[incident.severity] || incident.severity} · 负责人：${incident.assignee_username || "未指派"}`, "muted"));
-      if (["operator", "admin"].includes(principal.role)) {
+      const canManageIncident = ["operator", "admin"].includes(principal.role);
+      if (canManageIncident && !["resolved", "closed"].includes(incident.status)) {
         try {
           const candidates = await api("/api/incident-assignees");
           const severitySelect = document.createElement("select");
@@ -193,6 +208,43 @@
         }
       }
       detail.append(triage);
+
+      if (canManageIncident) {
+        const lifecycle = document.createElement("section");
+        lifecycle.append(el("h3", "事故状态"));
+        const transitions = statusTransitions[incident.status] || [];
+        if (transitions.length) {
+          const statusSelect = document.createElement("select");
+          statusSelect.setAttribute("aria-label", "事故状态");
+          for (const value of [incident.status, ...transitions]) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = statusLabels[value] || value;
+            statusSelect.append(option);
+          }
+          const saveStatus = el("button", "更新事故状态");
+          saveStatus.style.marginTop = "10px";
+          saveStatus.addEventListener("click", async () => {
+            if (statusSelect.value === incident.status) return;
+            saveStatus.disabled = true;
+            try {
+              await api(`/api/incidents/${encodeURIComponent(id)}/status`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: statusSelect.value }),
+              });
+              await loadIncident(id);
+              await loadIncidents();
+            } catch (error) {
+              showError(pageMessage, error);
+              saveStatus.disabled = false;
+            }
+          });
+          lifecycle.append(statusSelect, saveStatus);
+        } else {
+          lifecycle.append(el("p", "事故已关闭，状态不可再变更。", "muted"));
+        }
+        detail.append(lifecycle);
+      }
 
       const tasks = document.createElement("section");
       tasks.append(el("h3", "调查任务与证据"));

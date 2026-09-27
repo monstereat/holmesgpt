@@ -4,7 +4,7 @@
 > 开源底座：HolmesGPT；集成 OpenObserve、前端监控 SDK、NestJS、OpenTelemetry，Keep 按需加入。  
 > 范围：先在当前电脑 Docker 测试环境围绕真实应用故障建立「采集 → 告警 → 调查 → 审批处置 → 验证 → 复盘」闭环；正式环境部署后续另行规划和授权；不自建日志数据库。
 
-> **当前验收状态（2026-09-27）：** T000–T009 的本机实现和测试环境编排已落地；incident API 已应用 migration `0008_incident_triage`，工作台支持事故分级与负责人指派，服务端逐次校验 operator/admin 角色、order-service 资源范围及事故状态，并记录审计。当前事故服务隔离 Compose 套件 **105 passed、1 个上游弃用 warning**；8 个 migration 的 PostgreSQL 16 备份恢复验证、API `/healthz`/`readyz`、本地登录、11 条事故的新增字段和 UI 控件均已验收。事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务在同一个 Docker Compose project 运行。工作台角色审批、测试动作和复盘闭环已有浏览器验收。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新报告含 20 案、40 条合成记录、20/20 案例证据命中、3/3 发布事件命中、0 次未限定成功查询、0 个已识别的跨案例 fixture 命中和 0 个工具错误，schema 1.3 通过 Draft 2020-12 校验。诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
+> **当前验收状态（2026-09-27）：** T000–T009 的本机实现和测试环境编排已落地；incident API 已应用 migration `0008_incident_triage`，工作台支持事故分级、负责人指派和状态流转，服务端逐次校验 operator/admin 角色、order-service 资源范围及合法状态转换，并记录审计。状态规则为 open→investigating/closed、investigating→awaiting_approval/resolved/closed、awaiting_approval→investigating/resolved/closed、resolved→investigating/closed，closed 为终态；resolved/closed 不可分级或指派。当前事故服务隔离 Compose 套件 **105 passed、1 个上游弃用 warning**；8 个 migration 的 PostgreSQL 16 备份恢复验证、API `/healthz`/`readyz`、本地登录、11 条事故的新增字段和 UI 控件均已验收。事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务在同一个 Docker Compose project 运行。工作台角色审批、测试动作和复盘闭环已有浏览器验收。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新报告含 20 案、40 条合成记录、20/20 案例证据命中、3/3 发布事件命中、0 次未限定成功查询、0 个已识别的跨案例 fixture 命中和 0 个工具错误，schema 1.3 通过 Draft 2020-12 校验。诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
 
 ## 1. 功能边界
 
@@ -58,7 +58,7 @@
 - [ ] **外部 Git/CI 发布源（后续集成）：** 本机签名发布事件已可写入 OpenObserve 并与故障窗口查询；GitHub/GitLab/Jenkins 的真实 Webhook 凭据和流水线连接留待后续接入。
 - [x] **本地发布事件原型：** NestJS 接受标准化发布事件，要求 HMAC-SHA256 签名并将版本/commit/变更文件写入 `app_logs`；调查提示要求按告警时间检索。Docker → OpenObserve 查询端到端已验；尚未接入 GitHub/GitLab/Jenkins。
 - [x] **事故流程内存原型：** `examples/openobserve-aiops/incident_workflow.py` 实现状态转换、负责人、严重级别、幂等键、重复告警归并、审批事件和时间线；不执行处置命令。
-- [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox，以及严重级别和负责人；migration `0008_incident_triage` 已应用于获授权的本机测试数据库。operator/admin 才能管理，候选负责人必须是启用且有 order-service 范围的 operator/admin，写入时再次做服务端校验并追加审计；resolved/closed 事故冻结分级/指派。测试和本机 API/UI 验收通过；生产身份集成仍待规划。
+- [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox，以及严重级别和负责人；migration `0008_incident_triage` 已应用于获授权的本机测试数据库。operator/admin 才能管理，候选负责人必须是启用且有 order-service 范围的 operator/admin；状态流转由 API 按显式矩阵校验，并追加审计，closed 为终态。resolved/closed 事故冻结分级/指派。测试和本机 API/UI 验收通过；生产身份集成仍待规划。
 - [x] **内存 RCA 数据模型：** 已验证结论必须带 HTTPS 证据链接，未验证结论明确标为 assumption；原型只记录声明，不自动验证其真实性。
 - [ ] **真实 RCA 结果验收：** Holmes 调查 API、只读证据代理和带来源/查询信息的证据保存已实现，DeepSeek live 模型调用已实测；复核后的 20 案报告有 20/20 当前 run/case 证据查询命中、3/3 发布事件命中、0 个工具错误。真实模型输出的根因准确性仍待人工 rubric 评分，`not_scored` 不能等同于准确率通过。
 - [x] **本地调查 Skill：** 使用当前支持的 `custom_skill_paths`/`SKILL.md` 提供订单故障只读调查步骤，并通过 Holmes `scan_skill_directory` 验证解析；真实 CLI 调查及证据引用仍待模型凭据和 OpenObserve 查询权限。旧 Catalog 仅留作迁移参考。

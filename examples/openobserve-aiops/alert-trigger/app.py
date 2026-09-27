@@ -172,6 +172,21 @@ class IncidentTriageUpdate(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class IncidentStatusUpdate(BaseModel):
+    status: str = Field(pattern="^(open|investigating|awaiting_approval|resolved|closed)$")
+
+    model_config = {"extra": "forbid"}
+
+
+INCIDENT_STATUS_TRANSITIONS = {
+    "open": frozenset({"investigating", "closed"}),
+    "investigating": frozenset({"awaiting_approval", "resolved", "closed"}),
+    "awaiting_approval": frozenset({"investigating", "resolved", "closed"}),
+    "resolved": frozenset({"investigating", "closed"}),
+    "closed": frozenset(),
+}
+
+
 def _seed_test_users(database_url: str, raw_users: str) -> None:
     users = json.loads(raw_users)
     if not isinstance(users, list) or not 1 <= len(users) <= 16:
@@ -940,6 +955,46 @@ def update_incident_triage(
         "assignee_id": str(assignee_id) if assignee_id else None,
         "assignee_username": assignee_username,
     }
+
+
+@app.patch("/api/incidents/{incident_id}/status")
+def update_incident_status(
+    incident_id: str,
+    body: IncidentStatusUpdate,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> dict[str, str]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
+    _authorize(principal, "incident:manage", "order-service")
+    try:
+        incident_uuid = str(uuid.UUID(incident_id))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid incident ID") from None
+
+    with psycopg.connect(_database_url()) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT status FROM incidents WHERE id = %s FOR UPDATE", (incident_uuid,))
+                incident = cursor.fetchone()
+                if not incident:
+                    raise HTTPException(status_code=404, detail="Incident not found")
+                current_status = incident[0]
+                if body.status != current_status and body.status not in INCIDENT_STATUS_TRANSITIONS[current_status]:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Incident cannot transition from {current_status} to {body.status}",
+                    )
+                if body.status != current_status:
+                    cursor.execute(
+                        "UPDATE incidents SET status = %s, updated_at = now() WHERE id = %s",
+                        (body.status, incident_uuid),
+                    )
+                    cursor.execute(
+                        """INSERT INTO audit_events (incident_id, actor_id, event_type, details)
+                           VALUES (%s, %s, 'incident.status_updated', %s)""",
+                        (incident_uuid, principal.user_id, Jsonb({"previous_status": current_status, "status": body.status})),
+                    )
+    return {"incident_id": incident_uuid, "status": body.status}
 
 
 @app.get("/api/incidents/{incident_id}/retrospective")

@@ -74,6 +74,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert "/retrospective" in static_script.text
             assert "/api/incident-assignees" in static_script.text
             assert "/triage" in static_script.text
+            assert "/status" in static_script.text
             assert "/api/users" in static_script.text
             assert "保存并标记已审核" in static_script.text
 
@@ -97,7 +98,9 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert details.json()["assignee_username"] is None
             assert details.json()["tasks"][0]["error_code"] == "holmes_unavailable"
             triage_url = f"/api/incidents/{incident['incident_id']}/triage"
+            status_url = f"/api/incidents/{incident['incident_id']}/status"
             assert client.patch(triage_url, headers=viewer, json={"severity": "high"}).status_code == 403
+            assert client.patch(status_url, headers=viewer, json={"status": "investigating"}).status_code == 403
             assert client.post(f"/api/tasks/{incident['task_id']}/retry", headers=viewer).status_code == 403
             retrospective_url = f"/api/incidents/{incident['incident_id']}/retrospective"
             empty_retrospective = client.get(retrospective_url, headers=viewer)
@@ -112,6 +115,8 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             admin = login("demo-admin", "admin-passphrase-123")
             assert client.patch(triage_url, headers=admin, json={}).status_code == 422
             assert client.patch(triage_url, headers=admin, json={"severity": None}).status_code == 422
+            assert client.patch(status_url, headers=admin, json={"status": "unknown"}).status_code == 422
+            assert client.patch(status_url, headers=admin, json={"status": "resolved"}).status_code == 409
             admin_users = client.get("/api/users", headers=admin)
             assert admin_users.status_code == 200
             assert {user["username"] for user in admin_users.json()["items"]} >= {
@@ -141,6 +146,13 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
 
             operator = login("demo-operator", "operator-passphrase-123")
             approver = login("demo-approver", "approver-passphrase-123")
+            investigating = client.patch(status_url, headers=operator, json={"status": "investigating"})
+            assert investigating.status_code == 200
+            assert investigating.json()["status"] == "investigating"
+            awaiting_approval = client.patch(status_url, headers=operator, json={"status": "awaiting_approval"})
+            assert awaiting_approval.status_code == 200
+            resumed = client.patch(status_url, headers=operator, json={"status": "investigating"})
+            assert resumed.status_code == 200
             candidates = client.get("/api/incident-assignees", headers=operator)
             assert candidates.status_code == 200
             candidate_names = {item["username"] for item in candidates.json()["items"]}
@@ -212,9 +224,14 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert client.get("/auth/me", headers=viewer).status_code == 401
             refreshed_viewer = login("demo-viewer", "viewer-passphrase-123")
             assert client.get("/auth/me", headers=refreshed_viewer).status_code == 200
-            with psycopg.connect(database_url) as conn:
-                conn.execute("UPDATE incidents SET status = 'resolved' WHERE id = %s", (incident["incident_id"],))
+            resolved = client.patch(status_url, headers=operator, json={"status": "resolved"})
+            assert resolved.status_code == 200
             assert client.patch(triage_url, headers=operator, json={"severity": "high"}).status_code == 409
+            closed = client.patch(status_url, headers=operator, json={"status": "closed"})
+            assert closed.status_code == 200
+            assert client.patch(status_url, headers=operator, json={"status": "investigating"}).status_code == 409
+            final_timeline = client.get(f"/api/incidents/{incident['incident_id']}", headers=operator).json()["timeline"]
+            assert sum(event["event_type"] == "incident.status_updated" for event in final_timeline) == 5
     finally:
         with psycopg.connect(database_url) as conn:
             with conn.cursor() as cursor:
