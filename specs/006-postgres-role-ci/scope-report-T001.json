@@ -1,0 +1,23 @@
+{
+  "base_commit": "84fda3ee2",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/006-postgres-role-ci/scope-baseline-T001.json",
+  "new_files": [],
+  "modified_preexisting_files": [
+    ".github/workflows/develop-me-aiops.yml",
+    "ROADMAP.md"
+  ],
+  "touched_files": [
+    ".github/workflows/develop-me-aiops.yml",
+    "ROADMAP.md"
+  ],
+  "allow_patterns": [
+    ".github/workflows/develop-me-aiops.yml",
+    "ROADMAP.md",
+    "specs/006-postgres-role-ci/**"
+  ],
+  "internal_patterns": [
+    "specs/006-postgres-role-ci/**"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

@@ -17,6 +17,10 @@ on:
       - 'examples/openobserve-aiops/backup-postgres.sh'
       - 'examples/openobserve-aiops/encrypt-postgres-backup.sh'
       - 'examples/openobserve-aiops/verify-postgresql-backup.sh'
+      - 'examples/openobserve-aiops/postgresql-roles.psql'
+      - 'examples/openobserve-aiops/postgresql-local-role-passwords.psql'
+      - 'examples/openobserve-aiops/bootstrap-postgresql-roles.sh'
+      - 'examples/openobserve-aiops/verify-postgresql-roles.sh'
       - 'examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md'
       - '.github/workflows/develop-me-aiops.yml'
   workflow_dispatch:
@@ -69,3 +73,5 @@ jobs:
         run: bash examples/openobserve-aiops/verify-aiops-alerts.sh
       - name: Verify encrypted PostgreSQL backup and isolated restore
         run: bash examples/openobserve-aiops/verify-postgresql-backup.sh
+      - name: Verify PostgreSQL role separation and runtime grants
+        run: bash examples/openobserve-aiops/verify-postgresql-roles.sh

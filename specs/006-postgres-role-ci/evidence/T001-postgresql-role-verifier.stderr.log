@@ -1,0 +1,2 @@
+NOTICE:  constraint "users_oidc_identity_pair_check" of relation "users" does not exist, skipping
+NOTICE:  constraint "users_oidc_identity_unique" of relation "users" does not exist, skipping

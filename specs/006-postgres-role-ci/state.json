@@ -1,0 +1,112 @@
+{
+  "schema_version": 2,
+  "change_id": "006-postgres-role-ci",
+  "mode": "standard",
+  "status": "verifying",
+  "current_task": null,
+  "waiting_for": null,
+  "artifacts": {
+    "spec": "specs/006-postgres-role-ci/spec.md",
+    "plan": "specs/006-postgres-role-ci/plan.md",
+    "tasks": "specs/006-postgres-role-ci/tasks.md",
+    "verify": "specs/006-postgres-role-ci/verify.md"
+  },
+  "controls": {
+    "commit_strategy": "task",
+    "branch": null,
+    "independent_review": "off"
+  },
+  "approvals": {
+    "spec": {
+      "approver": "monstereat",
+      "evidence": "用户明确授权完成目标相关工作且无需逐项确认。"
+    },
+    "plan": {
+      "approver": "monstereat",
+      "evidence": "本机隔离 PostgreSQL verifier 已存在，只将它接入对应 AIOps CI 触发和执行步骤。"
+    },
+    "acceptance": null
+  },
+  "acceptance_criteria": {
+    "AC-01": {
+      "description": "角色文件变化触发 AIOps CI。"
+    },
+    "AC-02": {
+      "description": "CI 执行隔离 role verifier。"
+    },
+    "AC-03": {
+      "description": "本机 verifier、YAML parse 和 diff check 通过。"
+    }
+  },
+  "tasks": {
+    "T001": {
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "allowed_paths": [
+        ".github/workflows/develop-me-aiops.yml",
+        "ROADMAP.md",
+        "specs/006-postgres-role-ci/**"
+      ],
+      "commands": [
+        "bash examples/openobserve-aiops/verify-postgresql-roles.sh",
+        "ruby -e YAML parse workflow",
+        "git diff --check"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T001-postgresql-role-verifier",
+        "T001-workflow-parse"
+      ],
+      "scope_report": {
+        "path": "specs/006-postgres-role-ci/scope-report-T001.json",
+        "sha256": "5f35398452f0e7581e419f062e9450ed3b22aa08d25596b08e822091f4ce916a"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "T001-postgresql-role-verifier",
+      "type": "command",
+      "kind": "integration",
+      "task": "T001",
+      "command": "bash examples/openobserve-aiops/verify-postgresql-roles.sh",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/006-postgres-role-ci/evidence/T001-postgresql-role-verifier.stdout.log",
+      "stderr_log": "specs/006-postgres-role-ci/evidence/T001-postgresql-role-verifier.stderr.log",
+      "summary": "PostgreSQL role verification passed: 8 migrations; runtime allowed business/audit append; audit/ledger mutation and schema creation denied."
+    },
+    {
+      "id": "T001-workflow-parse",
+      "type": "command",
+      "kind": "unit",
+      "task": "T001",
+      "command": "Ruby Psych YAML parse and git diff --check",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/006-postgres-role-ci/evidence/T001-workflow-parse.txt"
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-09-27T07:56:06Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T001 after local isolated PostgreSQL verifier, workflow YAML parse, and diff check passed."
+    },
+    {
+      "at": "2026-09-27T07:56:06Z",
+      "action": "begin_verify",
+      "status": "verifying",
+      "note": "All task work is complete; hosted GitHub execution remains an external verification."
+    }
+  ],
+  "created_at": "2026-09-27T07:56:06Z",
+  "updated_at": "2026-09-27T07:56:06Z"
+}

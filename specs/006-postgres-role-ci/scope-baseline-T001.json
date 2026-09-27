@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "base_commit": "84fda3ee2059c6843025904f9a422603ca439ffe",
+  "initial_snapshots": {
+    ".github/workflows/develop-me-aiops.yml": {
+      "kind": "file",
+      "sha256": "81cf4d6fb27911d9c9fca208e41bef05eee2a2389bf13d541888c1f460297ff0"
+    }
+  },
+  "internal_patterns": [
+    "specs/006-postgres-role-ci/**"
+  ]
+}
