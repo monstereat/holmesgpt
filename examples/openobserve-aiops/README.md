@@ -115,6 +115,15 @@ For GitHub Actions, add this job to the deployment workflow after the deploy job
 
 The caller must expose the deployed version and changed paths as job outputs, and configure the two repository/environment secrets. This example is an integration template; no remote workflow or secret was changed or run.
 
+To exercise the sender, NestJS receiver, and OpenObserve persistence together in the local test stack, source the test runtime file and run:
+
+```bash
+source /tmp/holmesgpt-aiops-test-runtime.sh
+AIOPS_COMPOSE_PROJECT=holmesgpt-aiops-goal bash examples/openobserve-aiops/verify-release-event-e2e.sh
+```
+
+The check creates a one-off loopback-only order-service container with a random in-memory test secret, sends one signed synthetic release event, flushes it, verifies the exact version/commit in local OpenObserve, and stops the temporary container. It appends a synthetic `release_deployed` record to the local test volume; it does not run a deployment job.
+
 1. Enable order-service chaos mode from the demo page or the approved workbench action; send a test order and confirm its trace/logs appear in OpenObserve.
 2. Trigger the OpenObserve alert. The incident API validates the token and payload, then atomically writes an incident, task and outbox event to PostgreSQL.
 3. Redis/Celery delivers the task. The worker calls the Holmes API; successful allowlisted OpenObserve tool results are saved as evidence. The incident workbench shows task status, trace, findings, evidence and audit timeline.

@@ -55,8 +55,8 @@
 
 ## 3. P1：展示工程可靠性的功能
 
-- [ ] **外部 Git/CI 发布源（已具备发送器和 GitHub 可复用工作流）：** `publish-release-event.mjs` 通过 HTTPS 对标准化元数据使用 HMAC-SHA256 签名；`.github/workflows/publish-aiops-release-event.yml` 可由部署后 job 调用，并只声明 URL/签名密钥为 secret。单测覆盖签名、字段限制、HTTP/redirect 拒绝和失败响应。实际部署 workflow 调用、受保护 secret binding 与发布后事件端到端验收仍未完成；GitLab/Jenkins 尚无 adapter。
-- [x] **本地发布事件原型：** NestJS 接受标准化发布事件，要求 HMAC-SHA256 签名并将版本/commit/变更文件写入 `app_logs`；调查提示要求按告警时间检索。Docker → OpenObserve 查询端到端已验；尚未接入 GitHub/GitLab/Jenkins。
+- [ ] **外部 Git/CI 发布源（已具备发送器、GitHub 可复用工作流和本机端到端验收）：** `publish-release-event.mjs` 通过 HTTPS 对标准化元数据使用 HMAC-SHA256 签名；`.github/workflows/publish-aiops-release-event.yml` 可由部署后 job 调用，并只声明 URL/签名密钥为 secret。单测覆盖签名、字段限制、HTTP/redirect 拒绝和失败响应；`verify-release-event-e2e.sh` 已验证本机 sender→NestJS receiver→OpenObserve 持久化。实际部署 workflow 调用、受保护远端 secret binding 和 staging 发布事件仍未完成；GitLab/Jenkins 尚无 adapter。
+- [x] **本地发布事件原型：** NestJS 接受标准化发布事件，要求 HMAC-SHA256 签名并将版本/commit/变更文件写入 `app_logs`；调查提示要求按告警时间检索。Docker → OpenObserve 查询端到端已验；`bash examples/openobserve-aiops/verify-release-event-e2e.sh` 使用临时密钥与容器复核签名接收和准确事件持久化。
 - [x] **事故流程内存原型：** `examples/openobserve-aiops/incident_workflow.py` 实现状态转换、负责人、严重级别、幂等键、重复告警归并、审批事件和时间线；不执行处置命令。
 - [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox，以及严重级别和负责人；migration `0008_incident_triage` 已应用于获授权的本机测试数据库。operator/admin 才能管理，候选负责人必须是启用且有 order-service 范围的 operator/admin；状态流转由 API 按显式矩阵校验，并追加审计，closed 为终态。resolved/closed 事故冻结分级/指派。测试和本机 API/UI 验收通过；生产身份集成仍待规划。
 - [x] **内存 RCA 数据模型：** 已验证结论必须带 HTTPS 证据链接，未验证结论明确标为 assumption；原型只记录声明，不自动验证其真实性。
