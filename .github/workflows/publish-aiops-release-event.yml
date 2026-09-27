@@ -1,0 +1,48 @@
+name: Publish AIOps release event
+
+on:
+  workflow_call:
+    inputs:
+      release_version:
+        description: Deployed application version or image tag
+        required: true
+        type: string
+      changed_files_json:
+        description: JSON array of changed repository paths
+        required: true
+        type: string
+      release_service:
+        description: Service name recorded in the release event
+        required: false
+        default: order-service
+        type: string
+    secrets:
+      aiops_release_webhook_url:
+        description: HTTPS endpoint that accepts signed release events
+        required: true
+      release_webhook_secret:
+        description: Shared HMAC-SHA256 secret configured on the event receiver
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish-release-event:
+    name: Publish release metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out the caller revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Send signed release event
+        env:
+          AIOPS_RELEASE_WEBHOOK_URL: ${{ secrets.aiops_release_webhook_url }}
+          RELEASE_WEBHOOK_SECRET: ${{ secrets.release_webhook_secret }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_SERVICE: ${{ inputs.release_service }}
+          RELEASE_COMMIT_SHA: ${{ github.sha }}
+          RELEASE_CHANGED_FILES_JSON: ${{ inputs.changed_files_json }}
+        run: node examples/openobserve-aiops/demo/order-service/scripts/publish-release-event.mjs
