@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "base_commit": "456f8c9520ca891a8475296600d4e41177e578ef",
+  "initial_snapshots": {
+    "examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md": {
+      "kind": "file",
+      "sha256": "d00917dadc4b3163a4482ed8dae4313a007844283841f39cc5b73c41296df765"
+    },
+    "examples/openobserve-aiops/bootstrap-postgresql-roles.sh": {
+      "kind": "file",
+      "sha256": "77cd66c6f099d462eeaf2ee75a777ae056fd0c620d12a5baed9c5ca6212f4029"
+    },
+    "examples/openobserve-aiops/docker-compose.yaml": {
+      "kind": "file",
+      "sha256": "ea334382738ab2c8e084058fbca34121720b0a076bcfdeaab73e063858d4d7a9"
+    },
+    "examples/openobserve-aiops/postgresql-local-role-passwords.psql": {
+      "kind": "file",
+      "sha256": "c602b59c8aca410cc0f690fc6e1afe6a8c802fa42a6527f6c8df9bb6740b9491"
+    },
+    "examples/openobserve-aiops/postgresql-roles.psql": {
+      "kind": "file",
+      "sha256": "63c4de484f98e433b3a9766228fb2d78ef522b6fa3cf2078311cbbfb07df9f1b"
+    },
+    "examples/openobserve-aiops/verify-compose-postgresql-roles.sh": {
+      "kind": "file",
+      "sha256": "3aa373b69c7bd56cc5fe0d76399e394359d4be0f9c030bb7509266ab495d34de"
+    },
+    "examples/openobserve-aiops/verify-postgresql-roles.sh": {
+      "kind": "file",
+      "sha256": "d51b4f61128db1cda6e2aef9361f8f4ec3d9a71e0b4782ed87d685e7de974fad"
+    },
+    "specs/001-resume-aiops/state-plan-draft-before-user-steering.json": {
+      "kind": "file",
+      "sha256": "c62c4ae5ec627a72f2e4a7bef033ca8e3e28e3079f26b63f47fa53086f3e436e"
+    },
+    "specs/001-resume-aiops/state-production-scope-draft.json": {
+      "kind": "file",
+      "sha256": "04d31f6c721a422f6f87bae6cf3ce07336fbb4b98bd06b8e4bf6025ad51db153"
+    }
+  },
+  "internal_patterns": [
+    "specs/004-compose-db-role-separation/**",
+    "specs/004-compose-db-role-separation/scope-baseline-T002.json"
+  ]
+}

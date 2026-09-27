@@ -64,6 +64,11 @@ privileges=$(docker exec "$container_name" psql -At -U aiops_runtime -d postgres
        AND NOT has_table_privilege(current_user, 'audit_events', 'UPDATE')
        AND NOT has_table_privilege(current_user, 'audit_events', 'DELETE')
        AND NOT has_table_privilege(current_user, 'audit_events', 'TRUNCATE')
+       AND has_table_privilege(current_user, 'schema_migrations', 'SELECT')
+       AND NOT has_table_privilege(current_user, 'schema_migrations', 'INSERT')
+       AND NOT has_table_privilege(current_user, 'schema_migrations', 'UPDATE')
+       AND NOT has_table_privilege(current_user, 'schema_migrations', 'DELETE')
+       AND NOT has_table_privilege(current_user, 'schema_migrations', 'TRUNCATE')
        AND has_column_privilege(current_user, 'incidents', 'severity', 'UPDATE')
        AND has_column_privilege(current_user, 'incidents', 'assignee_user_id', 'UPDATE')
        AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
@@ -82,6 +87,10 @@ for statement in \
     "UPDATE audit_events SET event_type = 'tampered'" \
     "DELETE FROM audit_events" \
     "TRUNCATE audit_events" \
+    "INSERT INTO schema_migrations (version) VALUES ('runtime.must.not.write')" \
+    "UPDATE schema_migrations SET version = version WHERE false" \
+    "DELETE FROM schema_migrations WHERE false" \
+    "TRUNCATE schema_migrations" \
     "CREATE TABLE runtime_must_not_create (id integer)"; do
     if docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
         -c "$statement" >/dev/null 2>&1; then
@@ -90,4 +99,4 @@ for statement in \
     fi
 done
 
-echo "PostgreSQL role verification passed: 8 migrations including incident triage; runtime audit append/read and triage updates allowed; audit mutation and schema creation denied"
+echo "PostgreSQL role verification passed: 8 migrations including incident triage; runtime business access and audit append allowed; audit/ledger mutation and schema creation denied"

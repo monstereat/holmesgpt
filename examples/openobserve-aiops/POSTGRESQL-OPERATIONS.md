@@ -10,8 +10,8 @@ command at its credentials or volume.
 - PostgreSQL is the durable source for incidents, tasks, approvals, identity
   mappings, audit events, retrospectives, session revocations, and the outbox.
 - The API and worker use the runtime identity. It can read and write application
-  data and append audit events, but cannot create schema objects or change/delete
-  audit history.
+  data and append audit events, but cannot create schema objects, alter the
+  migration ledger, or change/delete audit history.
 - A one-shot migration job uses the separate migration identity. It must finish
   successfully before application replicas start. The migration runner takes a
   PostgreSQL advisory transaction lock and records each applied migration.
@@ -23,6 +23,28 @@ The repository role template is [`postgresql-roles.psql`](postgresql-roles.psql)
 It is for a fresh database and does not transfer ownership of an existing
 schema. Managed services may require their supported IAM or role-creation flow;
 verify equivalent permissions in staging before production.
+
+The local Compose stack uses a PostgreSQL administrator only for its idempotent
+role bootstrap/finalize jobs. Incident API and worker connect as
+`aiops_runtime`; the migration job connects as `aiops_migrator`. The two role
+passwords are independent random values in the private mode-0600 local runtime
+configuration. The migration job completes before the post-migration finalize
+job, which re-applies grants and removes runtime DML privileges from
+`schema_migrations`, including on a fresh database. This validates role wiring
+against the local Compose volume; it does not prove managed-database IAM or
+production secret injection.
+
+On 2026-09-27 the existing local Compose database was switched to these roles
+without recreating its volume. The local bootstrap transferred ownership of
+existing `public` relations and schema to `aiops_migrator` so later migrations
+can run; sequences owned by tables are transferred with their table. The role
+verifier confirmed that the API and worker connect as `aiops_runtime`, the
+migration job connects as `aiops_migrator`, an authenticated operator can read
+the workbench, and runtime DDL, migration-ledger mutation, and audit mutation
+are denied. All eight migration records and the pre-existing incident, task,
+audit, and outbox counts remained unchanged. This is evidence for this local
+test volume only. The bootstrap ownership transfer is intentionally specific to
+the local `aiops` database and is not a managed-production migration procedure.
 
 ## Release migration sequence
 
@@ -139,11 +161,10 @@ restored migrations `0001`–`0008`, the task duration index, incident triage
 columns, and a synthetic incident; it checked mode `0600`, archive validation,
 and overwrite refusal. The same verifier creates an ephemeral recipient
 certificate, encrypts the archive, decrypts it, and restores it into a second
-isolated database. This verifies the local encryption/restore mechanics, but
-also checks mode `0600`, overwrite refusal, and rejection after an encrypted
-artifact is tampered with. This verifies the local encryption/restore
-mechanics, but does not establish production key custody, off-host retention,
-PITR, managed-service compatibility, or a production RPO/RTO.
+isolated database. It also checks mode `0600`, overwrite refusal, and rejection
+after an encrypted artifact is tampered with. This verifies local encryption
+and restore mechanics, but does not establish production key custody, off-host
+retention, PITR, managed-service compatibility, or a production RPO/RTO.
 
 The role verifier [`verify-postgresql-roles.sh`](verify-postgresql-roles.sh)
 also passed in an isolated PostgreSQL 16.6 container. It confirmed runtime audit

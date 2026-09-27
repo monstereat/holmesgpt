@@ -1,0 +1,19 @@
+{
+  "base_commit": "456f8c9520ca891a8475296600d4e41177e578ef",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/004-compose-db-role-separation/scope-baseline-T002.json",
+  "new_files": [],
+  "modified_preexisting_files": [],
+  "touched_files": [],
+  "allow_patterns": [
+    "examples/openobserve-aiops/bootstrap-postgresql-roles.sh",
+    "examples/openobserve-aiops/postgresql-local-role-passwords.psql",
+    "examples/openobserve-aiops/docker-compose.yaml",
+    "specs/004-compose-db-role-separation/**"
+  ],
+  "internal_patterns": [
+    "specs/004-compose-db-role-separation/**",
+    "specs/004-compose-db-role-separation/scope-baseline-T002.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

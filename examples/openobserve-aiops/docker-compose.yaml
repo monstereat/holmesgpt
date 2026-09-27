@@ -1,5 +1,64 @@
 name: holmesgpt-aiops-goal
 
+x-postgresql-access-setup: &postgresql-access-setup
+  image: postgres:16.6-alpine
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=16m
+  entrypoint: ["/bin/sh", "-ec"]
+  command:
+    - |
+      /bin/sh /bootstrap/bootstrap-postgresql-roles.sh
+      export PGPASSWORD="$$POSTGRES_ADMIN_PASSWORD"
+      psql --host postgres --port 5432 --username aiops --dbname aiops \
+        --set ON_ERROR_STOP=1 <<'SQL'
+      DO $$$$
+      DECLARE item RECORD;
+      BEGIN
+          FOR item IN
+              SELECT relation.relname, relation.relkind
+              FROM pg_class AS relation
+            JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = 'public'
+              AND relation.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
+              AND (
+                  relation.relkind <> 'S'
+                  OR NOT EXISTS (
+                      SELECT 1
+                      FROM pg_depend AS dependency
+                      WHERE dependency.classid = 'pg_class'::regclass
+                        AND dependency.objid = relation.oid
+                        AND dependency.deptype IN ('a', 'i')
+                  )
+              )
+          LOOP
+              CASE item.relkind
+                  WHEN 'S' THEN EXECUTE format('ALTER SEQUENCE public.%I OWNER TO aiops_migrator', item.relname);
+                  WHEN 'v' THEN EXECUTE format('ALTER VIEW public.%I OWNER TO aiops_migrator', item.relname);
+                  WHEN 'm' THEN EXECUTE format('ALTER MATERIALIZED VIEW public.%I OWNER TO aiops_migrator', item.relname);
+                  WHEN 'f' THEN EXECUTE format('ALTER FOREIGN TABLE public.%I OWNER TO aiops_migrator', item.relname);
+                  ELSE EXECUTE format('ALTER TABLE public.%I OWNER TO aiops_migrator', item.relname);
+              END CASE;
+          END LOOP;
+          ALTER SCHEMA public OWNER TO aiops_migrator;
+      END
+      $$$$;
+      SQL
+  environment:
+    POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}
+    AIOPS_DB_RUNTIME_PASSWORD: ${AIOPS_DB_RUNTIME_PASSWORD:?Export AIOPS_DB_RUNTIME_PASSWORD before starting the local demo}
+    AIOPS_DB_MIGRATOR_PASSWORD: ${AIOPS_DB_MIGRATOR_PASSWORD:?Export AIOPS_DB_MIGRATOR_PASSWORD before starting the local demo}
+  volumes:
+    - ./bootstrap-postgresql-roles.sh:/bootstrap/bootstrap-postgresql-roles.sh:ro
+    - ./postgresql-roles.psql:/bootstrap/postgresql-roles.psql:ro
+    - ./postgresql-local-role-passwords.psql:/bootstrap/postgresql-local-role-passwords.psql:ro
+  networks:
+    - app
+
 services:
   openobserve:
     image: public.ecr.aws/zinclabs/openobserve:v1.0.3
@@ -72,6 +131,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  incident-db-bootstrap:
+    <<: *postgresql-access-setup
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  incident-db-finalize:
+    <<: *postgresql-access-setup
+    depends_on:
+      incident-migrate:
+        condition: service_completed_successfully
 
   postgres-test:
     profiles: ["test"]
@@ -216,12 +287,14 @@ services:
     command: ["python", "migrate.py"]
     environment:
       AIOPS_ENV: local
-      MIGRATION_DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
+      MIGRATION_DATABASE_URL: postgresql://aiops_migrator:${AIOPS_DB_MIGRATOR_PASSWORD:?Export AIOPS_DB_MIGRATOR_PASSWORD before starting the local demo}@postgres:5432/aiops
     networks:
       - app
     depends_on:
       postgres:
         condition: service_healthy
+      incident-db-bootstrap:
+        condition: service_completed_successfully
 
   incident-api:
     build:
@@ -240,7 +313,7 @@ services:
       AIOPS_DEMO_ACTIONS_ENABLED: "true"
       AIOPS_METRICS_TOKEN: ${AIOPS_METRICS_TOKEN:-}
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:?Export ALERT_WEBHOOK_TOKEN before starting the local demo}
-      DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
+      DATABASE_URL: postgresql://aiops_runtime:${AIOPS_DB_RUNTIME_PASSWORD:?Export AIOPS_DB_RUNTIME_PASSWORD before starting the local demo}@postgres:5432/aiops
       REDIS_URL: redis://redis:6379/0
       SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:?Export SESSION_SIGNING_KEY before starting the local demo}
       AIOPS_TEST_USERS_JSON: ${AIOPS_TEST_USERS_JSON:?Export AIOPS_TEST_USERS_JSON with local test accounts before starting the local demo}
@@ -255,6 +328,8 @@ services:
       postgres:
         condition: service_healthy
       incident-migrate:
+        condition: service_completed_successfully
+      incident-db-finalize:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -280,7 +355,7 @@ services:
     command: ["python", "worker_entrypoint.py", "worker", "--loglevel=INFO", "--concurrency=2"]
     environment:
       AIOPS_ENV: local
-      DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops
+      DATABASE_URL: postgresql://aiops_runtime:${AIOPS_DB_RUNTIME_PASSWORD:?Export AIOPS_DB_RUNTIME_PASSWORD before starting the local demo}@postgres:5432/aiops
       REDIS_URL: redis://redis:6379/0
       HOLMES_API_URL: http://holmes-api:5050
       HOLMES_API_KEY: ${HOLMES_API_KEY:?Export HOLMES_API_KEY before starting the local demo}
@@ -292,6 +367,8 @@ services:
       postgres:
         condition: service_healthy
       incident-migrate:
+        condition: service_completed_successfully
+      incident-db-finalize:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
