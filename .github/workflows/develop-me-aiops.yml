@@ -7,6 +7,8 @@ on:
       - 'holmes/plugins/toolsets/__init__.py'
       - 'tests/plugins/toolsets/openobserve/**'
       - 'tests/toolsets/test_openobserve_toolset.py'
+      - 'examples/openobserve-aiops/otel-collector-production.yaml'
+      - 'examples/openobserve-aiops/verify-production-otel-config.sh'
       - '.github/workflows/develop-me-aiops.yml'
   workflow_dispatch:
 jobs:
@@ -24,3 +26,5 @@ jobs:
         run: poetry install --with dev --no-interaction
       - name: Run mocked OpenObserve tests
         run: poetry run pytest -q --no-cov tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
+      - name: Validate production OpenTelemetry Collector template
+        run: bash examples/openobserve-aiops/verify-production-otel-config.sh
