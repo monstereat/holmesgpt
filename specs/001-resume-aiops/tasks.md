@@ -81,4 +81,4 @@
 - 允许改动：`examples/openobserve-aiops/alert-trigger/app.py`、`auth.py`、`migrations/0003_incident_retrospectives.sql`、`public/incidents.html`、`public/incidents.js`、`tests/test_workbench_api.py`、`examples/openobserve-aiops/README.md`、`examples/openobserve-aiops/DEMO.md`、`ROADMAP.md`、`docs/develop-me-roadmap.md`、`specs/001-resume-aiops/tasks.md`、`specs/001-resume-aiops/roadmap.md`、`specs/001-resume-aiops/verify.md`。
 - 操作：每个事故持久化影响、根因、恢复措施、行动项、草稿/审核状态及编辑/审核者；approver/admin 可保存和审核，其他有事故读取权限的角色只读；每次保存写审计事件。
 - 验证：隔离 Compose 测试 profile；本机迁移版本核对、登录/复盘读取/越权写入 HTTP smoke、`node --check`；不要执行生产迁移。
-- 完成记录：42 项隔离测试通过；`0003_incident_retrospectives` 已应用到本机测试库；operator 写入复盘返回 403，工作台服务资源可加载。浏览器人工走查及 live Holmes RCA 仍是整体验收待办。
+- 完成记录：42 项隔离测试通过；`0003_incident_retrospectives` 已应用到本机测试库；operator 写入复盘返回 403，工作台服务资源可加载。2026-09-25 浏览器验收已走通 operator/approver 权限差异及 approver 保存、审核合成复盘；2026-09-27 当前运行环境另验证了复盘 API 持久化、审计事件和 operator 页面读取。T009 功能验收完成。当前 live Holmes 20 案报告已验证检索证据覆盖，但根因诊断质量仍为 `not_scored`，这是 T007/整体目标尚未完成的评测门槛，不再列作 T009 待办。
