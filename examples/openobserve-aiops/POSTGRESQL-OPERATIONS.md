@@ -48,7 +48,7 @@ counts remained unchanged. This is evidence for this local test volume only.
 The bootstrap ownership transfer is intentionally specific to the local
 `aiops` database and is not a managed-production migration procedure.
 
-On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; a direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. After loading the documented mode-0600 local DeepSeek key file, Holmes and the Celery worker became healthy. A synthetic webhook then produced one incident/task; the worker completed the first attempt, persisted the matching Trace ID and OpenObserve query tool in the task result, and appended `task.completed` to audit history. Counts are 12 incidents, 12 tasks, 54 audit rows, and 12 outbox rows. This is still test-only evidence.
+On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; a direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. After loading the documented mode-0600 local DeepSeek key file, Holmes and the Celery worker became healthy. A synthetic webhook then produced one incident/task; the worker completed the first attempt, persisted the matching Trace ID and OpenObserve query tool in the task result, and appended `task.completed` to audit history. Counts are 12 incidents, 12 tasks, 54 audit rows, and 12 outbox rows. A custom-format dump of this current local database was encrypted and restored into a separate isolated PostgreSQL 16.6 container; all 10 migration records, business row counts, and the completed smoke-task evidence/audit matched. The temporary archive, certificate, and restore container were removed after verification. This is still test-only evidence.
 
 ## Release migration sequence
 
@@ -161,9 +161,10 @@ constraints, indexes, application readiness, and an end-to-end synthetic task
 before any owner-approved cutover. The repository verifier
 [`verify-postgresql-backup.sh`](verify-postgresql-backup.sh) passed on an
 isolated PostgreSQL 16.6 container with no network or persistent volume. It
-restored migrations `0001`–`0009`, the task duration index, incident triage and
-user session-generation/reactivation columns, and a synthetic incident; it checked mode `0600`, archive validation,
-and overwrite refusal. The same verifier creates an ephemeral recipient
+  restored migrations `0001`–`0010`, the task duration index, incident triage,
+  user session-generation/reactivation columns, worker-role grants, and a
+  synthetic incident; it checked mode `0600`, archive validation, and overwrite
+  refusal. The same verifier creates an ephemeral recipient
 certificate, encrypts the archive, decrypts it, and restores it into a second
 isolated database. It also checks mode `0600`, overwrite refusal, and rejection
 after an encrypted artifact is tampered with. This verifies local encryption
