@@ -42,29 +42,16 @@ def _dispatch_once(database_url: str, sender: Any, *, interval_seconds: int = 20
         with conn.transaction():
             with conn.cursor() as cursor:
                 cursor.execute(
-                    """WITH recovered AS (
-                           UPDATE tasks SET status = 'retrying', available_at = now(),
-                               error_code = 'worker_lease_expired', lease_expires_at = NULL,
-                               updated_at = now()
-                           WHERE status = 'running' AND lease_expires_at < now()
-                             AND attempt < max_attempts
-                           RETURNING incident_id, id
-                       )
-                       INSERT INTO audit_events (incident_id, task_id, event_type)
-                       SELECT incident_id, id, 'task.lease_expired' FROM recovered"""
-                )
-                cursor.execute(
-                    """WITH exhausted AS (
+                    """WITH expired AS (
                            UPDATE tasks SET status = 'failed', completed_at = now(),
-                               error_code = 'attempt_budget_exhausted', lease_expires_at = NULL,
+                               error_code = 'worker_outcome_unknown', lease_expires_at = NULL,
                                updated_at = now()
                            WHERE status = 'running' AND lease_expires_at < now()
-                             AND attempt >= max_attempts
                            RETURNING incident_id, id
                        )
                        INSERT INTO audit_events (incident_id, task_id, event_type, details)
-                       SELECT incident_id, id, 'task.failed', '{"error_code":"attempt_budget_exhausted"}'::jsonb
-                       FROM exhausted"""
+                       SELECT incident_id, id, 'task.failed', '{"error_code":"worker_outcome_unknown"}'::jsonb
+                       FROM expired"""
                 )
                 cursor.execute(
                     """SELECT o.id, o.payload->>'task_id'

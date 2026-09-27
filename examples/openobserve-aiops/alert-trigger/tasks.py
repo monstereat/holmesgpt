@@ -33,7 +33,7 @@ def retry_delay(attempt: int, *, base: int = RETRY_BASE_SECONDS, cap: int = RETR
 
 
 def claim_task(conn: Any, task_id: str) -> ClaimedTask | None:
-    """Atomically claim a queued task or recover a worker's expired lease."""
+    """Atomically claim a queued task or a task scheduled for retry."""
     with conn.transaction():
         with conn.cursor() as cursor:
             cursor.execute(
@@ -42,8 +42,7 @@ def claim_task(conn: Any, task_id: str) -> ClaimedTask | None:
                        started_at = now(), lease_expires_at = now() + (%s * interval '1 second'),
                        result = NULL, updated_at = now()
                    WHERE id = %s AND attempt < max_attempts AND available_at <= now()
-                     AND (status IN ('queued', 'retrying')
-                          OR (status = 'running' AND lease_expires_at < now()))
+                     AND status IN ('queued', 'retrying')
                    RETURNING id, incident_id, attempt, max_attempts""",
                 (TASK_LEASE_SECONDS, task_id),
             )

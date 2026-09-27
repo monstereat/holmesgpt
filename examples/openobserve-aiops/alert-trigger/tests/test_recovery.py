@@ -41,7 +41,7 @@ def test_outbox_requeues_after_broker_loss_and_worker_claim_is_idempotent():
             cursor.execute("DELETE FROM incidents WHERE id = %s", (incident["incident_id"],))
 
 
-def test_expired_worker_lease_is_recovered_and_requeued():
+def test_expired_worker_lease_fails_closed_without_duplicate_dispatch():
     database_url = _local_database_url()
     fingerprint = stable_fingerprint(IncidentInput("0" * 64, "integration-expired", ("1" * 32,)))
     with psycopg.connect(database_url) as conn:
@@ -52,11 +52,22 @@ def test_expired_worker_lease_is_recovered_and_requeued():
                 (incident["task_id"],),
             )
     sent = []
-    assert _dispatch_once(database_url, lambda *args, **kwargs: sent.append(args), interval_seconds=0) == 1
+    with psycopg.connect(database_url) as conn:
+        assert claim_task(conn, incident["task_id"]) is None
+    assert _dispatch_once(database_url, lambda *args, **kwargs: sent.append(args), interval_seconds=0) == 0
+    assert sent == []
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT status, error_code FROM tasks WHERE id = %s", (incident["task_id"],))
-            assert cursor.fetchone() == ("retrying", "worker_lease_expired")
+            assert cursor.fetchone() == ("failed", "worker_outcome_unknown")
+            cursor.execute(
+                "SELECT event_type, details FROM audit_events WHERE task_id = %s ORDER BY id DESC LIMIT 1",
+                (incident["task_id"],),
+            )
+            assert cursor.fetchone() == (
+                "task.failed",
+                {"error_code": "worker_outcome_unknown"},
+            )
             cursor.execute("DELETE FROM audit_events WHERE task_id = %s", (incident["task_id"],))
             cursor.execute("DELETE FROM outbox_events WHERE idempotency_key = %s", (f"investigate:{fingerprint}",))
             cursor.execute("DELETE FROM tasks WHERE id = %s", (incident["task_id"],))
