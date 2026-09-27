@@ -20,6 +20,7 @@
 
 ## 验证结果
 
+- 2026-09-27 复跑 PostgreSQL 16.6 隔离备份恢复 verifier 与 runtime-role verifier，二者均退出码 0。恢复验证覆盖 migrations 0001–0008、任务耗时索引、incident severity/assignee 和 synthetic incident，并检查备份权限/覆盖拒绝；角色 verifier 确认 runtime 可追加/读取 audit 并更新 triage 列，但不能修改审计或创建 schema。临时 verifier 使用无网络、无持久卷容器，没有接触本机业务 PostgreSQL volume。
 - 历史隔离 Compose suite（当时 schema 1.2 代码）：**46 passed, 1 warning**；该数字不是当前树的全量回归结果。
 - 历史全仓非 LLM 回归：**3861 passed, 160 skipped, 0 failed, 119 warnings**；Internet Toolset 在应用层禁用环境代理和 `.netrc`，并保留 `REQUESTS_CA_BUNDLE`/`CURL_CA_BUNDLE`，SSRF pinning 与代理环境回归测试通过。这是历史全仓结果，不代表本轮重新执行。
 - Compose 栈构建、配置校验和服务恢复成功。最近检查：OpenObserve `/healthz`、Holmes `/healthz`、incident API `/healthz`、订单服务根路径均返回 HTTP 200。
