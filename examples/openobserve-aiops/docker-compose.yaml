@@ -312,6 +312,10 @@ services:
     command: ["python", "-m", "pytest", "-q", "tests"]
     environment:
       AIOPS_TEST_DATABASE_URL: postgresql://aiops:${POSTGRES_PASSWORD:?Export POSTGRES_PASSWORD before starting the local demo}@postgres:5432/aiops_test
+      PYTEST_ADDOPTS: -p no:cacheprovider
+      TMPDIR: /tmp
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
     networks:
       - test-isolated
     depends_on:

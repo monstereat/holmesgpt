@@ -165,6 +165,13 @@ class RetrospectiveRequest(BaseModel):
         return [item.strip() for item in items]
 
 
+class IncidentTriageUpdate(BaseModel):
+    severity: str | None = Field(default=None, pattern="^(critical|high|medium|low)$")
+    assignee_id: str | None = Field(default=None, max_length=36)
+
+    model_config = {"extra": "forbid"}
+
+
 def _seed_test_users(database_url: str, raw_users: str) -> None:
     users = json.loads(raw_users)
     if not isinstance(users, list) or not 1 <= len(users) <= 16:
@@ -696,6 +703,22 @@ def list_users(request: Request, authorization: str | None = Header(default=None
     }
 
 
+@app.get("/api/incident-assignees")
+def list_incident_assignees(request: Request, authorization: str | None = Header(default=None)) -> dict[str, list[dict[str, str]]]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
+    _authorize(principal, "incident:manage", "order-service")
+    with psycopg.connect(_database_url()) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT id, username, role FROM users
+                   WHERE active = TRUE AND role IN ('operator', 'admin')
+                     AND ('*' = ANY(resource_scopes) OR 'order-service' = ANY(resource_scopes))
+                   ORDER BY username"""
+            )
+            rows = cursor.fetchall()
+    return {"items": [{"id": str(row[0]), "username": row[1], "role": row[2]} for row in rows]}
+
+
 @app.post("/api/users/{user_id}/disable")
 def disable_user(user_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, str]:
     principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
@@ -757,19 +780,25 @@ def list_incidents(
         with conn.cursor() as cursor:
             if status:
                 cursor.execute(
-                    """SELECT id, alert_name, trace_ids, status, created_at, updated_at
-                       FROM incidents WHERE status = %s ORDER BY created_at DESC LIMIT %s""",
+                    """SELECT i.id, i.alert_name, i.trace_ids, i.status, i.severity,
+                              i.assignee_user_id, u.username, i.created_at, i.updated_at
+                       FROM incidents i LEFT JOIN users u ON u.id = i.assignee_user_id
+                       WHERE i.status = %s ORDER BY i.created_at DESC LIMIT %s""",
                     (status, limit),
                 )
             else:
                 cursor.execute(
-                    """SELECT id, alert_name, trace_ids, status, created_at, updated_at
-                       FROM incidents ORDER BY created_at DESC LIMIT %s""",
+                    """SELECT i.id, i.alert_name, i.trace_ids, i.status, i.severity,
+                              i.assignee_user_id, u.username, i.created_at, i.updated_at
+                       FROM incidents i LEFT JOIN users u ON u.id = i.assignee_user_id
+                       ORDER BY i.created_at DESC LIMIT %s""",
                     (limit,),
                 )
             rows = cursor.fetchall()
     return {"items": [
-        {"id": str(row[0]), "alert_name": row[1], "trace_ids": row[2], "status": row[3], "created_at": row[4].isoformat(), "updated_at": row[5].isoformat()}
+        {"id": str(row[0]), "alert_name": row[1], "trace_ids": row[2], "status": row[3],
+         "severity": row[4], "assignee_id": str(row[5]) if row[5] else None,
+         "assignee_username": row[6], "created_at": row[7].isoformat(), "updated_at": row[8].isoformat()}
         for row in rows
     ], "limit": limit}
 
@@ -785,7 +814,9 @@ def get_incident(incident_id: str, request: Request, authorization: str | None =
     with psycopg.connect(_database_url()) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, alert_name, trace_ids, summary, status, created_at, updated_at FROM incidents WHERE id = %s",
+                """SELECT i.id, i.alert_name, i.trace_ids, i.summary, i.status, i.severity,
+                          i.assignee_user_id, u.username, i.created_at, i.updated_at
+                   FROM incidents i LEFT JOIN users u ON u.id = i.assignee_user_id WHERE i.id = %s""",
                 (incident_uuid,),
             )
             incident = cursor.fetchone()
@@ -816,8 +847,11 @@ def get_incident(incident_id: str, request: Request, authorization: str | None =
         "trace_ids": incident[2],
         "summary": incident[3],
         "status": incident[4],
-        "created_at": incident[5].isoformat(),
-        "updated_at": incident[6].isoformat(),
+        "severity": incident[5],
+        "assignee_id": str(incident[6]) if incident[6] else None,
+        "assignee_username": incident[7],
+        "created_at": incident[8].isoformat(),
+        "updated_at": incident[9].isoformat(),
         "tasks": [
             {"id": str(row[0]), "task_type": row[1], "status": row[2], "attempt": row[3], "max_attempts": row[4], "result": row[5], "error_code": row[6], "created_at": row[7].isoformat(), "updated_at": row[8].isoformat()}
             for row in tasks
@@ -830,6 +864,81 @@ def get_incident(incident_id: str, request: Request, authorization: str | None =
             {"event_type": row[0], "details": row[1], "created_at": row[2].isoformat(), "actor": row[3]}
             for row in events
         ],
+    }
+
+
+@app.patch("/api/incidents/{incident_id}/triage")
+def update_incident_triage(
+    incident_id: str,
+    body: IncidentTriageUpdate,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
+    _authorize(principal, "incident:manage", "order-service")
+    updates = body.model_fields_set
+    if not updates:
+        raise HTTPException(status_code=422, detail="At least one triage field is required")
+    if "severity" in updates and body.severity is None:
+        raise HTTPException(status_code=422, detail="Severity cannot be null")
+    try:
+        incident_uuid = str(uuid.UUID(incident_id))
+        assignee_uuid = str(uuid.UUID(body.assignee_id)) if "assignee_id" in updates and body.assignee_id else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid incident or assignee ID") from None
+
+    with psycopg.connect(_database_url()) as conn:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT status, severity, assignee_user_id FROM incidents WHERE id = %s FOR UPDATE",
+                    (incident_uuid,),
+                )
+                incident = cursor.fetchone()
+                if not incident:
+                    raise HTTPException(status_code=404, detail="Incident not found")
+                if incident[0] in {"resolved", "closed"}:
+                    raise HTTPException(status_code=409, detail="Resolved or closed incidents cannot be triaged")
+
+                severity = body.severity if "severity" in updates else incident[1]
+                assignee_id = assignee_uuid if "assignee_id" in updates else incident[2]
+                assignee_username = None
+                if assignee_id is not None:
+                    if "assignee_id" in updates:
+                        cursor.execute(
+                            """SELECT username FROM users WHERE id = %s AND active = TRUE
+                                 AND role IN ('operator', 'admin')
+                                 AND ('*' = ANY(resource_scopes) OR 'order-service' = ANY(resource_scopes))""",
+                            (assignee_id,),
+                        )
+                    else:
+                        cursor.execute("SELECT username FROM users WHERE id = %s", (assignee_id,))
+                    assignee = cursor.fetchone()
+                    if "assignee_id" in updates and not assignee:
+                        raise HTTPException(status_code=422, detail="Assignee must be an active operator or admin with order-service access")
+                    assignee_username = assignee[0] if assignee else None
+
+                changed = severity != incident[1] or assignee_id != incident[2]
+                if changed:
+                    cursor.execute(
+                        """UPDATE incidents SET severity = %s, assignee_user_id = %s, updated_at = now()
+                           WHERE id = %s""",
+                        (severity, assignee_id, incident_uuid),
+                    )
+                    cursor.execute(
+                        """INSERT INTO audit_events (incident_id, actor_id, event_type, details)
+                           VALUES (%s, %s, 'incident.triage_updated', %s)""",
+                        (incident_uuid, principal.user_id, Jsonb({
+                            "previous_severity": incident[1], "severity": severity,
+                            "previous_assignee_id": str(incident[2]) if incident[2] else None,
+                            "assignee_id": str(assignee_id) if assignee_id else None,
+                        })),
+                    )
+    return {
+        "incident_id": incident_uuid,
+        "severity": severity,
+        "assignee_id": str(assignee_id) if assignee_id else None,
+        "assignee_username": assignee_username,
     }
 
 

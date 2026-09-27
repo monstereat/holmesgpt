@@ -13,6 +13,7 @@ cleanup() {
 trap cleanup EXIT
 
 docker run --detach --rm --network none --name "$container_name" \
+    --tmpfs /var/lib/postgresql/data:rw,size=256m \
     --mount "type=bind,src=$backup_dir,dst=/backups" \
     --mount "type=bind,src=$repo_dir/backup-postgres.sh,dst=/usr/local/bin/backup-postgres.sh,readonly" \
     -e POSTGRES_HOST_AUTH_METHOD=trust "$postgres_image" >/dev/null
@@ -80,8 +81,8 @@ fi
 
 restored_migrations="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_restore_test -c 'SELECT count(*) FROM schema_migrations')"
-if [[ "$restored_migrations" != "7" ]]; then
-    echo "restored database contained $restored_migrations migration records instead of 7" >&2
+if [[ "$restored_migrations" != "8" ]]; then
+    echo "restored database contained $restored_migrations migration records instead of 8" >&2
     exit 1
 fi
 
@@ -92,4 +93,11 @@ if [[ "$restored_index" != "t" ]]; then
     exit 1
 fi
 
-echo "PostgreSQL backup verification passed: 7 migrations and a synthetic incident restored, overwrite protection held"
+restored_triage="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_restore_test -c "SELECT column_name FROM information_schema.columns WHERE table_name = 'incidents' AND column_name IN ('severity', 'assignee_user_id') ORDER BY column_name")"
+if [[ "$restored_triage" != $'assignee_user_id\nseverity' ]]; then
+    echo "restored database did not contain incident triage columns" >&2
+    exit 1
+fi
+
+echo "PostgreSQL backup verification passed: 8 migrations, incident triage columns and a synthetic incident restored, overwrite protection held"

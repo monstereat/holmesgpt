@@ -1,10 +1,10 @@
 # AI 智能运维与故障诊断平台：二次开发路线图
 
-> 仓库：`monstereat/holmesgpt`｜固定开发分支：`develop-me`｜更新：2026-09-25
+> 仓库：`monstereat/holmesgpt`｜固定开发分支：`develop-me`｜更新：2026-09-27
 > 开源底座：HolmesGPT；集成 OpenObserve、前端监控 SDK、NestJS、OpenTelemetry，Keep 按需加入。  
 > 范围：先在当前电脑 Docker 测试环境围绕真实应用故障建立「采集 → 告警 → 调查 → 审批处置 → 验证 → 复盘」闭环；正式环境部署后续另行规划和授权；不自建日志数据库。
 
-> **当前验收状态（2026-09-26）：** T000–T009 的本机实现和测试环境编排已落地，事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务在同一个 Docker Compose project 运行。工作台角色审批、测试动作和复盘闭环已有浏览器验收。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新报告含 20 案、40 条合成记录、20/20 案例证据命中、3/3 发布事件命中、0 次未限定成功查询、0 个已识别的跨案例 fixture 命中和 0 个工具错误，schema 1.3 通过 Draft 2020-12 校验。诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
+> **当前验收状态（2026-09-27）：** T000–T009 的本机实现和测试环境编排已落地；incident API 已应用 migration `0008_incident_triage`，工作台支持事故分级与负责人指派，服务端逐次校验 operator/admin 角色、order-service 资源范围及事故状态，并记录审计。当前事故服务隔离 Compose 套件 **105 passed、1 个上游弃用 warning**；8 个 migration 的 PostgreSQL 16 备份恢复验证、API `/healthz`/`readyz`、本地登录、11 条事故的新增字段和 UI 控件均已验收。事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务在同一个 Docker Compose project 运行。工作台角色审批、测试动作和复盘闭环已有浏览器验收。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新报告含 20 案、40 条合成记录、20/20 案例证据命中、3/3 发布事件命中、0 次未限定成功查询、0 个已识别的跨案例 fixture 命中和 0 个工具错误，schema 1.3 通过 Draft 2020-12 校验。诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
 
 ## 1. 功能边界
 
@@ -58,7 +58,7 @@
 - [ ] **外部 Git/CI 发布源（后续集成）：** 本机签名发布事件已可写入 OpenObserve 并与故障窗口查询；GitHub/GitLab/Jenkins 的真实 Webhook 凭据和流水线连接留待后续接入。
 - [x] **本地发布事件原型：** NestJS 接受标准化发布事件，要求 HMAC-SHA256 签名并将版本/commit/变更文件写入 `app_logs`；调查提示要求按告警时间检索。Docker → OpenObserve 查询端到端已验；尚未接入 GitHub/GitLab/Jenkins。
 - [x] **事故流程内存原型：** `examples/openobserve-aiops/incident_workflow.py` 实现状态转换、负责人、严重级别、幂等键、重复告警归并、审批事件和时间线；不执行处置命令。
-- [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox；本地测试身份与资源 RBAC；重启恢复、幂等及审计查询通过单测和 Compose 验收。数据库 schema/migration 仅应用到获授权的本机测试数据库；生产身份集成仍待规划。
+- [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox，以及严重级别和负责人；migration `0008_incident_triage` 已应用于获授权的本机测试数据库。operator/admin 才能管理，候选负责人必须是启用且有 order-service 范围的 operator/admin，写入时再次做服务端校验并追加审计；resolved/closed 事故冻结分级/指派。测试和本机 API/UI 验收通过；生产身份集成仍待规划。
 - [x] **内存 RCA 数据模型：** 已验证结论必须带 HTTPS 证据链接，未验证结论明确标为 assumption；原型只记录声明，不自动验证其真实性。
 - [ ] **真实 RCA 结果验收：** Holmes 调查 API、只读证据代理和带来源/查询信息的证据保存已实现，DeepSeek live 模型调用已实测；复核后的 20 案报告有 20/20 当前 run/case 证据查询命中、3/3 发布事件命中、0 个工具错误。真实模型输出的根因准确性仍待人工 rubric 评分，`not_scored` 不能等同于准确率通过。
 - [x] **本地调查 Skill：** 使用当前支持的 `custom_skill_paths`/`SKILL.md` 提供订单故障只读调查步骤，并通过 Holmes `scan_skill_directory` 验证解析；真实 CLI 调查及证据引用仍待模型凭据和 OpenObserve 查询权限。旧 Catalog 仅留作迁移参考。
@@ -92,7 +92,7 @@
 | 真实 Holmes 调查及 RCA | 可运行的 Holmes CLI、有效模型凭据、目标 OpenObserve 地址及只读服务账户；账户仅开放调查所需流 | 告警触发真实调查；回答引用可核对的日志/Trace/发布/Skill 证据；没有证据的结论标为假设 |
 | OpenObserve 生产权限 | 确定目标部署版本/版本类型，创建独立只读服务账户并配置流级权限与 `allowed_streams` | 允许的流查询成功；未授权流、复杂/越界查询和凭据重定向验证被拒绝 |
 | Git/CI 发布关联 | 选定 GitHub、GitLab 或 Jenkins；提供测试仓库/流水线及安全 webhook 凭据的配置方式 | 一次测试发布的版本、commit、变更文件和时间可与告警窗口关联；伪造签名被拒绝 |
-| 持久化事故中心 | 用户批准 PostgreSQL schema/migration；提供目标 PostgreSQL 和企业身份/RBAC 集成约束 | 重启恢复、并发幂等、身份授权、审批审计和告警/任务/Trace/发布查询通过验收 |
+| 持久化事故中心 | **本机测试版已完成**；生产接入仍需目标 PostgreSQL 和企业身份/RBAC 集成约束 | 本机重启恢复、并发幂等、身份授权、审批审计和告警/任务/Trace 查询已验收；发布查询和生产集成仍待完成 |
 | 受控处置执行 | 明确可用的测试环境、允许动作清单、独立执行身份、审批人及验证失败回退方案 | 未审批/越权动作拒绝；幂等执行、取消、审计和回退均有可复现记录；生产执行另行授权 |
 | 20 例故障评测 | 可注入或回放的隔离环境、模型凭据、OpenObserve 只读访问；评测阈值待项目方确认 | Holmes 对每例实际查询证据并输出诊断；按确认后的指标统计检索覆盖率、诊断质量、误处置率和恢复时间 |
 | Keep / 相似故障聚类 | 先确定采用 Keep 还是自建聚类、事故归并字段和可接受的误合并率；若接 Keep，再提供测试实例和凭据 | 同类告警按确定规则归并，并用重复/相似/不可合并样本验证聚类结果；当前内存指纹不等于该能力 |
@@ -134,7 +134,7 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 本地 UI 配置订单错误趋势仪表盘、告警模板、Webhook 目标和 SQL 告警；实际评估成功触发，接收器收到 `trace_id` 并异步启动调查命令。
 - [x] 事故内存原型补充负责人、严重级别、幂等去重、证据/假设分类、恢复时间、URL 凭据参数脱敏和不臆造信息的复盘草稿；`test_incident_workflow.py` 12 项通过。
 - [ ] 当前触发验证用 `/bin/echo` 替代 Holmes CLI；真实 Holmes 安装、OpenObserve 只读凭据与真实调查结果未验证。
-- [ ] 调查录像、持久化事故状态机、生产审批和处置执行器仍未完成；其中数据库 schema/迁移需先获得用户授权。
+- [ ] 调查录像仍未完成；**本机持久化事故状态、审批和固定演示处置已在后续增量完成**；生产审批和生产处置执行器仍未完成。
 
 **最近验证（2026-09-25）：** 订单服务 `npm test`（11 passed）、`npm run build`、告警接收器 pytest（9 passed）、事故流程 pytest（13 passed）、OpenObserve Toolset/Skill 定向 pytest（58 passed，使用 `--no-cov`；不加参数时这组子集触发全仓覆盖率门槛，15.31% 未达标）、Holmes Skill 扫描解析、Compose 配置检查和 `git diff --check` 均通过。真实浏览器点击订单得到 HTTP 500；OpenObserve 的 `app_logs`、`frontend_errors` 和 Trace 均命中同一 Trace ID。Docker 中用 `RELEASE_VERSION=v1.0.1` 注入 HTTP 500，再发送签名发布事件；OpenObserve 查询同时命中错误记录和发布事件，且 release 版本一致；无签名请求返回 401。SQL 告警实际触发本机接收器。真实 Holmes 调查仍未运行，当前回放以 `/bin/echo` 替代 Holmes CLI。
 

@@ -15,9 +15,9 @@ PASSWORD_ROUNDS = 310_000
 SESSION_TTL_SECONDS = 8 * 60 * 60
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "viewer": frozenset({"incident:read", "task:read"}),
-    "operator": frozenset({"incident:read", "task:read", "task:create", "task:retry"}),
+    "operator": frozenset({"incident:read", "incident:manage", "task:read", "task:create", "task:retry"}),
     "approver": frozenset({"incident:read", "task:read", "approval:review", "incident:review"}),
-    "admin": frozenset({"incident:read", "task:read", "task:create", "task:retry", "approval:review", "incident:review", "user:manage"}),
+    "admin": frozenset({"incident:read", "incident:manage", "task:read", "task:create", "task:retry", "approval:review", "incident:review", "user:manage"}),
 }
 
 

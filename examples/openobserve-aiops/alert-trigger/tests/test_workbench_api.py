@@ -41,6 +41,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
     users = [
         (str(uuid.uuid4()), "demo-viewer", "viewer-passphrase-123", "viewer", ["order-service"]),
         (str(uuid.uuid4()), "demo-operator", "operator-passphrase-123", "operator", ["order-service"]),
+        (str(uuid.uuid4()), "demo-operator-2", "operator2-passphrase-123", "operator", ["order-service"]),
         (str(uuid.uuid4()), "demo-approver", "approver-passphrase-123", "approver", ["order-service"]),
         (str(uuid.uuid4()), "demo-outsider", "outsider-passphrase-123", "viewer", ["billing"]),
         (str(uuid.uuid4()), "demo-admin", "admin-passphrase-123", "admin", ["order-service"]),
@@ -71,6 +72,8 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             static_script = client.get("/incidents.js")
             assert static_script.status_code == 200
             assert "/retrospective" in static_script.text
+            assert "/api/incident-assignees" in static_script.text
+            assert "/triage" in static_script.text
             assert "/api/users" in static_script.text
             assert "保存并标记已审核" in static_script.text
 
@@ -86,9 +89,15 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             listing = client.get("/api/incidents", headers=viewer)
             assert listing.status_code == 200
             assert listing.json()["items"][0]["id"] == incident["incident_id"]
+            assert listing.json()["items"][0]["severity"] == "medium"
+            assert listing.json()["items"][0]["assignee_id"] is None
             details = client.get(f"/api/incidents/{incident['incident_id']}", headers=viewer)
             assert details.status_code == 200
+            assert details.json()["severity"] == "medium"
+            assert details.json()["assignee_username"] is None
             assert details.json()["tasks"][0]["error_code"] == "holmes_unavailable"
+            triage_url = f"/api/incidents/{incident['incident_id']}/triage"
+            assert client.patch(triage_url, headers=viewer, json={"severity": "high"}).status_code == 403
             assert client.post(f"/api/tasks/{incident['task_id']}/retry", headers=viewer).status_code == 403
             retrospective_url = f"/api/incidents/{incident['incident_id']}/retrospective"
             empty_retrospective = client.get(retrospective_url, headers=viewer)
@@ -101,6 +110,8 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert client.get("/api/users", headers=viewer).status_code == 403
 
             admin = login("demo-admin", "admin-passphrase-123")
+            assert client.patch(triage_url, headers=admin, json={}).status_code == 422
+            assert client.patch(triage_url, headers=admin, json={"severity": None}).status_code == 422
             admin_users = client.get("/api/users", headers=admin)
             assert admin_users.status_code == 200
             assert {user["username"] for user in admin_users.json()["items"]} >= {
@@ -130,6 +141,43 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
 
             operator = login("demo-operator", "operator-passphrase-123")
             approver = login("demo-approver", "approver-passphrase-123")
+            candidates = client.get("/api/incident-assignees", headers=operator)
+            assert candidates.status_code == 200
+            candidate_names = {item["username"] for item in candidates.json()["items"]}
+            assert candidate_names == {"demo-operator", "demo-operator-2", "demo-admin"}
+            assert client.get("/api/incident-assignees", headers=approver).status_code == 403
+            assigned = client.patch(
+                triage_url,
+                headers=operator,
+                json={"severity": "critical", "assignee_id": admin_user_ids["demo-operator-2"]},
+            )
+            assert assigned.status_code == 200
+            assert assigned.json()["severity"] == "critical"
+            assert assigned.json()["assignee_username"] == "demo-operator-2"
+            assert client.patch(triage_url, headers=operator, json={"severity": "urgent"}).status_code == 422
+            assert client.patch(
+                triage_url,
+                headers=operator,
+                json={"assignee_id": admin_user_ids["demo-viewer"]},
+            ).status_code == 422
+            assert client.patch(
+                triage_url,
+                headers=operator,
+                json={"assignee_id": admin_user_ids["demo-outsider"]},
+            ).status_code == 422
+            disabled_assignee = client.post(
+                f"/api/users/{admin_user_ids['demo-operator-2']}/disable", headers=admin
+            )
+            assert disabled_assignee.status_code == 200
+            changed_severity = client.patch(triage_url, headers=operator, json={"severity": "low"})
+            assert changed_severity.status_code == 200
+            assert changed_severity.json()["assignee_username"] == "demo-operator-2"
+            unassigned = client.patch(triage_url, headers=operator, json={"assignee_id": None})
+            assert unassigned.status_code == 200
+            assert unassigned.json()["assignee_id"] is None
+            assert client.get(f"/api/incidents/{incident['incident_id']}", headers=operator).json()["severity"] == "low"
+            triage_events = client.get(f"/api/incidents/{incident['incident_id']}", headers=operator).json()["timeline"]
+            assert sum(event["event_type"] == "incident.triage_updated" for event in triage_events) == 3
             assert client.post(f"/api/tasks/{incident['task_id']}/retry", headers=approver).status_code == 403
             retrospective_body = {
                 "impact": "单个订单请求失败",
@@ -164,6 +212,9 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert client.get("/auth/me", headers=viewer).status_code == 401
             refreshed_viewer = login("demo-viewer", "viewer-passphrase-123")
             assert client.get("/auth/me", headers=refreshed_viewer).status_code == 200
+            with psycopg.connect(database_url) as conn:
+                conn.execute("UPDATE incidents SET status = 'resolved' WHERE id = %s", (incident["incident_id"],))
+            assert client.patch(triage_url, headers=operator, json={"severity": "high"}).status_code == 409
     finally:
         with psycopg.connect(database_url) as conn:
             with conn.cursor() as cursor:

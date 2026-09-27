@@ -48,6 +48,8 @@
     target.textContent = error instanceof Error ? error.message : "发生未知错误";
   }
 
+  const severityLabels = { critical: "严重", high: "高", medium: "中", low: "低" };
+
   async function loadIncidents() {
     pageMessage.textContent = "";
     listState.textContent = "正在加载事故…";
@@ -66,7 +68,13 @@
       for (const incident of result.items) {
         const row = document.createElement("tr");
         row.dataset.id = incident.id;
-        row.append(el("td", incident.alert_name), el("td", incident.status, "status"), el("td", (incident.trace_ids || []).join(", ") || "无 Trace"));
+        row.append(
+          el("td", incident.alert_name),
+          el("td", incident.status, "status"),
+          el("td", severityLabels[incident.severity] || incident.severity),
+          el("td", incident.assignee_username || "未指派"),
+          el("td", (incident.trace_ids || []).join(", ") || "无 Trace"),
+        );
         row.addEventListener("click", () => loadIncident(incident.id));
         rows.append(row);
       }
@@ -126,6 +134,65 @@
       const summary = document.createElement("section");
       summary.append(el("h3", "告警信息"), el("pre", JSON.stringify(incident.summary || {}, null, 2)));
       detail.append(summary);
+
+      const triage = document.createElement("section");
+      triage.append(el("h3", "分级与负责人"));
+      triage.append(el("p", `严重度：${severityLabels[incident.severity] || incident.severity} · 负责人：${incident.assignee_username || "未指派"}`, "muted"));
+      if (["operator", "admin"].includes(principal.role)) {
+        try {
+          const candidates = await api("/api/incident-assignees");
+          const severitySelect = document.createElement("select");
+          severitySelect.setAttribute("aria-label", "事故严重级别");
+          for (const value of ["critical", "high", "medium", "low"]) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = severityLabels[value];
+            severitySelect.append(option);
+          }
+          severitySelect.value = incident.severity;
+
+          const assigneeSelect = document.createElement("select");
+          assigneeSelect.setAttribute("aria-label", "事故负责人");
+          const unassigned = document.createElement("option");
+          unassigned.value = "";
+          unassigned.textContent = "未指派";
+          assigneeSelect.append(unassigned);
+          if (incident.assignee_id && !candidates.items.some((user) => user.id === incident.assignee_id)) {
+            const unavailable = document.createElement("option");
+            unavailable.value = incident.assignee_id;
+            unavailable.textContent = `${incident.assignee_username || "当前负责人"}（不可指派）`;
+            unavailable.disabled = true;
+            assigneeSelect.append(unavailable);
+          }
+          for (const user of candidates.items) {
+            const option = document.createElement("option");
+            option.value = user.id;
+            option.textContent = `${user.username}（${user.role}）`;
+            assigneeSelect.append(option);
+          }
+          assigneeSelect.value = incident.assignee_id || "";
+          const initialAssigneeId = incident.assignee_id || "";
+          const saveTriage = el("button", "保存分级与负责人");
+          saveTriage.style.marginTop = "10px";
+          saveTriage.addEventListener("click", async () => {
+            saveTriage.disabled = true;
+            const body = { severity: severitySelect.value };
+            if (assigneeSelect.value !== initialAssigneeId) body.assignee_id = assigneeSelect.value || null;
+            try {
+              await api(`/api/incidents/${encodeURIComponent(id)}/triage`, { method: "PATCH", body: JSON.stringify(body) });
+              await loadIncident(id);
+              await loadIncidents();
+            } catch (error) {
+              showError(pageMessage, error);
+              saveTriage.disabled = false;
+            }
+          });
+          triage.append(severitySelect, assigneeSelect, saveTriage);
+        } catch (error) {
+          showError(pageMessage, error);
+        }
+      }
+      detail.append(triage);
 
       const tasks = document.createElement("section");
       tasks.append(el("h3", "调查任务与证据"));
