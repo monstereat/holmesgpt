@@ -1,0 +1,35 @@
+rule_files:
+  - /rules/otel-collector-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_queue_size{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 10 10 10"
+      - series: 'otelcol_exporter_queue_capacity{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "10 10 10 10"
+      - series: 'otelcol_exporter_enqueue_failed_spans{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 1 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: AIOpsCollectorExportQueueFull
+        exp_alerts:
+          - exp_labels:
+              instance: collector-1
+              exporter: otlp_http/openobserve
+              severity: critical
+            exp_annotations:
+              summary: AIOps telemetry export queue is full
+              description: The Collector cannot accept more telemetry for an exporter; inspect OpenObserve reachability, credentials, and queue storage.
+      - eval_time: 2m
+        alertname: AIOpsCollectorTelemetryEnqueueFailures
+        exp_alerts:
+          - exp_labels:
+              instance: collector-1
+              exporter: otlp_http/openobserve
+              severity: critical
+            exp_annotations:
+              summary: AIOps Collector failed to enqueue telemetry
+              description: Telemetry was rejected before durable export queueing; inspect Collector capacity, storage health, and exporter errors.

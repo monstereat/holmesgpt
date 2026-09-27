@@ -1,0 +1,23 @@
+groups:
+  - name: aiops-otel-collector
+    interval: 30s
+    rules:
+      - alert: AIOpsCollectorExportQueueFull
+        expr: otelcol_exporter_queue_size >= on (instance, exporter) otelcol_exporter_queue_capacity
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: AIOps telemetry export queue is full
+          description: The Collector cannot accept more telemetry for an exporter; inspect OpenObserve reachability, credentials, and queue storage.
+
+      - alert: AIOpsCollectorTelemetryEnqueueFailures
+        expr: |
+          sum by (instance, exporter) (increase(otelcol_exporter_enqueue_failed_spans[5m])) > 0
+          or sum by (instance, exporter) (increase(otelcol_exporter_enqueue_failed_log_records[5m])) > 0
+          or sum by (instance, exporter) (increase(otelcol_exporter_enqueue_failed_metric_points[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: AIOps Collector failed to enqueue telemetry
+          description: Telemetry was rejected before durable export queueing; inspect Collector capacity, storage health, and exporter errors.

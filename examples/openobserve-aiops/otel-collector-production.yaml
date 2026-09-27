@@ -56,6 +56,16 @@ exporters:
       max_elapsed_time: ${env:OTEL_EXPORT_RETRY_MAX_ELAPSED_TIME}
 
 service:
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
   extensions:
     - basicauth/openobserve
     - bearertokenauth/otlp

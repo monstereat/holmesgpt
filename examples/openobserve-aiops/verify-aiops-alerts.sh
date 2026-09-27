@@ -13,4 +13,14 @@ docker run --rm --network none \
 docker run --rm --network none \
     --mount "type=bind,src=$rules_dir,dst=/rules,readonly" \
     --entrypoint promtool "$prometheus_image" \
+    check rules /rules/otel-collector-alerts.yml
+
+docker run --rm --network none \
+    --mount "type=bind,src=$rules_dir,dst=/rules,readonly" \
+    --entrypoint promtool "$prometheus_image" \
     test rules /rules/aiops-alerts.test.yml
+
+docker run --rm --network none \
+    --mount "type=bind,src=$rules_dir,dst=/rules,readonly" \
+    --entrypoint promtool "$prometheus_image" \
+    test rules /rules/otel-collector-alerts.test.yml

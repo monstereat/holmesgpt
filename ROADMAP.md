@@ -14,6 +14,7 @@
 
 ## 实施状态与验证
 
+- 2026-09-27 Collector 运行监控增量：生产 Collector 模板在 `8888` 暴露内部 Prometheus metrics reader；生产准备文档限定该端口只对目标私有 scraper 开放。新增队列满载和实际入队失败告警及独立 `promtool` firing tests，CI 会校验模板与两组告警规则。固定 Collector digest 的模板配置校验和 Prometheus 告警规则/firing tests 均通过；临时本机运行态抓取未能建立，因此只认定静态配置和规则通过，不声称运行态 metrics 已验收。上游队列及入队指标为 Alpha；生产 scraper、通知路由、目标网络策略及升级时指标兼容仍待 staging/平台验收。
 - 2026-09-27 PostgreSQL 运维手册：新增 `examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md`，记录一键迁移作业边界、角色分离、发布/应用回滚顺序、隔离恢复验证和生产数据库验收缺口。明确当前无 down migration，不能把回滚描述为自动撤销 schema；生产加密异地备份/PITR、目标托管库权限兼容及实测 RPO/RTO 仍待 staging 验收。
 - 2026-09-27 OTel Collector 生产配置模板：新增 `otel-collector-production.yaml`，要求 OTLP 接收端 TLS+Bearer token、OpenObserve HTTPS+文件式写入凭据、memory/batch/queue 限额，并将有界发送队列落在受控持久目录。`verify-production-otel-config.sh` 使用固定 digest `otel/opentelemetry-collector-contrib@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1`、临时文件凭据和无网络容器执行 `validate` 通过；专用 GitHub Actions 检查现也会在模板或 verifier 变化时验证配置。实际证书、密钥轮换、加密队列卷、网络策略、目标容量、File Storage beta 支持状态接受度和 OpenObserve 连通性仍待 staging 验收。Compose 继续使用本机专用 config。
 - 2026-09-27 GitHub 发布事件 adapter：新增可复用 workflow `.github/workflows/publish-aiops-release-event.yml`，输入版本与变更文件数组，由调用方传入受保护的 webhook URL/签名 secret；从调用方 revision 检出代码，checkout action 固定到已签名 release `v4.4.0` 的 commit，最小化 token 权限且不持久化 checkout 凭据。AIOps README 给出部署 job 成功后的调用示例；生产准备文档和 develop-me 路线图区分 adapter 与尚未接通的实际发布流水线。工作流未配置远端 secret，也未触发外部 endpoint。

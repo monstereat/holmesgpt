@@ -9,6 +9,8 @@ on:
       - 'tests/toolsets/test_openobserve_toolset.py'
       - 'examples/openobserve-aiops/otel-collector-production.yaml'
       - 'examples/openobserve-aiops/verify-production-otel-config.sh'
+      - 'examples/openobserve-aiops/monitoring/**'
+      - 'examples/openobserve-aiops/verify-aiops-alerts.sh'
       - '.github/workflows/develop-me-aiops.yml'
   workflow_dispatch:
 jobs:
@@ -28,3 +30,5 @@ jobs:
         run: poetry run pytest -q --no-cov tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
       - name: Validate production OpenTelemetry Collector template
         run: bash examples/openobserve-aiops/verify-production-otel-config.sh
+      - name: Validate AIOps Prometheus alert rules
+        run: bash examples/openobserve-aiops/verify-aiops-alerts.sh
