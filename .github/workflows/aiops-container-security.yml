@@ -1,0 +1,103 @@
+name: AIOps container build and security
+
+on:
+  push:
+    branches: [develop-me, feature/openobserve-aiops]
+    paths:
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - 'examples/openobserve-aiops/alert-trigger/**'
+      - 'examples/openobserve-aiops/openobserve-proxy/**'
+      - 'examples/openobserve-aiops/demo/order-service/**'
+      - '.github/workflows/aiops-container-security.yml'
+  pull_request:
+    branches: [develop-me, feature/openobserve-aiops]
+    paths:
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - 'examples/openobserve-aiops/alert-trigger/**'
+      - 'examples/openobserve-aiops/openobserve-proxy/**'
+      - 'examples/openobserve-aiops/demo/order-service/**'
+      - '.github/workflows/aiops-container-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    name: Build and scan ${{ matrix.service }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: holmes-api
+            context: .
+            dockerfile: Dockerfile
+            target: ''
+            image: holmesgpt-aiops/holmes-api
+          - service: incident-api-worker
+            context: examples/openobserve-aiops/alert-trigger
+            dockerfile: examples/openobserve-aiops/alert-trigger/Dockerfile
+            target: runtime
+            image: holmesgpt-aiops/incident-api-worker
+          - service: openobserve-policy-proxy
+            context: examples/openobserve-aiops/openobserve-proxy
+            dockerfile: examples/openobserve-aiops/openobserve-proxy/Dockerfile
+            target: ''
+            image: holmesgpt-aiops/openobserve-policy-proxy
+          - service: order-service
+            context: examples/openobserve-aiops/demo/order-service
+            dockerfile: examples/openobserve-aiops/demo/order-service/Dockerfile
+            target: ''
+            image: holmesgpt-aiops/order-service
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build image
+        env:
+          BUILD_CONTEXT: ${{ matrix.context }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          BUILD_TARGET: ${{ matrix.target }}
+          IMAGE_REF: ${{ matrix.image }}:${{ github.sha }}
+        run: |
+          build_args=()
+          if [[ -n "$BUILD_TARGET" ]]; then
+            build_args+=(--target "$BUILD_TARGET")
+          fi
+          docker build "${build_args[@]}" --file "$DOCKERFILE" --tag "$IMAGE_REF" "$BUILD_CONTEXT"
+
+      - name: Scan image for fixed high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}:${{ github.sha }}
+          version: v0.74.0
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+      - name: Generate SPDX SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}:${{ github.sha }}
+          version: v0.74.0
+          format: spdx-json
+          output: sbom-${{ matrix.service }}.spdx.json
+          exit-code: '0'
+
+      - name: Upload image SBOM
+        if: always() && hashFiles(format('sbom-{0}.spdx.json', matrix.service)) != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aiops-sbom-${{ matrix.service }}-${{ github.sha }}
+          path: sbom-${{ matrix.service }}.spdx.json
+          if-no-files-found: error
+          retention-days: 30
