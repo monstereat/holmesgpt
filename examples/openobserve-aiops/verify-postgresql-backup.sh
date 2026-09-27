@@ -5,18 +5,27 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 container_name="holmesgpt-aiops-pg-backup-check-$$"
 backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/holmesgpt-pg-backup-check.XXXXXX")"
 postgres_image="postgres:16.6-alpine"
+stage="initialize verifier"
 
 cleanup() {
+    local result=$?
+    if [[ "$result" -ne 0 ]]; then
+        echo "PostgreSQL backup verification failed during: $stage" >&2
+        docker logs "$container_name" >&2 || true
+    fi
     docker stop "$container_name" >/dev/null 2>&1 || true
     rm -rf -- "$backup_dir"
+    return "$result"
 }
 trap cleanup EXIT
 
+stage="create temporary recipient certificate"
 openssl req -x509 -newkey rsa:3072 -nodes -keyout "$backup_dir/recipient.key" \
     -out "$backup_dir/recipient.crt" -days 1 -subj '/CN=postgres-backup-check' \
     >/dev/null 2>&1
 chmod 600 "$backup_dir/recipient.key"
 
+stage="start isolated PostgreSQL"
 docker run --detach --rm --network none --name "$container_name" \
     --tmpfs /var/lib/postgresql/data:rw,size=256m \
     --mount "type=bind,src=$backup_dir,dst=/backups" \
@@ -36,6 +45,7 @@ if [[ "$ready" != true ]]; then
     exit 1
 fi
 
+stage="apply repository migrations"
 for migration in "$repo_dir"/alert-trigger/migrations/*.sql; do
     docker exec -i "$container_name" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
         < "$migration"
@@ -45,6 +55,7 @@ for migration in "$repo_dir"/alert-trigger/migrations/*.sql; do
         >/dev/null
 done
 
+stage="insert synthetic incident and create plaintext backup"
 docker exec -i "$container_name" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 INSERT INTO incidents (id, fingerprint, alert_name, summary)
 VALUES (
@@ -60,6 +71,7 @@ docker exec "$container_name" env \
     PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=postgres \
     /usr/local/bin/backup-postgres.sh "$backup_path"
 
+stage="encrypt and decrypt the backup"
 encrypted_backup_path="$backup_dir/aiops-backup-check.cms.der"
 bash "$repo_dir/encrypt-postgres-backup.sh" "$backup_dir/aiops-backup-check.dump" \
     "$encrypted_backup_path" "$backup_dir/recipient.crt"
@@ -67,6 +79,7 @@ openssl cms -decrypt -binary -inform DER -in "$encrypted_backup_path" \
     -recip "$backup_dir/recipient.crt" -inkey "$backup_dir/recipient.key" \
     -out "$backup_dir/aiops-encrypted-restore-check.dump"
 
+stage="verify encrypted backup permissions and overwrite protection"
 encrypted_mode="$(docker exec "$container_name" stat -c '%a' \
     /backups/aiops-backup-check.cms.der)"
 if [[ "$encrypted_mode" != "600" ]]; then
@@ -81,6 +94,7 @@ if bash "$repo_dir/encrypt-postgres-backup.sh" \
     exit 1
 fi
 
+stage="verify tamper rejection and plaintext archive permissions"
 python3 - "$encrypted_backup_path" "$backup_dir/aiops-backup-tampered.cms.der" <<'PY'
 import sys
 
@@ -111,6 +125,7 @@ if docker exec "$container_name" env \
     exit 1
 fi
 
+stage="restore plaintext and encrypted archives"
 docker exec "$container_name" createdb -U postgres aiops_restore_test
 docker exec "$container_name" pg_restore --exit-on-error --single-transaction \
     --no-owner -U postgres -d aiops_restore_test "$backup_path"
@@ -120,6 +135,7 @@ docker exec "$container_name" pg_restore --exit-on-error --single-transaction \
     --no-owner -U postgres -d aiops_encrypted_restore_test \
     /backups/aiops-encrypted-restore-check.dump
 
+stage="verify restored incident and migrations"
 restored_incident="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_restore_test -c "SELECT alert_name || ':' || fingerprint FROM incidents WHERE id = '00000000-0000-4000-8000-000000000001'")"
 if [[ "$restored_incident" != "backup-restore-check:$(printf 'a%.0s' {1..64})" ]]; then
