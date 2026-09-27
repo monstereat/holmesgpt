@@ -55,7 +55,7 @@
 
 ## 3. P1：展示工程可靠性的功能
 
-- [ ] **外部 Git/CI 发布源（后续集成）：** 本机签名发布事件已可写入 OpenObserve 并与故障窗口查询；GitHub/GitLab/Jenkins 的真实 Webhook 凭据和流水线连接留待后续接入。
+- [ ] **外部 Git/CI 发布源（部分具备通用发送器）：** 新增 provider-neutral `publish-release-event.mjs`，由部署后步骤通过 HTTPS 将标准化元数据以 HMAC-SHA256 签名发送；单测覆盖签名、字段限制、HTTP/redirect 拒绝和失败响应。真实 GitHub/GitLab/Jenkins 部署 job、secret binding 与实际发布事件仍需在所选 CI 测试环境接通并验收。
 - [x] **本地发布事件原型：** NestJS 接受标准化发布事件，要求 HMAC-SHA256 签名并将版本/commit/变更文件写入 `app_logs`；调查提示要求按告警时间检索。Docker → OpenObserve 查询端到端已验；尚未接入 GitHub/GitLab/Jenkins。
 - [x] **事故流程内存原型：** `examples/openobserve-aiops/incident_workflow.py` 实现状态转换、负责人、严重级别、幂等键、重复告警归并、审批事件和时间线；不执行处置命令。
 - [x] **本机测试持久化事故中心：** PostgreSQL 持久化事故/任务/审批/审计/outbox，以及严重级别和负责人；migration `0008_incident_triage` 已应用于获授权的本机测试数据库。operator/admin 才能管理，候选负责人必须是启用且有 order-service 范围的 operator/admin；状态流转由 API 按显式矩阵校验，并追加审计，closed 为终态。resolved/closed 事故冻结分级/指派。测试和本机 API/UI 验收通过；生产身份集成仍待规划。
@@ -127,7 +127,7 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 ## 2026-09-25 增量：本地 OpenObserve AIOps 演示
 
 - [x] 新增 Docker Compose 本地 OpenObserve + NestJS 订单服务、故障注入、前端遥测 SDK 和本机告警接收器示例。
-- [x] 增加签名发布事件入口、发布元数据白名单/长度限制，并让调查提示按告警时间检索版本、commit 和变更文件；真实 CI 平台 Webhook 尚待接入。
+- [x] 增加签名发布事件入口、发布元数据白名单/长度限制和通用 CI 发送脚本，并让调查提示按告警时间检索版本、commit 和变更文件；provider-specific 部署 job、secret binding 与端到端真实 CI 事件仍待接入。
 - [x] 修正 OTLP HTTP Trace 接收路径与 stream-name；固定 OpenObserve 镜像版本，增加服务启动等待、Webhook 本地 SSRF 限制说明。
 - [x] SDK 脱敏/采样、告警 JSON 解析、鉴权、并发上限与重复告警过滤均有本地测试。
 - [x] 本地容器验证 OpenObserve health、订单服务启动、HTTP 500 故障注入及日志/前端错误/Trace 的 Trace ID 关联。

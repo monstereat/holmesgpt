@@ -85,6 +85,20 @@ Prometheus-compatible alert rules for API scrape failure, oldest pending-task ag
 
 In OpenObserve, configure the alert destination to call `http://incident-api:8081/webhooks/openobserve` over the Compose network and send `X-Alert-Token` with the same `ALERT_WEBHOOK_TOKEN`. Use the bounded alert template shown in [`DEMO.md`](DEMO.md). Existing local OpenObserve destinations may still point to `host.docker.internal:8081`; update them if you want traffic to stay on the Compose network.
 
+After a successful deployment, any CI provider can publish normalized release metadata with [`publish-release-event.mjs`](demo/order-service/scripts/publish-release-event.mjs). Keep `RELEASE_WEBHOOK_SECRET` in the CI secret store and use the same value configured on the order-service event receiver. The publisher signs the exact JSON body with HMAC-SHA256, requires HTTPS for non-loopback targets, rejects redirects, bounds event metadata, and does not include credentials in the payload. Configure `AIOPS_RELEASE_WEBHOOK_URL`, `RELEASE_VERSION`, `RELEASE_COMMIT_SHA`, and `RELEASE_CHANGED_FILES_JSON` in the post-deploy step; `GITHUB_SHA` or `CI_COMMIT_SHA` can supply the commit when `RELEASE_COMMIT_SHA` is omitted. The script does not deploy the workload or select a CI provider.
+
+Example invocation after the provider's deploy job succeeds:
+
+```bash
+AIOPS_RELEASE_WEBHOOK_URL="https://order-service.internal/internal/releases" \
+RELEASE_VERSION="$DEPLOYED_VERSION" \
+RELEASE_COMMIT_SHA="$GITHUB_SHA" \
+RELEASE_CHANGED_FILES_JSON="$CHANGED_FILES_JSON" \
+node demo/order-service/scripts/publish-release-event.mjs
+```
+
+Inject `RELEASE_WEBHOOK_SECRET` into the job environment from the provider's secret store; do not put the secret in the command, workflow source, or event payload. A provider-specific deployment workflow and real secret-backed acceptance remain to be configured for the selected pipeline.
+
 1. Enable order-service chaos mode from the demo page or the approved workbench action; send a test order and confirm its trace/logs appear in OpenObserve.
 2. Trigger the OpenObserve alert. The incident API validates the token and payload, then atomically writes an incident, task and outbox event to PostgreSQL.
 3. Redis/Celery delivers the task. The worker calls the Holmes API; successful allowlisted OpenObserve tool results are saved as evidence. The incident workbench shows task status, trace, findings, evidence and audit timeline.
