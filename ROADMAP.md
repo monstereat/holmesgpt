@@ -14,6 +14,7 @@
 
 ## 实施状态与验证
 
+- 2026-09-27 webhook 准入并发回归：将 PostgreSQL admission 集成测试升级为 barrier 同步 16 个唯一请求竞争 capacity 4，验证恰好放行 4 个且满载后的重复 fingerprint 仍幂等；用隔离 Docker PostgreSQL 单独运行通过 **1 passed (10.82s)**。测试自行对 tmpfs 数据库应用迁移，消除了依赖其他用例先建表的顺序要求。该用例证明并发正确性，不是吞吐压测，也不提供生产容量/SLO。完整 incident suite 一次运行在 9 分 43 秒、82 passed 后未结束，人工中断；随后其余 **104 passed、1 deselected、1 warning in 293.20s**，被排除的 JWKS OIDC 用例及整个 3 用例 OIDC 模块单独通过（3 passed in 8.18s）。因此 105 个不同用例均有通过记录，但本轮没有一次完整 105 项的单次全绿结果。
 - 2026-09-27 PostgreSQL 加密备份演练：新增 `encrypt-postgres-backup.sh`，使用未过期接收方证书对既有 custom-format dump 创建 CMS DER / AES-256-GCM 文件，校验封装并原子写入 mode `0600` 新文件，不覆盖现有目标；明文输入由调用方保留并自行按平台策略处置。扩展隔离 PostgreSQL 16 verifier，生成临时证书后解密真实 8-migration 归档并恢复到第二个临时数据库，核对迁移与合成事故；同时验证密文权限、覆盖拒绝及篡改密文的认证拒绝，完整备份验证通过。专用 GitHub Actions 现会在相关脚本、运维文档或规则变更时运行该隔离恢复 verifier。此验证不代表生产密钥托管、异地传输/留存、托管备份、PITR 或实测 RPO/RTO 已配置。
 - 2026-09-27 Collector 运行监控增量：生产 Collector 模板在 `8888` 暴露内部 Prometheus metrics reader；生产准备文档限定该端口只对目标私有 scraper 开放。新增 Collector 抓取失联、队列满载和实际入队失败三条告警及独立 `promtool` firing tests，CI 会校验模板与两组告警规则。固定 Collector digest 的模板配置校验和 Prometheus 告警规则/firing tests 均通过；临时本机运行态抓取未能建立，因此只认定静态配置和规则通过，不声称运行态 metrics 已验收。上游队列及入队指标为 Alpha；生产 scraper、通知路由、目标网络策略及升级时指标兼容仍待 staging/平台验收。
 - 2026-09-27 PostgreSQL 运维手册：新增 `examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md`，记录一键迁移作业边界、角色分离、发布/应用回滚顺序、隔离恢复验证和生产数据库验收缺口。明确当前无 down migration，不能把回滚描述为自动撤销 schema；生产加密异地备份/PITR、目标托管库权限兼容及实测 RPO/RTO 仍待 staging 验收。

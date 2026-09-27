@@ -281,7 +281,7 @@ poetry run pytest -q tests/plugins/toolsets/openobserve tests/toolsets/test_open
 - [x] 生产模式要求设置正整数 `AIOPS_MAX_PENDING_TASKS`；本机 local 模式保持可选，不为生产容量填猜测默认值。
 - [x] Incident API 在 PostgreSQL transaction advisory lock 下检查 queued/running/retrying 总数，跨 API 副本原子拒绝超限新告警；相同 fingerprint 先返回已有 incident，队列满也保持幂等。
 - [x] 队列满返回 503 和 `Retry-After: 30`；监控端点新增 pending capacity gauge，oldest-pending age 包括 running 任务。
-- [x] 配置、store admission、重复告警和 webhook 503 测试通过；新增真实 PostgreSQL 并发 admission 测试。隔离 Compose suite **87 passed, 1 warning**；Incident API 重建后 `/readyz` 返回 200。
+- [x] 配置、store admission、重复告警和 webhook 503 测试通过；真实 PostgreSQL admission 回归现以 barrier 同步 **16 个并发事务** 对冲 capacity 4，并核对准确准入数及重复告警幂等。该用例单独运行时会先在隔离测试库应用 migrations；定向 Docker 测试 **1 passed (10.82s)**。这验证并发正确性，不是吞吐压测或生产 cap 的依据。
 - [ ] 生产 cap 值须由目标环境的负载/worker 吞吐压测确定；平台专用 admission 告警和实际 OpenObserve retry 行为须在 staging 验收。
 
 ## 2026-09-26 增量：评测查询范围服务端强制

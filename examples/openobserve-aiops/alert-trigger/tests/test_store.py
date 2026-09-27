@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import psycopg
 import pytest
 
+from migration_runner import apply_migrations
 from models import IncidentInput
 from store import TaskQueueAtCapacity, create_incident, stable_fingerprint
 
@@ -205,9 +206,10 @@ def test_postgres_pending_task_cap_is_atomic_across_concurrent_webhooks():
         pytest.skip("AIOPS_TEST_DATABASE_URL is not set")
     if urlparse(database_url).hostname not in {"postgres", "host.docker.internal", "127.0.0.1", "localhost"}:
         pytest.fail("integration tests only permit local Docker PostgreSQL hosts")
+    apply_migrations(database_url)
 
     alerts = []
-    for _ in range(2):
+    for _ in range(16):
         candidate = IncidentInput("0" * 64, f"capacity-admission-{os.urandom(8).hex()}")
         alerts.append(IncidentInput(stable_fingerprint(candidate), candidate.alert_name))
     barrier = threading.Barrier(len(alerts))
@@ -215,7 +217,8 @@ def test_postgres_pending_task_cap_is_atomic_across_concurrent_webhooks():
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT count(*) FROM tasks WHERE status IN ('queued', 'running', 'retrying')")
-            capacity = cursor.fetchone()[0] + 1
+            pending_before = cursor.fetchone()[0]
+            capacity = pending_before + 4
 
     def attempt(alert):
         barrier.wait(timeout=5)
@@ -226,10 +229,10 @@ def test_postgres_pending_task_cap_is_atomic_across_concurrent_webhooks():
                 return None
 
     try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=len(alerts)) as executor:
             results = list(executor.map(attempt, alerts))
         admitted = [result for result in results if result is not None]
-        assert len(admitted) == 1
+        assert len(admitted) == 4
         admitted_alert = alerts[results.index(admitted[0])]
         with psycopg.connect(database_url) as conn:
             duplicate = create_incident(conn, admitted_alert, max_pending_tasks=capacity)
