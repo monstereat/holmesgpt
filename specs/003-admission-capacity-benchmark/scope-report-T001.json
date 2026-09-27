@@ -1,0 +1,30 @@
+{
+  "base_commit": "a4cd11254b4152f3a8b0ad1e8a73bb467d34dc4f",
+  "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/003-admission-capacity-benchmark/scope-baseline-T001.json",
+  "new_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "examples/openobserve-aiops/alert-trigger/benchmark_admission.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_capacity_benchmark.py"
+  ],
+  "modified_preexisting_files": [],
+  "touched_files": [
+    "ROADMAP.md",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "examples/openobserve-aiops/alert-trigger/benchmark_admission.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_capacity_benchmark.py"
+  ],
+  "allow_patterns": [
+    "examples/openobserve-aiops/alert-trigger/benchmark_admission.py",
+    "examples/openobserve-aiops/alert-trigger/tests/test_capacity_benchmark.py",
+    "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+    "ROADMAP.md",
+    "specs/003-admission-capacity-benchmark/**"
+  ],
+  "internal_patterns": [
+    "specs/003-admission-capacity-benchmark/**",
+    "specs/003-admission-capacity-benchmark/scope-baseline-T001.json"
+  ],
+  "outside_scope": [],
+  "passed": true
+}

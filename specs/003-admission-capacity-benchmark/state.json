@@ -1,0 +1,194 @@
+{
+  "schema_version": 2,
+  "change_id": "003-admission-capacity-benchmark",
+  "mode": "standard",
+  "status": "executing",
+  "current_task": null,
+  "waiting_for": null,
+  "artifacts": {
+    "spec": "specs/003-admission-capacity-benchmark/spec.md",
+    "plan": "specs/003-admission-capacity-benchmark/plan.md",
+    "tasks": "specs/003-admission-capacity-benchmark/tasks.md",
+    "verify": "specs/003-admission-capacity-benchmark/verify.md"
+  },
+  "controls": {
+    "commit_strategy": "none",
+    "branch": null,
+    "independent_review": "off"
+  },
+  "approvals": {
+    "spec": {
+      "at": "2026-09-27T06:42:30Z",
+      "approver": "monstereat",
+      "evidence": "用户要求继续 production-readiness goal，并明确“任何操作你都有权限，不需要我进行任何确认”；本切片仅访问本机隔离 Compose 测试数据库。",
+      "review_report": null
+    },
+    "plan": {
+      "at": "2026-09-27T06:42:30Z",
+      "approver": "monstereat",
+      "evidence": "用户要求继续 production-readiness goal，并明确免确认；Plan 已把运行目标限制为本机 Compose tmpfs 数据库，禁止远端 DSN/生产流量。",
+      "review_report": null
+    },
+    "acceptance": null
+  },
+  "acceptance_criteria": {
+    "AC-01": {
+      "description": "Only the explicit Compose test PostgreSQL is accepted; the bounded CLI emits admission counts/latency/throughput and cleans only its own synthetic rows, clearly labeled as a local DB-store baseline."
+    }
+  },
+  "tasks": {
+    "T001": {
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "allowed_paths": [
+        "examples/openobserve-aiops/alert-trigger/benchmark_admission.py",
+        "examples/openobserve-aiops/alert-trigger/tests/test_capacity_benchmark.py",
+        "examples/openobserve-aiops/PRODUCTION-READINESS.md",
+        "ROADMAP.md",
+        "specs/003-admission-capacity-benchmark/**"
+      ],
+      "commands": [
+        "docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test python -m pytest -q tests/test_capacity_benchmark.py",
+        "docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test python benchmark_admission.py --requests 100 --concurrency 16 --capacity 80 --confirm-isolated-test-db"
+      ],
+      "status": "done",
+      "check_ids": [
+        "T001-unit",
+        "T001-isolated-benchmark"
+      ],
+      "scope": {
+        "baseline": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/003-admission-capacity-benchmark/scope-baseline-T001.json",
+        "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+        "internal_patterns": [
+          "specs/003-admission-capacity-benchmark/**"
+        ]
+      },
+      "scope_report": {
+        "path": "/Users/monster/Documents/GitHub/code/holmesgpt/specs/003-admission-capacity-benchmark/scope-report-T001.json",
+        "sha256": "537b5672663820a9acc149510fb2cc2263a5aa390d426e660dc563048bade248"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "T001-unit",
+      "type": "command",
+      "kind": "unit",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test python -m pytest -q tests/test_capacity_benchmark.py",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T06:46:02Z",
+      "duration_ms": 16702,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/003-admission-capacity-benchmark/evidence/T001-unit.stdout.log",
+      "stderr_log": "specs/003-admission-capacity-benchmark/evidence/T001-unit.stderr.log",
+      "git": {
+        "head": "a4cd11254b4152f3a8b0ad1e8a73bb467d34dc4f",
+        "changed_files": [
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md"
+        ],
+        "diff_sha256": "bfb1de5e5a1ce4834a5fab52f0a3669d2c47f91cde07f0989f6f3b407feb898b"
+      }
+    },
+    {
+      "id": "T001-isolated-benchmark",
+      "type": "command",
+      "kind": "integration",
+      "task": "T001",
+      "acceptance_criteria": [
+        "AC-01"
+      ],
+      "command": "docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test python benchmark_admission.py --requests 100 --concurrency 16 --capacity 80 --confirm-isolated-test-db",
+      "cwd": "/Users/monster/Documents/GitHub/code/holmesgpt",
+      "started_at": "2026-09-27T06:46:41Z",
+      "duration_ms": 18304,
+      "exit_code": 0,
+      "result": "pass",
+      "stdout_log": "specs/003-admission-capacity-benchmark/evidence/T001-isolated-benchmark.stdout.log",
+      "stderr_log": "specs/003-admission-capacity-benchmark/evidence/T001-isolated-benchmark.stderr.log",
+      "git": {
+        "head": "a4cd11254b4152f3a8b0ad1e8a73bb467d34dc4f",
+        "changed_files": [
+          "examples/openobserve-aiops/PRODUCTION-READINESS.md"
+        ],
+        "diff_sha256": "bfb1de5e5a1ce4834a5fab52f0a3669d2c47f91cde07f0989f6f3b407feb898b"
+      }
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-09-27T06:42:30Z",
+      "action": "init",
+      "status": "initialized",
+      "note": "State created."
+    },
+    {
+      "at": "2026-09-27T06:42:30Z",
+      "action": "set_draft",
+      "status": "spec_draft",
+      "note": "Define bounded local admission-store baseline under the active production-readiness goal."
+    },
+    {
+      "at": "2026-09-27T06:42:30Z",
+      "action": "add_criterion",
+      "status": "spec_draft",
+      "note": "Registered AC-01."
+    },
+    {
+      "at": "2026-09-27T06:42:30Z",
+      "action": "approve",
+      "status": "spec_approved",
+      "note": "spec approved by monstereat: 用户要求继续 production-readiness goal，并明确“任何操作你都有权限，不需要我进行任何确认”；本切片仅访问本机隔离 Compose 测试数据库。"
+    },
+    {
+      "at": "2026-09-27T06:42:30Z",
+      "action": "set_draft",
+      "status": "plan_draft",
+      "note": "Specify a local-only benchmark CLI with DSN fencing, bounded concurrency, metrics, and scoped cleanup."
+    },
+    {
+      "at": "2026-09-27T06:42:30Z",
+      "action": "add_task",
+      "status": "plan_draft",
+      "note": "Registered T001."
+    },
+    {
+      "at": "2026-09-27T06:42:30Z",
+      "action": "approve",
+      "status": "plan_approved",
+      "note": "plan approved by monstereat: 用户要求继续 production-readiness goal，并明确免确认；Plan 已把运行目标限制为本机 Compose tmpfs 数据库，禁止远端 DSN/生产流量。"
+    },
+    {
+      "at": "2026-09-27T06:42:40Z",
+      "action": "start_task",
+      "status": "executing",
+      "note": "Started T001."
+    },
+    {
+      "at": "2026-09-27T06:46:19Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-unit: pass (docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test python -m pytest -q tests/test_capacity_benchmark.py)"
+    },
+    {
+      "at": "2026-09-27T06:47:00Z",
+      "action": "run_check",
+      "status": "executing",
+      "note": "T001-isolated-benchmark: pass (docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test python benchmark_admission.py --requests 100 --concurrency 16 --capacity 80 --confirm-isolated-test-db)"
+    },
+    {
+      "at": "2026-09-27T06:49:43Z",
+      "action": "complete_task",
+      "status": "executing",
+      "note": "Completed T001 with T001-unit, T001-isolated-benchmark."
+    }
+  ],
+  "created_at": "2026-09-27T06:42:30Z",
+  "updated_at": "2026-09-27T06:49:43Z"
+}
