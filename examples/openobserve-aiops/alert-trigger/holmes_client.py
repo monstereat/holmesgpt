@@ -288,13 +288,15 @@ class HolmesClient:
                     raise PermanentTaskError("holmes_unexpected_status")
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as exc:
-            if exc.code == 429 or exc.code >= 500:
-                raise RetryableTaskError("holmes_rate_limited" if exc.code == 429 else "holmes_unavailable") from None
+            if exc.code == 429:
+                raise RetryableTaskError("holmes_rate_limited") from None
+            if exc.code >= 500:
+                raise PermanentTaskError("holmes_outcome_unknown") from None
             if exc.code in {401, 403}:
                 raise PermanentTaskError("holmes_auth_failed") from None
             raise PermanentTaskError("holmes_request_rejected") from None
         except (TimeoutError, urllib.error.URLError, OSError):
-            raise RetryableTaskError("holmes_timeout") from None
+            raise PermanentTaskError("holmes_outcome_unknown") from None
         if len(raw) > MAX_RESPONSE_BYTES:
             raise PermanentTaskError("holmes_response_too_large")
         try:

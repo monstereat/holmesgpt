@@ -286,22 +286,32 @@ def test_permanent_http_errors_are_classified_without_returning_upstream_body(st
     assert "secret" not in str(raised.value)
 
 
-@pytest.mark.parametrize("status, expected_code", [(429, "holmes_rate_limited"), (500, "holmes_unavailable"), (503, "holmes_unavailable")])
-def test_rate_limit_and_server_errors_are_retryable(status, expected_code):
+def test_rate_limit_is_retryable():
+    status = 429
     error = HTTPError("http://holmes/api/chat", status, "secret upstream details", Message(), BytesIO(b"secret"))
     client = HolmesClient("http://holmes", "key", opener=FakeOpener(error=error))
     with pytest.raises(RetryableTaskError) as raised:
         client.investigate({})
-    assert raised.value.code == expected_code
+    assert raised.value.code == "holmes_rate_limited"
+    assert "secret" not in str(raised.value)
+
+
+@pytest.mark.parametrize("status", [500, 503])
+def test_server_errors_have_unknown_outcome_and_are_not_retried(status):
+    error = HTTPError("http://holmes/api/chat", status, "secret upstream details", Message(), BytesIO(b"secret"))
+    client = HolmesClient("http://holmes", "key", opener=FakeOpener(error=error))
+    with pytest.raises(PermanentTaskError) as raised:
+        client.investigate({})
+    assert raised.value.code == "holmes_outcome_unknown"
     assert "secret" not in str(raised.value)
 
 
 @pytest.mark.parametrize("error", [TimeoutError("private timeout detail"), URLError("private network detail"), socket.timeout("private socket detail")])
-def test_transport_failures_are_retryable_and_redacted(error):
+def test_transport_failures_have_unknown_outcome_and_are_not_retried(error):
     client = HolmesClient("http://holmes", "key", opener=FakeOpener(error=error))
-    with pytest.raises(RetryableTaskError) as raised:
+    with pytest.raises(PermanentTaskError) as raised:
         client.investigate({})
-    assert raised.value.code == "holmes_timeout"
+    assert raised.value.code == "holmes_outcome_unknown"
     assert "private" not in str(raised.value)
 
 
