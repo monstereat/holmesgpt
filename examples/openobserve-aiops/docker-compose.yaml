@@ -62,6 +62,7 @@ x-postgresql-access-setup: &postgresql-access-setup
 services:
   openobserve:
     image: public.ecr.aws/zinclabs/openobserve:v1.0.3
+    restart: unless-stopped
     environment:
       ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-demo@example.test}
       ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?Export ZO_ROOT_USER_PASSWORD before starting the local demo}
@@ -89,6 +90,7 @@ services:
 
   openobserve-proxy:
     build: ./openobserve-proxy
+    restart: unless-stopped
     read_only: true
     cap_drop:
       - ALL
@@ -118,6 +120,7 @@ services:
 
   postgres:
     image: postgres:16.6-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: aiops
       POSTGRES_USER: aiops
@@ -165,6 +168,7 @@ services:
 
   redis:
     image: redis:7.4.2-alpine
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - aiops-redis-data:/data
@@ -178,6 +182,7 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.161.0
+    restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     read_only: true
     cap_drop:
@@ -202,6 +207,7 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+    restart: unless-stopped
     user: "10001:10001"
     read_only: true
     cap_drop:
@@ -247,6 +253,7 @@ services:
 
   order-service:
     build: ./demo/order-service
+    restart: unless-stopped
     read_only: true
     cap_drop:
       - ALL
@@ -300,6 +307,7 @@ services:
     build:
       context: ./alert-trigger
       target: runtime
+    restart: unless-stopped
     read_only: true
     cap_drop:
       - ALL
@@ -345,6 +353,7 @@ services:
     build:
       context: ./alert-trigger
       target: runtime
+    restart: unless-stopped
     read_only: true
     cap_drop:
       - ALL
