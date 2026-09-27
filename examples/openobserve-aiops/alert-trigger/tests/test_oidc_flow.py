@@ -302,7 +302,7 @@ def test_oidc_callback_verifies_signed_id_token_against_discovered_jwks(monkeypa
     connections = [
         FakeConnection(None),
         FakeConnection(("code-verifier", "saved-nonce")),
-        FakeConnection(("00000000-0000-0000-0000-000000000007", "signed-user", "operator", ["order-service"], True)),
+        FakeConnection(("00000000-0000-0000-0000-000000000007", "signed-user", "operator", ["order-service"], True, 0, None)),
     ]
     monkeypatch.setattr(app_module.psycopg, "connect", MagicMock(side_effect=connections))
     monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda: type("NoopDispatcher", (), {"stop": lambda self: None})())

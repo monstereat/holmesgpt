@@ -78,7 +78,8 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert "/triage" in static_script.text
             assert "/status" in static_script.text
             assert "/api/users" in static_script.text
-            assert "/reactivate" in static_script.text
+            assert '"reactivate"' in static_script.text
+            assert "/api/users/${encodeURIComponent(user.id)}/${endpoint}" in static_script.text
             assert "待恢复" in static_script.text
             assert "保存并标记已审核" in static_script.text
 
