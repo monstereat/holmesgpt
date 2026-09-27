@@ -147,6 +147,7 @@
 
 ## 最近验证（2026-09-28）
 
+- 2026-09-28 提交 `207a75639` 远端 CI：`develop-me AIOps checks` run [36344328302](https://github.com/monstereat/holmesgpt/actions/runs/36344328302) 成功；`AIOps container build and security` run [36344328400](https://github.com/monstereat/holmesgpt/actions/runs/36344328400) 的 Holmes API、policy proxy、order-service、incident API/worker 四个构建与安全扫描 job 均成功。该证据覆盖仓库 CI，不表示本机 Holmes 已因缺失 DeepSeek key 恢复，也不表示生产环境已部署。
 - 2026-09-28 worker 数据库最小权限与本机恢复：隔离 PostgreSQL 角色/bootstrap/备份恢复 verifier 通过，事故服务隔离 Compose 套件 **126 passed，1 个上游弃用 warning**；本机 migration `0010` 已应用，业务计数保持 11/11/53/11，Incident API `/readyz` 为 healthy。Docker VM 曾因构建空间不足触发 PostgreSQL recovery checkpoint 异常；清理 1.642 GiB 可重建缓存和本项目一张无容器引用旧镜像后，WAL recovery 与 finalize 成功，未删除数据卷或其他项目资源。当前 Holmes API 因本机运行环境中缺少持久可用的 `DEEPSEEK_API_KEY` 未 healthy，incident worker 因依赖健康门禁未启动；需恢复本地私密密钥后复验模型调查链路。Docker VM 仍约 99% 使用率，暂停进一步大型镜像构建。
 
 - 2026-09-27 RCA 盲评修复复验：Docker 隔离下 `test_review_scoring.py` **7 passed**。live report 生成 reviewer A/B 两份 20 案盲评表和独立答案 key；递归检查确认评审表不含参考字段、key 含 20 案、权限均为 `0600`。本机评审材料位于 `/tmp/holmes-aiops-review-20260927-blind-reviewer-{a,b}.json`，答案 key 为 `/tmp/holmes-aiops-review-20260927-answer-key.json`。此前 v1 sheet 含参考答案，不得继续用于盲评；两名独立人工评审和裁决仍未完成。
