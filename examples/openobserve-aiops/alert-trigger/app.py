@@ -138,6 +138,11 @@ class EmptyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RetryTaskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    acknowledge_possible_duplicate_charge: bool = False
+
+
 class ApprovalRequest(BaseModel):
     action: str = Field(pattern="^set-chaos-mode$")
     resource: str = Field(pattern="^order-service$")
@@ -1141,7 +1146,12 @@ def save_retrospective(
 
 
 @app.post("/api/tasks/{task_id}/retry", status_code=202)
-def retry_task(task_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, str]:
+def retry_task(
+    task_id: str,
+    request: Request,
+    body: RetryTaskRequest = RetryTaskRequest(),
+    authorization: str | None = Header(default=None),
+) -> dict[str, str]:
     principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME))
     _authorize(principal, "task:retry", "order-service")
     try:
@@ -1159,6 +1169,11 @@ def retry_task(task_id: str, request: Request, authorization: str | None = Heade
                 if not failed_task:
                     raise HTTPException(status_code=409, detail="Only failed tasks can be retried")
                 previous_error_code = failed_task[0]
+                if previous_error_code in {"holmes_outcome_unknown", "worker_outcome_unknown"} and not body.acknowledge_possible_duplicate_charge:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Retrying this task may create a duplicate model charge; explicit acknowledgement is required",
+                    )
                 cursor.execute(
                     """UPDATE tasks SET status = 'queued', attempt = 0, max_attempts = 4,
                               error_code = NULL, result = NULL, completed_at = NULL, available_at = now(),
@@ -1176,7 +1191,15 @@ def retry_task(task_id: str, request: Request, authorization: str | None = Heade
                 )
                 cursor.execute(
                     "INSERT INTO audit_events (incident_id, task_id, actor_id, event_type, details) VALUES (%s, %s, %s, 'task.manual_retry_requested', %s)",
-                    (incident_id, task_uuid, principal.user_id, Jsonb({"previous_error_code": previous_error_code})),
+                    (
+                        incident_id,
+                        task_uuid,
+                        principal.user_id,
+                        Jsonb({
+                            "previous_error_code": previous_error_code,
+                            "duplicate_charge_risk_acknowledged": body.acknowledge_possible_duplicate_charge,
+                        }),
+                    ),
                 )
     return {"task_id": task_uuid, "status": "queued"}
 

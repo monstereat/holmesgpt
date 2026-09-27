@@ -83,6 +83,7 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert "待恢复" in static_script.text
             assert "保存并标记已审核" in static_script.text
             assert "可能产生重复费用" in static_script.text
+            assert "acknowledge_possible_duplicate_charge: outcomeUnknown" in static_script.text
 
             def login(username, password):
                 response = client.post("/auth/login", json={"username": username, "password": password})
@@ -256,6 +257,13 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert reviewed.json()["reviewed_by"] == "demo-approver"
 
             retry = client.post(f"/api/tasks/{incident['task_id']}/retry", headers=operator)
+            assert retry.status_code == 409
+            assert "explicit acknowledgement is required" in retry.json()["detail"]
+            retry = client.post(
+                f"/api/tasks/{incident['task_id']}/retry",
+                headers=operator,
+                json={"acknowledge_possible_duplicate_charge": True},
+            )
             assert retry.status_code == 202
             assert retry.json()["status"] == "queued"
             assert client.post(f"/api/tasks/{incident['task_id']}/retry", headers=operator).status_code == 409
@@ -263,7 +271,10 @@ def test_login_rbac_incident_timeline_retry_and_static_workbench(monkeypatch):
             assert after_retry["tasks"][0]["status"] == "queued"
             assert after_retry["tasks"][0]["result"] is None
             manual_retry = next(event for event in after_retry["timeline"] if event["event_type"] == "task.manual_retry_requested")
-            assert manual_retry["details"] == {"previous_error_code": "holmes_outcome_unknown"}
+            assert manual_retry["details"] == {
+                "previous_error_code": "holmes_outcome_unknown",
+                "duplicate_charge_risk_acknowledged": True,
+            }
             assert {event["event_type"] for event in after_retry["timeline"]} >= {"retrospective.draft", "retrospective.reviewed"}
 
             logout = client.post("/auth/logout", headers=viewer)

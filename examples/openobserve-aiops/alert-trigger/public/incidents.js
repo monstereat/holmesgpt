@@ -262,7 +262,10 @@
             if (outcomeUnknown && !window.confirm("上次 Holmes 调查是否完成无法确认。重试会再次调用模型，可能产生重复费用。仍要继续吗？")) return;
             retry.disabled = true;
             try {
-              await api(`/api/tasks/${encodeURIComponent(task.id)}/retry`, { method: "POST" });
+              await api(`/api/tasks/${encodeURIComponent(task.id)}/retry`, {
+                method: "POST",
+                body: JSON.stringify({ acknowledge_possible_duplicate_charge: outcomeUnknown }),
+              });
               await loadIncident(id);
               await loadIncidents();
             } catch (error) { showError(pageMessage, error); retry.disabled = false; }
