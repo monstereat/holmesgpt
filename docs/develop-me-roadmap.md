@@ -6,6 +6,8 @@
 
 > **当前验收状态（2026-09-27）：** T000–T009 的本机实现和测试环境编排已落地；incident API 已应用 migration `0008_incident_triage`，工作台支持事故分级、负责人指派和状态流转，服务端逐次校验 operator/admin 角色、order-service 资源范围及合法状态转换，并记录审计。状态规则为 open→investigating/closed、investigating→awaiting_approval/resolved/closed、awaiting_approval→investigating/resolved/closed、resolved→investigating/closed，closed 为终态；resolved/closed 不可分级或指派。当前事故服务隔离 Compose 套件 **105 passed、1 个上游弃用 warning**；8 个 migration 的 PostgreSQL 16 备份恢复验证、API `/healthz`/`readyz`、本地登录、11 条事故的新增字段和 UI 控件均已验收。事故 API、worker、Holmes API、PostgreSQL、Redis、OpenObserve 与订单服务在同一个 Docker Compose project 运行。工作台角色审批、测试动作和复盘闭环已有浏览器验收。DeepSeek live 模型调用和 20 案 synthetic evaluation 已实测；最新报告含 20 案、40 条合成记录、20/20 案例证据命中、3/3 发布事件命中、0 次未限定成功查询、0 个已识别的跨案例 fixture 命中和 0 个工具错误，schema 1.3 通过 Draft 2020-12 校验。诊断仍 `not_scored`，不代表准确率或生产效果。没有部署到生产环境。
 
+> **数据库上线差距：** 本机 PostgreSQL 16 的 migrations `0001`–`0008`、runtime/migrator 权限和隔离备份恢复均已验证；数据库发布顺序、迁移失败处理、应用回滚兼容边界和恢复步骤见 [`POSTGRESQL-OPERATIONS.md`](../examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md)。目标托管数据库尚未选定，因此 provider/IAM 兼容、加密异地备份、PITR、实测恢复时间及 staging 回滚演练未完成。
+
 ## 1. 功能边界
 
 | 模块 | 开源项目已有能力 | 需要集成 | 自己开发的内容 | 优先级 |

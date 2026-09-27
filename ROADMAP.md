@@ -14,6 +14,7 @@
 
 ## 实施状态与验证
 
+- 2026-09-27 PostgreSQL 运维手册：新增 `examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md`，记录一键迁移作业边界、角色分离、发布/应用回滚顺序、隔离恢复验证和生产数据库验收缺口。明确当前无 down migration，不能把回滚描述为自动撤销 schema；生产加密异地备份/PITR、目标托管库权限兼容及实测 RPO/RTO 仍待 staging 验收。
 - 2026-09-27 GitHub 发布事件 adapter：新增可复用 workflow `.github/workflows/publish-aiops-release-event.yml`，输入版本与变更文件数组，由调用方传入受保护的 webhook URL/签名 secret；从调用方 revision 检出代码，checkout action 固定到已签名 release `v4.4.0` 的 commit，最小化 token 权限且不持久化 checkout 凭据。AIOps README 给出部署 job 成功后的调用示例；生产准备文档和 develop-me 路线图区分 adapter 与尚未接通的实际发布流水线。工作流未配置远端 secret，也未触发外部 endpoint。
 - 2026-09-27 发布事件本机端到端验收：新增 `examples/openobserve-aiops/verify-release-event-e2e.sh`，在现有 Compose 项目启动 loopback-only 临时 order-service，生成随机短期 HMAC key，通过真实发送脚本调用真实 NestJS endpoint，flush 后直接从本机 OpenObserve 以唯一 version+commit 查询到唯一 `release_deployed` 记录。`bash -n` 和整段脚本运行通过，临时服务已停止，现有 Compose 栈保持 healthy。本验收不包含远端 GitHub job、CI secrets 或 staging/production 发布。
 - 2026-09-27 当前源码 live 评测：run `9d27bceb636747d192b839868afae3c9` 在本机 OpenObserve 对 20 个 synthetic cases 完成 DeepSeek 调查，40 条合成记录预先确认可搜索；20/20 exact run/case evidence、3/3 release event、0 unscoped successful search、0 cross-case exposure、0 case error。报告 schema 1.3 通过 Draft 2020-12 校验，保存在 `examples/openobserve-aiops/evals/reports/live-2026-09-27.json`，SHA-256 `50fef9dd604e962363c6b8f8b9bb247f3e50d04020393194d7518a30d91d8377`。评分表生成器定向测试 **4 passed**；两份独立评分表仅生成空白模板，RCA 仍为 `not_scored`。

@@ -61,6 +61,8 @@ This table follows the current source code and is a configuration inventory, not
 
 This bootstrap template does not transfer ownership of an already migrated schema. Existing databases need an owner-reviewed ownership/privilege adoption plan before using the migration role. Some managed PostgreSQL services restrict role creation or use IAM identities; use their supported role workflow and verify equivalent privileges. The template must be executed and permission-tested against a staging database before production use.
 
+The release sequence, migration failure and rollback boundaries, and backup/restore procedure are documented in [`POSTGRESQL-OPERATIONS.md`](POSTGRESQL-OPERATIONS.md). The current isolated PostgreSQL checks establish repository behavior only; managed-service compatibility, encrypted off-host backups, PITR, measured RPO/RTO, and release rollback remain staging gates.
+
 Re-run the isolated PostgreSQL 16 role and migration check with `bash examples/openobserve-aiops/verify-postgresql-roles.sh`. It starts a no-volume, no-port, no-network container with tmpfs data, applies all eight migrations, checks runtime UPDATE grants for triage columns, bootstrap reruns, runtime audit SELECT/INSERT, denied audit mutation, and denied schema creation. This verifies the repository role template; it does not replace testing the selected managed database's identity and privilege behavior.
 
 ## Production configuration gates
