@@ -1,4 +1,4 @@
-name: develop-me OpenObserve toolset
+name: develop-me AIOps checks
 on:
   push:
     branches: [develop-me]
@@ -7,6 +7,9 @@ on:
       - 'holmes/plugins/toolsets/__init__.py'
       - 'tests/plugins/toolsets/openobserve/**'
       - 'tests/toolsets/test_openobserve_toolset.py'
+      - 'examples/openobserve-aiops/alert-trigger/**'
+      - 'examples/openobserve-aiops/openobserve-proxy/**'
+      - 'examples/openobserve-aiops/docker-compose.yaml'
       - 'examples/openobserve-aiops/otel-collector-production.yaml'
       - 'examples/openobserve-aiops/verify-production-otel-config.sh'
       - 'examples/openobserve-aiops/monitoring/**'
@@ -20,7 +23,7 @@ on:
 jobs:
   openobserve-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,6 +35,22 @@ jobs:
         run: poetry install --with dev --no-interaction
       - name: Run mocked OpenObserve tests
         run: poetry run pytest -q --no-cov tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
+      - name: Generate ephemeral local Compose credentials
+        run: |
+          for key in POSTGRES_PASSWORD ZO_ROOT_USER_PASSWORD OPENOBSERVE_PROXY_PASSWORD HOLMES_API_KEY ORDER_ACTION_TOKEN ALERT_WEBHOOK_TOKEN SESSION_SIGNING_KEY; do
+            value="$(openssl rand -hex 32)"
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+          done
+          printf '%s\n' 'ZO_ROOT_USER_EMAIL=aiops-ci@example.test' 'OPENOBSERVE_PROXY_USERNAME=aiops-ci-proxy' 'AIOPS_TEST_USERS_JSON=[]' >> "$GITHUB_ENV"
+      - name: Build isolated OpenObserve policy proxy test image
+        working-directory: examples/openobserve-aiops
+        run: docker build --tag aiops-openobserve-proxy-test:ci ./openobserve-proxy
+      - name: Run OpenObserve policy proxy unit tests without network access
+        run: docker run --rm --network none aiops-openobserve-proxy-test:ci python -m unittest discover -s tests -v
+      - name: Run isolated Incident API and workbench regression suite
+        working-directory: examples/openobserve-aiops
+        run: docker compose --profile test run --build --rm incident-test
       - name: Validate production OpenTelemetry Collector template
         run: bash examples/openobserve-aiops/verify-production-otel-config.sh
       - name: Validate AIOps Prometheus alert rules

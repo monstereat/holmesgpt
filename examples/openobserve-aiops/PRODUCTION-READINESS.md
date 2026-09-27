@@ -69,6 +69,8 @@ Re-run the isolated PostgreSQL 16 role and migration check with `bash examples/o
 
 The eventual platform-specific bundle must satisfy all of the following before staging acceptance:
 
+The `develop-me` GitHub Actions workflow now runs the policy-proxy unit tests without network access and the full Incident API/workbench suite against an isolated tmpfs PostgreSQL instance using ephemeral credentials. This is repository-level CI coverage only; confirm branch protection and required-check settings in the selected GitHub repository before treating it as a merge or release gate.
+
 - Pin each application image by immutable digest; build and scan in CI, then promote the same artifact between environments. Do not use floating tags.
 - Run application containers as non-root, with a read-only root filesystem, all unnecessary Linux capabilities dropped, privilege escalation disabled, and only bounded writable temporary storage. Local Compose applies these controls to Holmes (UID 10001), incident API/worker (`app`), order-service (`node`), and OTel Collector (UID 10001). Validate equivalent controls and writable paths on the selected platform.
 - Terminate TLS at the approved ingress; expose only required API/UI routes. Keep worker, PostgreSQL, Redis, Holmes, proxy, and internal action-owner endpoints private.

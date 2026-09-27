@@ -221,7 +221,7 @@ def test_postgres_pending_task_cap_is_atomic_across_concurrent_webhooks():
             capacity = pending_before + 4
 
     def attempt(alert):
-        barrier.wait(timeout=5)
+        barrier.wait(timeout=30)
         with psycopg.connect(database_url) as conn:
             try:
                 return create_incident(conn, alert, max_pending_tasks=capacity)
