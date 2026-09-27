@@ -12,6 +12,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+openssl req -x509 -newkey rsa:3072 -nodes -keyout "$backup_dir/recipient.key" \
+    -out "$backup_dir/recipient.crt" -days 1 -subj '/CN=postgres-backup-check' \
+    >/dev/null 2>&1
+chmod 600 "$backup_dir/recipient.key"
+
 docker run --detach --rm --network none --name "$container_name" \
     --tmpfs /var/lib/postgresql/data:rw,size=256m \
     --mount "type=bind,src=$backup_dir,dst=/backups" \
@@ -55,6 +60,44 @@ docker exec "$container_name" env \
     PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=postgres \
     /usr/local/bin/backup-postgres.sh "$backup_path"
 
+encrypted_backup_path="$backup_dir/aiops-backup-check.cms.der"
+bash "$repo_dir/encrypt-postgres-backup.sh" "$backup_dir/aiops-backup-check.dump" \
+    "$encrypted_backup_path" "$backup_dir/recipient.crt"
+openssl cms -decrypt -binary -inform DER -in "$encrypted_backup_path" \
+    -recip "$backup_dir/recipient.crt" -inkey "$backup_dir/recipient.key" \
+    -out "$backup_dir/aiops-encrypted-restore-check.dump"
+
+encrypted_mode="$(docker exec "$container_name" stat -c '%a' \
+    /backups/aiops-backup-check.cms.der)"
+if [[ "$encrypted_mode" != "600" ]]; then
+    echo "encrypted backup file permissions were $encrypted_mode instead of 600" >&2
+    exit 1
+fi
+
+if bash "$repo_dir/encrypt-postgres-backup.sh" \
+    "$backup_dir/aiops-backup-check.dump" "$encrypted_backup_path" \
+    "$backup_dir/recipient.crt" >/dev/null 2>&1; then
+    echo "encrypted backup command unexpectedly overwrote an existing file" >&2
+    exit 1
+fi
+
+python3 - "$encrypted_backup_path" "$backup_dir/aiops-backup-tampered.cms.der" <<'PY'
+import sys
+
+with open(sys.argv[1], "rb") as encrypted_file:
+    contents = bytearray(encrypted_file.read())
+contents[-1] ^= 1
+with open(sys.argv[2], "wb") as tampered_file:
+    tampered_file.write(contents)
+PY
+if openssl cms -decrypt -binary -inform DER \
+    -in "$backup_dir/aiops-backup-tampered.cms.der" \
+    -recip "$backup_dir/recipient.crt" -inkey "$backup_dir/recipient.key" \
+    -out "$backup_dir/aiops-tampered-restore-check.dump" >/dev/null 2>&1; then
+    echo "tampered encrypted backup unexpectedly passed authentication" >&2
+    exit 1
+fi
+
 backup_mode="$(docker exec "$container_name" stat -c '%a' "$backup_path")"
 if [[ "$backup_mode" != "600" ]]; then
     echo "backup file permissions were $backup_mode instead of 600" >&2
@@ -71,6 +114,11 @@ fi
 docker exec "$container_name" createdb -U postgres aiops_restore_test
 docker exec "$container_name" pg_restore --exit-on-error --single-transaction \
     --no-owner -U postgres -d aiops_restore_test "$backup_path"
+
+docker exec "$container_name" createdb -U postgres aiops_encrypted_restore_test
+docker exec "$container_name" pg_restore --exit-on-error --single-transaction \
+    --no-owner -U postgres -d aiops_encrypted_restore_test \
+    /backups/aiops-encrypted-restore-check.dump
 
 restored_incident="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_restore_test -c "SELECT alert_name || ':' || fingerprint FROM incidents WHERE id = '00000000-0000-4000-8000-000000000001'")"
@@ -100,4 +148,18 @@ if [[ "$restored_triage" != $'assignee_user_id\nseverity' ]]; then
     exit 1
 fi
 
-echo "PostgreSQL backup verification passed: 8 migrations, incident triage columns and a synthetic incident restored, overwrite protection held"
+encrypted_restored_incident="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_encrypted_restore_test -c "SELECT alert_name || ':' || fingerprint FROM incidents WHERE id = '00000000-0000-4000-8000-000000000001'")"
+if [[ "$encrypted_restored_incident" != "$restored_incident" ]]; then
+    echo "encrypted backup restore did not contain the expected synthetic incident" >&2
+    exit 1
+fi
+
+encrypted_migrations="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_encrypted_restore_test -c 'SELECT count(*) FROM schema_migrations')"
+if [[ "$encrypted_migrations" != "8" ]]; then
+    echo "encrypted backup restore contained $encrypted_migrations migration records instead of 8" >&2
+    exit 1
+fi
+
+echo "PostgreSQL backup verification passed: plaintext and AES-256-GCM encrypted archives both restored 8 migrations and a synthetic incident; overwrite protection held"

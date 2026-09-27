@@ -88,6 +88,40 @@ off host. Production must use platform-managed encryption, off-host retention,
 access logging, retention/deletion policy, and PITR/WAL archiving approved by the
 data owner. Never treat the local helper alone as a production backup service.
 
+Where a platform-approved recipient certificate is used, the optional
+[`encrypt-postgres-backup.sh`](encrypt-postgres-backup.sh) helper can encrypt an
+existing archive as CMS DER with AES-256-GCM and atomically create a new mode-
+`0600` file without overwriting an existing artifact:
+
+```bash
+bash examples/openobserve-aiops/encrypt-postgres-backup.sh \
+  /secure-ephemeral/aiops-backup.dump \
+  /secure-backup/aiops-backup.cms.der \
+  /run/secrets/backup-recipient.crt
+```
+
+The helper checks that the certificate is parseable and unexpired, but does not
+establish its trust, ownership, revocation state, or key-rotation policy. The
+plaintext input remains in place; create it only on approved encrypted or
+ephemeral storage and follow the platform's data-removal policy. This helper
+does not upload or retain backups off host and does not replace managed backup
+encryption/PITR. For restore, retrieve the matching private key from the
+approved secret manager, decrypt to protected scratch storage, then run
+`pg_restore --list` before restoring into a separate database:
+
+```bash
+openssl cms -decrypt -binary -inform DER \
+  -in /secure-backup/aiops-backup.cms.der \
+  -recip /run/secrets/backup-recipient.crt \
+  -inkey /run/secrets/backup-recipient.key \
+  -out /secure-ephemeral/aiops-restore.dump
+pg_restore --list /secure-ephemeral/aiops-restore.dump
+```
+
+OpenSSL CMS supports AES-GCM as an authenticated-encryption mode; confirm the
+selected platform's OpenSSL build and cryptographic policy before adopting this
+format ([OpenSSL CMS command documentation](https://docs.openssl.org/3.4/man1/openssl-cms/)).
+
 Restore only to a new isolated database or instance first:
 
 ```bash
@@ -103,7 +137,12 @@ before any owner-approved cutover. The repository verifier
 isolated PostgreSQL 16.6 container with no network or persistent volume. It
 restored migrations `0001`–`0008`, the task duration index, incident triage
 columns, and a synthetic incident; it checked mode `0600`, archive validation,
-and overwrite refusal. This does not establish encryption, off-host retention,
+and overwrite refusal. The same verifier creates an ephemeral recipient
+certificate, encrypts the archive, decrypts it, and restores it into a second
+isolated database. This verifies the local encryption/restore mechanics, but
+also checks mode `0600`, overwrite refusal, and rejection after an encrypted
+artifact is tampered with. This verifies the local encryption/restore
+mechanics, but does not establish production key custody, off-host retention,
 PITR, managed-service compatibility, or a production RPO/RTO.
 
 The role verifier [`verify-postgresql-roles.sh`](verify-postgresql-roles.sh)

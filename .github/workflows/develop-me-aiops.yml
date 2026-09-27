@@ -11,6 +11,10 @@ on:
       - 'examples/openobserve-aiops/verify-production-otel-config.sh'
       - 'examples/openobserve-aiops/monitoring/**'
       - 'examples/openobserve-aiops/verify-aiops-alerts.sh'
+      - 'examples/openobserve-aiops/backup-postgres.sh'
+      - 'examples/openobserve-aiops/encrypt-postgres-backup.sh'
+      - 'examples/openobserve-aiops/verify-postgresql-backup.sh'
+      - 'examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md'
       - '.github/workflows/develop-me-aiops.yml'
   workflow_dispatch:
 jobs:
@@ -32,3 +36,5 @@ jobs:
         run: bash examples/openobserve-aiops/verify-production-otel-config.sh
       - name: Validate AIOps Prometheus alert rules
         run: bash examples/openobserve-aiops/verify-aiops-alerts.sh
+      - name: Verify encrypted PostgreSQL backup and isolated restore
+        run: bash examples/openobserve-aiops/verify-postgresql-backup.sh

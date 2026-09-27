@@ -141,7 +141,7 @@ Live 20-case evaluation seeds at most 100 synthetic evidence rows into the local
 
 PostgreSQL persists incidents, triage severity/assignee, tasks, users, revoked session hashes, approvals, retrospectives, audit and outbox records in `aiops-postgres-data`. The one-shot `incident-migrate` service applies versioned SQL migrations (currently through `0008_incident_triage`) before the API and worker start; the API processes never apply schema changes during startup. Operators and admins can set severity and assign incidents to active in-scope operators/admins; the API rechecks authorization and records each change in the append-only audit timeline. Incident status transitions are API-enforced and audited: `open` → `investigating` or `closed`; `investigating` → `awaiting_approval`, `resolved`, or `closed`; `awaiting_approval` → `investigating`, `resolved`, or `closed`; `resolved` → `investigating` or `closed`; `closed` is terminal. Resolved and closed incidents cannot be triaged. When configured with the `aiops_runtime` database role, the application can append/read audit events but cannot update, delete, or truncate them. Redis uses AOF in `aiops-redis-data`; the PostgreSQL outbox dispatcher reconciles queued work after broker or worker interruption. Restart a service with `docker compose restart incident-api incident-worker redis` to exercise recovery without removing volumes.
 
-Database migration sequencing, backup/restore operations, and rollback limits are documented in [`POSTGRESQL-OPERATIONS.md`](POSTGRESQL-OPERATIONS.md). The local backup and role verifiers do not establish managed production database compatibility, encrypted off-host retention, or PITR.
+Database migration sequencing, backup/restore operations, and rollback limits are documented in [`POSTGRESQL-OPERATIONS.md`](POSTGRESQL-OPERATIONS.md). The local verifier now exercises recipient-certificate encryption and restore, but does not establish managed production database compatibility, production key custody, encrypted off-host retention, or PITR.
 
 Create a private custom-format backup with the PostgreSQL client utilities installed. Configure the normal `PG*` connection variables and point `PGPASSFILE` at a secret-manager-provided passfile; the script does not accept or print a database password. It refuses to overwrite an existing file, writes with mode `0600`, and validates the archive before publishing it:
 
@@ -151,7 +151,20 @@ PGSSLMODE=verify-full PGPASSFILE=/run/secrets/pgpass \
   ./backup-postgres.sh /secure-backups/aiops-$(date -u +%Y%m%dT%H%M%SZ).dump
 ```
 
-Restore into a newly provisioned, empty database using `pg_restore --exit-on-error --single-transaction --no-owner --dbname=<restore-database> <backup-file>`, then validate the application data before changing any service connection. The script intentionally does not create or replace databases. Run `bash verify-postgresql-backup.sh` to apply migrations 0001–0008, back up a synthetic incident, protect the existing output, and restore into an isolated database in a temporary PostgreSQL 16 container with no network or persistent volume; the verifier checks all migration records, the task-duration index, and triage columns. This verifies the local backup artifact and restore mechanics only; production still needs encrypted off-host storage, retention, PITR/WAL archiving, access ownership, and a measured recovery-time drill. Do not run `docker compose down -v` unless you intend to destroy all local demo data.
+To produce an additional CMS/AES-256-GCM encrypted artifact, pass the archive,
+new destination, and platform-approved recipient certificate to
+`encrypt-postgres-backup.sh`. The input archive remains in place, so use
+approved encrypted or ephemeral scratch storage and follow the platform's
+retention policy:
+
+```bash
+bash ./encrypt-postgres-backup.sh \
+  /secure-ephemeral/aiops-backup.dump \
+  /secure-backups/aiops-backup.cms.der \
+  /run/secrets/backup-recipient.crt
+```
+
+Restore encrypted files by decrypting to protected scratch storage with the matching private key, then restore into a newly provisioned, empty database using `pg_restore --exit-on-error --single-transaction --no-owner --dbname=<restore-database> <backup-file>`. Validate application data before changing any service connection. The scripts intentionally do not create or replace databases. Run `bash verify-postgresql-backup.sh` to apply migrations 0001–0008, create a synthetic incident, check archive and encryption behavior, then restore both plaintext and encrypted archives into separate databases in an isolated PostgreSQL 16 container. It verifies all migration records, the task-duration index, triage columns, mode `0600`, overwrite refusal, and rejection of tampered ciphertext. This verifies local mechanics only; production still needs managed or approved key custody, encrypted off-host storage, retention, PITR/WAL archiving, access ownership, and a measured recovery-time drill. Do not run `docker compose down -v` unless you intend to destroy all local demo data.
 
 ## Tests and evaluation
 

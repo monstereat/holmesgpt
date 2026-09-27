@@ -14,6 +14,7 @@
 
 ## 实施状态与验证
 
+- 2026-09-27 PostgreSQL 加密备份演练：新增 `encrypt-postgres-backup.sh`，使用未过期接收方证书对既有 custom-format dump 创建 CMS DER / AES-256-GCM 文件，校验封装并原子写入 mode `0600` 新文件，不覆盖现有目标；明文输入由调用方保留并自行按平台策略处置。扩展隔离 PostgreSQL 16 verifier，生成临时证书后解密真实 8-migration 归档并恢复到第二个临时数据库，核对迁移与合成事故；同时验证密文权限、覆盖拒绝及篡改密文的认证拒绝，完整备份验证通过。专用 GitHub Actions 现会在相关脚本、运维文档或规则变更时运行该隔离恢复 verifier。此验证不代表生产密钥托管、异地传输/留存、托管备份、PITR 或实测 RPO/RTO 已配置。
 - 2026-09-27 Collector 运行监控增量：生产 Collector 模板在 `8888` 暴露内部 Prometheus metrics reader；生产准备文档限定该端口只对目标私有 scraper 开放。新增 Collector 抓取失联、队列满载和实际入队失败三条告警及独立 `promtool` firing tests，CI 会校验模板与两组告警规则。固定 Collector digest 的模板配置校验和 Prometheus 告警规则/firing tests 均通过；临时本机运行态抓取未能建立，因此只认定静态配置和规则通过，不声称运行态 metrics 已验收。上游队列及入队指标为 Alpha；生产 scraper、通知路由、目标网络策略及升级时指标兼容仍待 staging/平台验收。
 - 2026-09-27 PostgreSQL 运维手册：新增 `examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md`，记录一键迁移作业边界、角色分离、发布/应用回滚顺序、隔离恢复验证和生产数据库验收缺口。明确当前无 down migration，不能把回滚描述为自动撤销 schema；生产加密异地备份/PITR、目标托管库权限兼容及实测 RPO/RTO 仍待 staging 验收。
 - 2026-09-27 OTel Collector 生产配置模板：新增 `otel-collector-production.yaml`，要求 OTLP 接收端 TLS+Bearer token、OpenObserve HTTPS+文件式写入凭据、memory/batch/queue 限额，并将有界发送队列落在受控持久目录。`verify-production-otel-config.sh` 使用固定 digest `otel/opentelemetry-collector-contrib@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1`、临时文件凭据和无网络容器执行 `validate` 通过；专用 GitHub Actions 检查现也会在模板或 verifier 变化时验证配置。实际证书、密钥轮换、加密队列卷、网络策略、目标容量、File Storage beta 支持状态接受度和 OpenObserve 连通性仍待 staging 验收。Compose 继续使用本机专用 config。
