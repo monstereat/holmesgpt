@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**本机 Docker 测试环境当前状态（2026-09-28）：Incident API `/readyz` healthy，地址 `http://localhost:8081`；Holmes API、incident-worker、PostgreSQL、Redis、策略代理、order-service healthy。DeepSeek key 从文档指定的本机私密文件 `~/.config/holmesgpt-aiops/deepseek.env` 加载，权限为 0600，未写入仓库。PostgreSQL 已应用 migrations `0001`–`0011`，API 使用 `aiops_runtime`，Celery 使用独立 `aiops_worker`，migration 使用 `aiops_migrator`；API runtime DELETE 权限只保留 OIDC 临时登录和撤销会话表，worker 权限已实测不能访问用户表或修改事故/审计记录。worker 隔离后新增一条本机合成告警，任务 `f38501b9-46d2-4cdc-b079-b3797c158e87` 首次尝试完成，持久结果包含告警 Trace ID 与 OpenObserve 查询工具名，审计有 `task.completed`。业务数据当前行数 incidents/tasks/audit/outbox **12/12/54/12**。事故服务隔离全套 **126 passed，1 个上游弃用 warning**；独立 PostgreSQL 16 的 11 项迁移、角色、bootstrap、明文/加密备份恢复验证通过。migration 0011 后将当前持久测试库重新加密并恢复到无网络 PostgreSQL 16.6 临时容器，plain/encrypted 恢复都匹配 11/12/12/54/12 个 migration/incident/task/audit/outbox 行，以及 users/approvals/retrospectives **2/7/2** 和完成 smoke task/audit。Docker VM 磁盘使用率仍约 99%；清理过可重建构建缓存和本项目一张无容器引用的旧 Holmes API 镜像，没有删除数据卷或其他项目镜像/容器。评测根因诊断仍为 `not_scored`；正式生产平台未选定，当前仅是本机测试部署。**
+**本机 Docker 测试环境当前状态（2026-09-28）：Incident API `/readyz` healthy，地址 `http://localhost:8081`；Holmes API、incident-worker、PostgreSQL、Redis、策略代理、order-service healthy。DeepSeek key 从文档指定的本机私密文件 `~/.config/holmesgpt-aiops/deepseek.env` 加载，权限为 0600，未写入仓库。PostgreSQL 已应用 migrations `0001`–`0012`，API 使用 `aiops_runtime`，Celery 使用独立 `aiops_worker`，migration 使用 `aiops_migrator`；API runtime DELETE 权限只保留 OIDC 临时登录和撤销会话表，worker 权限已实测不能访问用户表或修改事故/审计记录。worker 隔离后新增一条本机合成告警，任务 `f38501b9-46d2-4cdc-b079-b3797c158e87` 首次尝试完成，持久结果包含告警 Trace ID 与 OpenObserve 查询工具名，审计有 `task.completed`。break-glass 管理员恢复仅能经专用函数执行，持久本机库与 migration image 已更新至 0012；incident/task/audit/outbox 行数仍为 **12/12/54/12**。核心 PostgreSQL role、备份恢复、Compose 权限与本机 readiness 验证通过。正式生产平台未选定，当前仅是本机测试部署；根因诊断仍为 `not_scored`。**
 
 ## 已完成并验证
 
@@ -150,7 +150,7 @@
 1. 根因诊断评分 rubric 和 20 案 live 评测已准备；尚无两名独立 reviewer 的评分与分歧裁决，继续保持 `not_scored`。
 2. 本机 API/worker/DeepSeek/受限 OpenObserve 的成功日志与 500 告警调查链路均已验证；500 测试同时核对 worker 证据、独立 OFF 审批、不可自批、审计和最终 OFF。该证据仅针对本机 demo；若改变动作所有者协议或上线前的代码版本，需要在 staging 重跑。
 3. 生产部署决策与分阶段验收见 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](examples/openobserve-aiops/PRODUCTION-READINESS.md)，其中平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍待负责人确认与单独授权。
-4. OIDC 支持将 IdP group 映射为 `admin`，首个管理员可由受控管理员组登录引导创建；但全部应用管理员不可用时，没有已实现并演练的 break-glass 恢复流程。生产上线前必须由目标环境负责人批准并演练独立恢复路径。
+4. OIDC 支持将 IdP group 映射为 `admin`，首个管理员可由受控管理员组登录引导创建。新增的一次性 break-glass CLI 与 `0012_break_glass_admin_recovery` function 已通过 PostgreSQL 权限/恢复验证和定向单元测试，并已应用到本机测试库；所选平台上的 IdP、managed DB identity/grants 和 audit 仍待 staging 演练。生产上线前须由目标环境负责人批准并演练完整恢复路径。
 
 ## 阻塞与授权门槛
 
@@ -163,6 +163,7 @@
 
 - 2026-09-28 生产身份恢复审计：核对 `identity.py` 的 OIDC role/group 映射、首登 upsert 和 reactivation 流程，以及 `app.py` 最后一个 active admin 禁用保护。确认映射支持 `admin`，但当所有应用管理员都不可用时，现有 OIDC reactivation 需要另一名 active admin 批准，不能闭环恢复。生产准备文档已明确首次管理员 bootstrap、双 custodians 要求及该 lockout 阻断项；未触碰数据库、凭据或运行服务。
 - 2026-09-28 OIDC 管理员映射回归保护：新增专用测试，断言仅显式 IdP admin group 与非空资源 scope 能产生 admin principal。复用现有 `holmesgpt-aiops-goal-incident-test` 镜像并只读挂载当前测试文件，`tests/test_identity.py` **5 passed**；未重建镜像或访问业务数据库。此测试不验证真实 IdP、管理员 lockout recovery 或生产权限映射。
+- 2026-09-28 管理员 lockout recovery 加固：将数据变更收敛到迁移 `0012_break_glass_admin_recovery` 的 `SECURITY DEFINER` function；`aiops_break_glass` 仅有 schema usage/function EXECUTE，无业务表读取或写入权限。临时 PostgreSQL 16 role verifier 实际确认恢复只允许零 active admin、拒绝同一人双签、拒绝应用角色执行，并检查 session generation 与审计事件；结果 **12 migrations passed**。临时 PostgreSQL 16 plaintext/encrypted backup restore verifier 同样通过并保留 migration 0012；3 项 CLI 单元测试通过。Migration 0012 已应用到持久本机测试库并重建 migration image；Compose role verifier、9 项本机 readiness 检查通过，核心数据行数保持不变。production/staging 未触碰。
 
 - 2026-09-28 提交 `207a75639` 远端 CI：`develop-me AIOps checks` run [36344328302](https://github.com/monstereat/holmesgpt/actions/runs/36344328302) 成功；`AIOps container build and security` run [36344328400](https://github.com/monstereat/holmesgpt/actions/runs/36344328400) 的 Holmes API、policy proxy、order-service、incident API/worker 四个构建与安全扫描 job 均成功。该证据覆盖仓库 CI，不表示生产环境已部署。
 - 2026-09-28 worker 数据库最小权限与本机恢复：隔离 PostgreSQL 角色/bootstrap/备份恢复 verifier 通过，事故服务隔离 Compose 套件 **126 passed，1 个上游弃用 warning**；本机 migration `0010` 已应用。Docker VM 曾因构建空间不足触发 PostgreSQL recovery checkpoint 异常；清理 1.642 GiB 可重建缓存和本项目一张无容器引用旧镜像后，WAL recovery 与 finalize 成功，未删除数据卷或其他项目资源。随后从 README 指定的本机私密 key 文件恢复 Holmes/worker：Holmes 与 API readiness HTTP 200，worker healthy；合成告警调查 smoke 首次尝试完成，具体结果见相邻记录。Docker VM 仍约 99% 使用率，暂停进一步大型镜像构建。

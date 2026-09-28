@@ -17,9 +17,20 @@ command at its credentials or volume.
 - A one-shot migration job uses the separate migration identity. It must finish
   successfully before application replicas start. The migration runner takes a
   PostgreSQL advisory transaction lock and records each applied migration.
-- The current migrations are numbered `0001` through `0011`. They run in
+- The current migrations are numbered `0001` through `0012`. They run in
   transactions. There are no automatic down migrations: do not delete migration
   records or manually reverse DDL to make an older binary start.
+
+Migration `0012_break_glass_admin_recovery` adds a `SECURITY DEFINER` function
+owned by `aiops_migrator` for the all-admins-disabled case. The distinct
+`aiops_break_glass` login receives only schema usage and function execution; it
+cannot read or directly mutate application tables. The function takes an
+exclusive lock on `users`, requires zero active admins and two distinct named
+custodians, then reactivates only an existing disabled admin, bumps
+`session_generation`, and inserts an audit event in one transaction. The
+operator must separately verify current IdP admin-group membership. Rehearse
+the command and managed-identity mapping in staging; do not test it against
+production data.
 
 The repository role template is [`postgresql-roles.psql`](postgresql-roles.psql).
 It is for a fresh database and does not transfer ownership of an existing
@@ -50,7 +61,7 @@ The bootstrap ownership transfer is intentionally specific to the local
 
 On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; the Compose role verifier confirmed those live service identities, denied API DDL/migration-ledger/audit mutation, and authenticated a local operator workbench read. A direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. After loading the documented mode-0600 local DeepSeek key file, Holmes and the Celery worker became healthy. A synthetic webhook then produced one incident/task; the worker completed the first attempt, persisted the matching Trace ID and OpenObserve query tool in the task result, and appended `task.completed` to audit history. Counts are 12 incidents, 12 tasks, 54 audit rows, and 12 outbox rows. A custom-format dump of this current local database was encrypted and restored into a separate isolated PostgreSQL 16.6 container; all 10 migration records, business row counts, and the completed smoke-task evidence/audit matched. The temporary archive, certificate, and restore container were removed after verification. This is still test-only evidence.
 
-Later on 2026-09-28 migration `0011_restrict_runtime_delete` was applied transactionally to the same local test database after the API runtime role was found to have unnecessary DELETE on business tables. The current Compose role verifier confirms 11 migration records; `aiops_runtime` can delete only expiring OIDC login transactions and revoked sessions, and cannot delete incidents, tasks, users, approvals, retrospectives, outbox, audit, or migration records. The `migrate.py` runner was also run from the current source against a fresh, no-network PostgreSQL 16.6 database and applied all 11 migrations; the final migration count and allowed/denied DELETE grants matched expectations. After applying 0011, the persistent test database was encrypted and restored from both plaintext and CMS AES-256-GCM archives into a separate no-network PostgreSQL 16.6 container. Both restores matched 11 migrations, 12 incidents, 12 tasks, 54 audit events, 12 outbox rows, 2 users, 7 approvals and 2 retrospectives, plus the completed smoke task and its audit event. A temporary self-signed certificate was used only for this local test; provider key custody and off-host retention remain untested. The migration service image used for the persistent local database was not rebuilt because Docker VM disk utilization remains near capacity, so future local rebuild/restart is needed to verify the image-baked migration bundle.
+Later on 2026-09-28 migration `0011_restrict_runtime_delete` was applied transactionally to the same local test database after the API runtime role was found to have unnecessary DELETE on business tables. Migration `0012_break_glass_admin_recovery` was subsequently applied to the persistent local test database, and the migration service image was rebuilt to include it. The live Compose role verifier confirms 12 migration records and the restricted API, worker, and break-glass role behavior; the local readiness smoke also passed. The `0012` implementation and role/backup verifiers were exercised against isolated PostgreSQL 16 containers. The persistent test data counts remain 12 incidents, 12 tasks, 54 audit events, and 12 outbox rows. Provider key custody, off-host retention, target-platform identity mapping, and managed service restore remain untested.
 
 ## Release migration sequence
 

@@ -35,6 +35,15 @@ python3 -m venv /tmp/poetry185 && /tmp/poetry185/bin/pip install "poetry==1.8.5"
 
 ### Testing
 
+**Core-test scope:** When the user asks to test a change, run only the smallest
+set of tests that directly exercises the changed behavior and its critical
+integration boundary. Do not default to the full repository suite, all
+non-LLM tests, LLM evaluations, or broad quality checks. State which core tests
+were selected and why; expand the scope only when the focused tests expose a
+failure or the user requests broader coverage. For documentation-only changes,
+use `git diff --check` rather than running application tests. Never run
+`pre-commit`, Ruff, or mypy unless the user explicitly asks.
+
 ```bash
 # Install test dependencies with Poetry
 poetry install --with dev
