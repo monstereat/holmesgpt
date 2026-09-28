@@ -26,6 +26,7 @@ import {
   Headers,
   Logger,
   Module,
+  Param,
   Post,
   Get,
   Injectable,
@@ -352,6 +353,22 @@ export class OrdersService {
     return { resource: "order-service", chaos_mode: this.chaosMode ? "on" : "off" };
   }
 
+  testActionOperation(token: string | undefined, idempotencyKey: string): Record<string, unknown> {
+    if (!ORDER_ACTION_TOKEN) {
+      throw new ServiceUnavailableException();
+    }
+    if (!token || !this.matchesToken(token, ORDER_ACTION_TOKEN)) {
+      throw new UnauthorizedException();
+    }
+    if (!/^[A-Za-z0-9:_-]{1,128}$/.test(idempotencyKey)) {
+      throw new BadRequestException("A valid operation ID is required");
+    }
+    const operation = this.testActions.get(idempotencyKey);
+    return operation
+      ? { found: true, ...operation.result }
+      : { found: false, action_id: idempotencyKey };
+  }
+
   private matchesToken(candidate: string, expected: string): boolean {
     const candidateDigest = createHash("sha256").update(candidate).digest();
     const expectedDigest = createHash("sha256").update(expected).digest();
@@ -397,6 +414,14 @@ export class DemoController {
     @Headers("x-order-action-token") token: string | undefined,
   ): Record<string, string> {
     return this.orders.testActionState(token);
+  }
+
+  @Get("/internal/test-actions/operations/:operationId")
+  testActionOperation(
+    @Headers("x-order-action-token") token: string | undefined,
+    @Param("operationId") operationId: string,
+  ): Record<string, unknown> {
+    return this.orders.testActionOperation(token, operationId);
   }
 
   @Post("/orders")

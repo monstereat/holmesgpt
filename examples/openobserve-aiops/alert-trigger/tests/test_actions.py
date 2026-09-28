@@ -65,6 +65,38 @@ def test_owner_client_rejects_other_hosts_and_invalid_action_results():
         client.set_chaos_mode(False, "approval-2")
 
 
+def test_owner_client_reads_only_a_matching_persisted_operation():
+    result = {
+        "found": True,
+        "accepted": True,
+        "action_id": "approval-3",
+        "action": "set-chaos-mode",
+        "resource": "order-service",
+        "chaos_mode": "on",
+    }
+    opener = Opener(Response(result))
+    client = OrderActionClient("http://order-service:8080", "owner-token", opener=opener)
+    assert client.operation_result("approval-3", True) == result
+    assert opener.request.full_url == "http://order-service:8080/internal/test-actions/operations/approval-3"
+    assert opener.request.get_method() == "GET"
+    assert opener.request.get_header("X-order-action-token") == "owner-token"
+
+    absent = OrderActionClient(
+        "http://order-service:8080",
+        "owner-token",
+        opener=Opener(Response({"found": False, "action_id": "approval-4"})),
+    )
+    assert absent.operation_result("approval-4", False) is None
+
+    mismatch = OrderActionClient(
+        "http://order-service:8080",
+        "owner-token",
+        opener=Opener(Response({**result, "chaos_mode": "off"})),
+    )
+    with pytest.raises(ActionServiceError, match="invalid_action_operation"):
+        mismatch.operation_result("approval-3", True)
+
+
 def test_owner_http_errors_are_redacted():
     error = HTTPError("http://order-service", 401, "service token must not leak", Message(), BytesIO(b"token=secret"))
     client = OrderActionClient("http://order-service:8080", "owner-token", opener=Opener(error=error))

@@ -7,7 +7,7 @@ import pytest
 from psycopg.types.json import Jsonb
 from fastapi.testclient import TestClient
 
-from app import app
+from app import _reconcile_action_executions_once, app
 from auth import hash_password
 from migration_runner import apply_migrations
 from models import IncidentInput
@@ -20,6 +20,10 @@ class FakeOwner:
         self.verify_mismatch = verify_mismatch
         self.actions = []
         self.reads_after_action = 0
+        self.operations = {}
+
+    def operation_result(self, idempotency_key, enabled):
+        return self.operations.get(idempotency_key)
 
     def state(self):
         if self.actions:
@@ -31,7 +35,15 @@ class FakeOwner:
     def set_chaos_mode(self, enabled, idempotency_key):
         self.actions.append((enabled, idempotency_key))
         self.mode = "on" if enabled else "off"
-        return {"accepted": True, "action_id": idempotency_key, "chaos_mode": self.mode}
+        result = {
+            "accepted": True,
+            "action_id": idempotency_key,
+            "action": "set-chaos-mode",
+            "resource": "order-service",
+            "chaos_mode": self.mode,
+        }
+        self.operations[idempotency_key] = result
+        return result
 
 
 def test_approval_permissions_execution_verification_and_rollback(monkeypatch):
@@ -213,25 +225,48 @@ def test_interrupted_action_execution_resumes_from_persisted_phase(monkeypatch):
 
             owner = FakeOwner()
             owner.mode = "on"
+            owner.operations[approvals[0]] = {
+                "accepted": True,
+                "action_id": approvals[0],
+                "action": "set-chaos-mode",
+                "resource": "order-service",
+                "chaos_mode": "on",
+            }
             monkeypatch.setattr("app._order_action_client", lambda: owner)
+            _reconcile_action_executions_once(database_url)
+            with psycopg.connect(database_url) as conn:
+                assert conn.execute("SELECT status FROM action_executions WHERE approval_id = %s", (approvals[0],)).fetchone() == ("succeeded",)
+                assert conn.execute("SELECT status FROM approvals WHERE id = %s", (approvals[0],)).fetchone() == ("executed",)
+                assert conn.execute(
+                    "SELECT actor_id FROM audit_events WHERE incident_id = %s AND event_type = 'action.reconciled'",
+                    (incidents[0]["incident_id"],),
+                ).fetchone() == (None,)
+            owner.mode = "off"
+            owner.operations[f"{approvals[1]}:rollback"] = {
+                "accepted": True,
+                "action_id": f"{approvals[1]}:rollback",
+                "action": "set-chaos-mode",
+                "resource": "order-service",
+                "chaos_mode": "off",
+            }
+            _reconcile_action_executions_once(database_url)
+            with psycopg.connect(database_url) as conn:
+                assert conn.execute("SELECT status FROM action_executions WHERE approval_id = %s", (approvals[1],)).fetchone() == ("rolled_back",)
+                assert conn.execute("SELECT status FROM approvals WHERE id = %s", (approvals[1],)).fetchone() == ("approved",)
+                assert conn.execute(
+                    "SELECT actor_id FROM audit_events WHERE incident_id = %s AND event_type = 'action.rollback_reconciled'",
+                    (incidents[1]["incident_id"],),
+                ).fetchone() == (None,)
             resumed = client.post(f"/api/approvals/{approvals[0]}/execute", headers=operator)
             assert resumed.status_code == 200
             assert resumed.json()["verified"] is True
-            assert owner.actions == [(True, approvals[0])]
+            assert owner.actions == []
             with psycopg.connect(database_url) as conn:
                 assert conn.execute("SELECT status FROM action_executions WHERE approval_id = %s", (approvals[0],)).fetchone() == ("succeeded",)
 
-            with psycopg.connect(database_url) as conn:
-                conn.execute(
-                    """INSERT INTO action_executions (approval_id, incident_id, status, before_state)
-                       VALUES (%s, %s, 'rollback_pending', %s)""",
-                    (approvals[1], incidents[1]["incident_id"], Jsonb({"resource": "order-service", "chaos_mode": "off"})),
-                )
             rollback = client.post(f"/api/approvals/{approvals[1]}/execute", headers=operator)
-            assert rollback.status_code == 502
-            assert owner.actions[-1] == (False, f"{approvals[1]}:rollback")
-            with psycopg.connect(database_url) as conn:
-                assert conn.execute("SELECT status FROM action_executions WHERE approval_id = %s", (approvals[1],)).fetchone() == ("rolled_back",)
+            assert rollback.status_code == 409
+            assert owner.actions == []
     finally:
         with psycopg.connect(database_url) as conn:
             with conn.cursor() as cursor:

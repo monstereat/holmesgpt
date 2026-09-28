@@ -1,6 +1,7 @@
 """Narrow HTTP client for the demo order-service-owned test action."""
 
 import json
+import re
 import urllib.error
 import urllib.request
 from typing import Any
@@ -48,6 +49,28 @@ class OrderActionClient:
         result = self._request("GET", "/internal/test-actions/state")
         if result.get("resource") != "order-service" or result.get("chaos_mode") not in {"on", "off"}:
             raise ActionServiceError("invalid_action_state")
+        return result
+
+    def operation_result(self, idempotency_key: str, enabled: bool) -> dict[str, Any] | None:
+        if (
+            not isinstance(enabled, bool)
+            or not isinstance(idempotency_key, str)
+            or not re.fullmatch(r"[A-Za-z0-9:_-]{1,128}", idempotency_key)
+        ):
+            raise ValueError("Invalid action parameters")
+        result = self._request("GET", f"/internal/test-actions/operations/{idempotency_key}")
+        if result.get("found") is False and result.get("action_id") == idempotency_key:
+            return None
+        expected_mode = "on" if enabled else "off"
+        if (
+            result.get("found") is not True
+            or result.get("accepted") is not True
+            or result.get("action_id") != idempotency_key
+            or result.get("action") != "set-chaos-mode"
+            or result.get("resource") != "order-service"
+            or result.get("chaos_mode") != expected_mode
+        ):
+            raise ActionServiceError("invalid_action_operation")
         return result
 
     def set_chaos_mode(self, enabled: bool, idempotency_key: str) -> dict[str, Any]:

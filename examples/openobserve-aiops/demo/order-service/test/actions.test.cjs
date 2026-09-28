@@ -30,6 +30,10 @@ test("test action rejects missing or incorrect service authentication", () => {
     resource: "order-service",
     chaos_mode: "off",
   });
+  assert.throws(
+    () => controller.testActionOperation("wrong-token", "action-1"),
+    (error) => error.getStatus() === 401,
+  );
 });
 
 test("test action only accepts the fixed action, resource and boolean parameter", () => {
@@ -65,6 +69,14 @@ test("test action sets demo chaos state and returns the same result on retry", (
     duplicate: false,
   });
   assert.equal(controller.testActionState(token).chaos_mode, "on");
+  assert.deepEqual(controller.testActionOperation(token, "action-123"), {
+    found: true,
+    ...result,
+  });
+  assert.deepEqual(controller.testActionOperation(token, "unknown-action"), {
+    found: false,
+    action_id: "unknown-action",
+  });
   assert.deepEqual(controller.testAction(token, "action-123", body), {
     ...result,
     duplicate: true,

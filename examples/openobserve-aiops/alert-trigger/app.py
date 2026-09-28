@@ -407,6 +407,105 @@ def _validate_demo_action_configuration() -> None:
         raise RuntimeError("Demo remediation settings are only permitted when AIOPS_ENV=local")
 
 
+def _reconcile_action_executions_once(database_url: str) -> None:
+    if os.getenv("AIOPS_ENV", "production") != "local" or os.getenv("AIOPS_DEMO_ACTIONS_ENABLED", "").lower() != "true":
+        return
+
+    with connect_database(database_url, autocommit=True) as lock_conn:
+        with lock_conn.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(hashtextextended(%s, 0))", (ACTION_OWNER_RESOURCE_LOCK,))
+            if not cursor.fetchone()[0]:
+                return
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", (USER_LIFECYCLE_LOCK,))
+            lifecycle_lock_acquired = cursor.fetchone()[0]
+        if not lifecycle_lock_acquired:
+            lock_conn.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (ACTION_OWNER_RESOURCE_LOCK,))
+            return
+        try:
+            with connect_database(database_url) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """SELECT e.approval_id, e.incident_id, e.status, e.before_state,
+                                  a.requested_by, a.reviewed_by, a.action_id, a.parameters
+                           FROM action_executions e JOIN approvals a ON a.id = e.approval_id
+                           JOIN incidents i ON i.id = e.incident_id
+                           WHERE e.status IN ('dispatching', 'rollback_pending')
+                             AND e.updated_at < now() - interval '5 seconds'
+                             AND a.status = 'approved' AND i.resource = 'order-service'
+                           ORDER BY e.updated_at, e.approval_id LIMIT 20"""
+                    )
+                    pending = cursor.fetchall()
+            if not pending:
+                return
+
+            owner = _order_action_client()
+            for approval_id, incident_id, execution_status, before_state, requested_by, reviewed_by, action_id, parameters in pending:
+                if (
+                    not reviewed_by or reviewed_by == requested_by or not isinstance(parameters, dict)
+                    or parameters.get("action") != "set-chaos-mode"
+                    or parameters.get("resource") != "order-service"
+                    or not isinstance(parameters.get("enabled"), bool)
+                    or set(parameters) != {"action", "resource", "enabled"}
+                    or action_id != f"set-chaos-mode:{'on' if parameters.get('enabled') else 'off'}"
+                ):
+                    continue
+                is_rollback = execution_status == "rollback_pending"
+                if is_rollback and (
+                    not isinstance(before_state, dict)
+                    or before_state.get("resource") != "order-service"
+                    or before_state.get("chaos_mode") not in {"on", "off"}
+                ):
+                    continue
+                expected_enabled = before_state["chaos_mode"] == "on" if is_rollback else parameters["enabled"]
+                operation_id = f"{approval_id}:rollback" if is_rollback else str(approval_id)
+                try:
+                    operation = owner.operation_result(operation_id, expected_enabled)
+                    if operation is None:
+                        continue
+                    desired = "on" if expected_enabled else "off"
+                    if owner.state().get("chaos_mode") != desired:
+                        continue
+                except ActionServiceError:
+                    continue
+
+                with connect_database(database_url) as conn:
+                    with conn.transaction():
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                """SELECT e.status, a.status, a.requested_by, a.reviewed_by, a.action_id, a.parameters, e.before_state
+                                   FROM action_executions e JOIN approvals a ON a.id = e.approval_id
+                                   JOIN incidents i ON i.id = e.incident_id
+                                   WHERE e.approval_id = %s AND e.incident_id = %s AND i.resource = 'order-service'
+                                   FOR UPDATE OF e, a, i""",
+                                (approval_id, incident_id),
+                            )
+                            current = cursor.fetchone()
+                            expected_status = "rollback_pending" if is_rollback else "dispatching"
+                            if (
+                                not current or current[0] != expected_status or current[1] != "approved"
+                                or current[2] != requested_by or current[3] != reviewed_by
+                                or current[4] != action_id or current[5] != parameters
+                                or current[6] != before_state
+                            ):
+                                continue
+                            cursor.execute(
+                                "UPDATE action_executions SET status = %s, error_code = %s, updated_at = now() WHERE approval_id = %s AND status = %s",
+                                ("rolled_back" if is_rollback else "succeeded", "postcondition_failed" if is_rollback else None, approval_id, execution_status),
+                            )
+                            if cursor.rowcount != 1:
+                                continue
+                            if not is_rollback:
+                                cursor.execute("UPDATE approvals SET status = 'executed' WHERE id = %s AND status = 'approved'", (approval_id,))
+                            cursor.execute(
+                                "INSERT INTO audit_events (incident_id, actor_id, event_type, details) VALUES (%s, NULL, %s, %s)",
+                                (incident_id, "action.rollback_reconciled" if is_rollback else "action.reconciled", Jsonb({"approval_id": str(approval_id), "resource": "order-service", "action": action_id, "source": "owner_idempotency_journal"})),
+                            )
+        finally:
+            with lock_conn.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_unlock(%s)", (USER_LIFECYCLE_LOCK,))
+                cursor.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (ACTION_OWNER_RESOURCE_LOCK,))
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _validate_demo_action_configuration()
@@ -429,7 +528,8 @@ async def lifespan(_app: FastAPI):
         raw_users = _test_users_configuration()
         if raw_users:
             _seed_test_users(database_url, raw_users)
-        dispatcher = start_outbox_dispatcher(database_url)
+        maintenance_callback = _reconcile_action_executions_once if os.getenv("AIOPS_DEMO_ACTIONS_ENABLED", "").lower() == "true" else None
+        dispatcher = start_outbox_dispatcher(database_url, maintenance_callback)
         try:
             yield
         finally:
@@ -2010,18 +2110,19 @@ def _execute_approval(
 
     if execution_status == "dispatching":
         try:
-            owner.set_chaos_mode(bool(parameters["enabled"]), approval_uuid)
+            prior_result = owner.operation_result(approval_uuid, bool(parameters["enabled"]))
+            if prior_result is None:
+                owner.set_chaos_mode(bool(parameters["enabled"]), approval_uuid)
             after = owner.state()
             verified = after.get("chaos_mode") == desired
+            if prior_result is not None and not verified:
+                execution_error = "owner_operation_state_mismatch"
         except ActionServiceError as exc:
             execution_error = exc.code
-            try:
-                after = owner.state()
-                verified = after.get("chaos_mode") == desired
-            except ActionServiceError:
-                # Keep dispatching: the owner may have applied the action while
-                # its response was lost. Retrying with the same key is safe.
-                raise HTTPException(status_code=503, detail="Action outcome is unknown; retry will reconcile the same operation") from exc
+            # A lookup failure cannot establish whether the owner committed the
+            # operation. Keep it pending; do not infer success from resource
+            # state or issue another request while the journal is unavailable.
+            raise HTTPException(status_code=503, detail="Action owner journal is unavailable; execution remains pending") from exc
         if verified:
             with connect_database(_database_url()) as conn:
                 with conn.transaction():

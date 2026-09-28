@@ -149,11 +149,12 @@ def _dispatch_once(
 
 
 class OutboxDispatcher:
-    def __init__(self, database_url: str, sender: Any = None, interval_seconds: int = 2, max_delivery_attempts: int = 20):
+    def __init__(self, database_url: str, sender: Any = None, interval_seconds: int = 2, max_delivery_attempts: int = 20, maintenance_callback: Any = None):
         self.database_url = database_url
         self.sender = sender or celery_app.send_task
         self.interval_seconds = interval_seconds
         self.max_delivery_attempts = max_delivery_attempts
+        self.maintenance_callback = maintenance_callback
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="outbox-dispatcher", daemon=True)
 
@@ -175,11 +176,20 @@ class OutboxDispatcher:
                 )
             except Exception:  # Do not log broker/database details that may contain credentials.
                 logger.warning("Outbox dispatch failed; pending events will be retried")
+            if self.maintenance_callback:
+                try:
+                    self.maintenance_callback(self.database_url)
+                except Exception:
+                    logger.warning("Action execution reconciliation failed; pending records remain available for retry")
             self._stop.wait(self.interval_seconds)
 
 
-def start_outbox_dispatcher(database_url: str) -> OutboxDispatcher:
-    return OutboxDispatcher(database_url, max_delivery_attempts=_max_outbox_delivery_attempts()).start()
+def start_outbox_dispatcher(database_url: str, maintenance_callback: Any = None) -> OutboxDispatcher:
+    return OutboxDispatcher(
+        database_url,
+        max_delivery_attempts=_max_outbox_delivery_attempts(),
+        maintenance_callback=maintenance_callback,
+    ).start()
 
 
 def _max_outbox_delivery_attempts() -> int:

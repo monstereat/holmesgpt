@@ -54,7 +54,7 @@ docker compose restart incident-api incident-worker redis
 
 PostgreSQL 是事故状态和 outbox 的持久化来源；worker 重启后会恢复可重试任务。隔离的 API/worker/PostgreSQL 测试运行方式以及不覆盖活动库的 `pg_dump`/`pg_restore` 演练见 [`README.md`](README.md)。保留当前 named volumes；不要用 `docker compose down -v` 清理演示数据。
 
-Order-service 将 `set-chaos-mode` 当前状态和幂等 operation journal 原子写入 `order-action-data` 卷。容器重启后会从同一文件恢复；同一 operation ID 和 payload 会返回已保存结果，不同 payload 会冲突。最多保留 10,000 个 operation ID，达到上限后 owner 会拒绝新动作，避免淘汰仍可能被重试的幂等记录。每个新动作同步重写完整 journal；它只适用于单实例、低频的本地演示，不支持多实例共享，也没有自动把未完成 owner 操作与 Incident API 审批记录对账。测试与生产处置仍关闭。
+Order-service 将 `set-chaos-mode` 当前状态和幂等 operation journal 原子写入 `order-action-data` 卷。容器重启后会从同一文件恢复；同一 operation ID 和 payload 会返回已保存结果，不同 payload 会冲突。最多保留 10,000 个 operation ID，达到上限后 owner 会拒绝新动作，避免淘汰仍可能被重试的幂等记录。每个新动作同步重写完整 journal；它只适用于单实例、低频的本地演示，不支持多实例共享。恢复请求会先只读查询对应 operation ID：只有 journal 结果与批准动作及 owner 当前状态一致时才补记成功；查询不可用或结果不一致时保持待恢复，不会因此自动重放或回滚。Incident API 在本地 demo 动作启用时每轮 dispatcher 周期也会执行同一只读核对，并记录系统审计事件。journal 确认的补偿回滚也只会被标记完成，不会由后台发起；未知回滚仍由操作员处理。无 journal 记录时，仍由已授权操作员通过原审批流程重试同一幂等键。测试与生产处置仍关闭。
 
 ## 演示边界
 
