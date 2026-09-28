@@ -162,6 +162,7 @@
 ## 最近验证（2026-09-28）
 
 - 2026-09-28 生产身份恢复审计：核对 `identity.py` 的 OIDC role/group 映射、首登 upsert 和 reactivation 流程，以及 `app.py` 最后一个 active admin 禁用保护。确认映射支持 `admin`，但当所有应用管理员都不可用时，现有 OIDC reactivation 需要另一名 active admin 批准，不能闭环恢复。生产准备文档已明确首次管理员 bootstrap、双 custodians 要求及该 lockout 阻断项；未触碰数据库、凭据或运行服务。
+- 2026-09-28 OIDC 管理员映射回归保护：新增专用测试，断言仅显式 IdP admin group 与非空资源 scope 能产生 admin principal。复用现有 `holmesgpt-aiops-goal-incident-test` 镜像并只读挂载当前测试文件，`tests/test_identity.py` **5 passed**；未重建镜像或访问业务数据库。此测试不验证真实 IdP、管理员 lockout recovery 或生产权限映射。
 
 - 2026-09-28 提交 `207a75639` 远端 CI：`develop-me AIOps checks` run [36344328302](https://github.com/monstereat/holmesgpt/actions/runs/36344328302) 成功；`AIOps container build and security` run [36344328400](https://github.com/monstereat/holmesgpt/actions/runs/36344328400) 的 Holmes API、policy proxy、order-service、incident API/worker 四个构建与安全扫描 job 均成功。该证据覆盖仓库 CI，不表示生产环境已部署。
 - 2026-09-28 worker 数据库最小权限与本机恢复：隔离 PostgreSQL 角色/bootstrap/备份恢复 verifier 通过，事故服务隔离 Compose 套件 **126 passed，1 个上游弃用 warning**；本机 migration `0010` 已应用。Docker VM 曾因构建空间不足触发 PostgreSQL recovery checkpoint 异常；清理 1.642 GiB 可重建缓存和本项目一张无容器引用旧镜像后，WAL recovery 与 finalize 成功，未删除数据卷或其他项目资源。随后从 README 指定的本机私密 key 文件恢复 Holmes/worker：Holmes 与 API readiness HTTP 200，worker healthy；合成告警调查 smoke 首次尝试完成，具体结果见相邻记录。Docker VM 仍约 99% 使用率，暂停进一步大型镜像构建。

@@ -71,3 +71,27 @@ def test_oidc_group_mapping_requires_explicit_resource_scope():
     env["OIDC_GROUP_MAPPINGS_JSON"] = '{"aiops-operators":{"role":"operator","resource_scopes":[]}}'
     with pytest.raises(ValueError, match="non-empty resource scopes"):
         load_oidc_settings(env)
+
+
+def test_oidc_admin_bootstrap_requires_dedicated_group_and_explicit_scope():
+    env = settings_env()
+    env["OIDC_GROUP_MAPPINGS_JSON"] = (
+        '{"aiops-admins":{"role":"admin","resource_scopes":["order-service"]}}'
+    )
+    settings = load_oidc_settings(env)
+
+    assert principal_claims(
+        {
+            "iss": settings.issuer,
+            "sub": "admin-123",
+            "preferred_username": "admin-custodian",
+            "groups": ["aiops-admins"],
+        },
+        settings,
+    ) == (
+        settings.issuer,
+        "admin-123",
+        "admin-custodian",
+        "admin",
+        ["order-service"],
+    )
