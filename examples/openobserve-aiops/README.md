@@ -130,6 +130,15 @@ PostgreSQL persists incidents, triage severity/assignee, tasks, users, revoked s
 
 Database migration sequencing, backup/restore operations, and rollback limits are documented in [`POSTGRESQL-OPERATIONS.md`](POSTGRESQL-OPERATIONS.md). The local verifier now exercises recipient-certificate encryption and restore, but does not establish managed production database compatibility, production key custody, encrypted off-host retention, or PITR.
 
+To exercise the production PostgreSQL TLS policy locally, start the isolated test network and run the verifier:
+
+```bash
+./compose-local.sh --profile test up -d postgres-test
+bash ./verify-postgresql-tls.sh
+```
+
+It creates a temporary TLS certificate authority and PostgreSQL server on the internal test network, verifies a `sslmode=verify-full` handshake from the incident service image, and confirms rejection of an untrusted CA, mismatched hostname, and weaker `sslmode`. The database uses tmpfs only and is removed after the check. This proves local Psycopg/PostgreSQL behavior with a synthetic CA; the selected managed database's real CA chain and endpoint still need staging verification.
+
 Create a private custom-format backup with the PostgreSQL client utilities installed. Configure the normal `PG*` connection variables and point `PGPASSFILE` at a secret-manager-provided passfile; the script does not accept or print a database password. It refuses to overwrite an existing file, writes with mode `0600`, and validates the archive before publishing it:
 
 ```bash
