@@ -17,7 +17,7 @@ command at its credentials or volume.
 - A one-shot migration job uses the separate migration identity. It must finish
   successfully before application replicas start. The migration runner takes a
   PostgreSQL advisory transaction lock and records each applied migration.
-- The current migrations are numbered `0001` through `0010`. They run in
+- The current migrations are numbered `0001` through `0011`. They run in
   transactions. There are no automatic down migrations: do not delete migration
   records or manually reverse DDL to make an older binary start.
 
@@ -49,6 +49,8 @@ The bootstrap ownership transfer is intentionally specific to the local
 `aiops` database and is not a managed-production migration procedure.
 
 On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; the Compose role verifier confirmed those live service identities, denied API DDL/migration-ledger/audit mutation, and authenticated a local operator workbench read. A direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. After loading the documented mode-0600 local DeepSeek key file, Holmes and the Celery worker became healthy. A synthetic webhook then produced one incident/task; the worker completed the first attempt, persisted the matching Trace ID and OpenObserve query tool in the task result, and appended `task.completed` to audit history. Counts are 12 incidents, 12 tasks, 54 audit rows, and 12 outbox rows. A custom-format dump of this current local database was encrypted and restored into a separate isolated PostgreSQL 16.6 container; all 10 migration records, business row counts, and the completed smoke-task evidence/audit matched. The temporary archive, certificate, and restore container were removed after verification. This is still test-only evidence.
+
+Later on 2026-09-28 migration `0011_restrict_runtime_delete` was applied transactionally to the same local test database after the API runtime role was found to have unnecessary DELETE on business tables. The current Compose role verifier confirms 11 migration records; `aiops_runtime` can delete only expiring OIDC login transactions and revoked sessions, and cannot delete incidents, tasks, users, approvals, retrospectives, outbox, audit, or migration records. The earlier encrypted restore predates migration 0011; isolated backup/restore verification now applies all 11 migrations. The migration service image used for the local one-shot command was not rebuilt because Docker VM disk utilization remains near capacity, so future local rebuild/restart is needed to verify image-baked automatic application.
 
 ## Release migration sequence
 
@@ -161,7 +163,7 @@ constraints, indexes, application readiness, and an end-to-end synthetic task
 before any owner-approved cutover. The repository verifier
 [`verify-postgresql-backup.sh`](verify-postgresql-backup.sh) passed on an
 isolated PostgreSQL 16.6 container with no network or persistent volume. It
-  restored migrations `0001`–`0010`, the task duration index, incident triage,
+  restored migrations `0001`–`0011`, the task duration index, incident triage,
   user session-generation/reactivation columns, worker-role grants, and a
   synthetic incident; it checked mode `0600`, archive validation, and overwrite
   refusal. The same verifier creates an ephemeral recipient

@@ -36,12 +36,12 @@ for migration in "$repo_dir"/alert-trigger/migrations/*.sql; do
 done
 
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postgres \
-    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only'), ('0009_user_reactivation'), ('0010_worker_database_privileges') ON CONFLICT DO NOTHING" >/dev/null
+    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only'), ('0009_user_reactivation'), ('0010_worker_database_privileges'), ('0011_restrict_runtime_delete') ON CONFLICT DO NOTHING" >/dev/null
 
 migration_count=$(docker exec "$container_name" psql -At -U aiops_migrator -d postgres \
     -c "SELECT count(*) FROM schema_migrations")
-if [[ "$migration_count" != "10" ]]; then
-    echo "migration runner applied $migration_count records instead of 10" >&2
+if [[ "$migration_count" != "11" ]]; then
+    echo "migration runner applied $migration_count records instead of 11" >&2
     exit 1
 fi
 
@@ -78,6 +78,14 @@ privileges=$(docker exec "$container_name" psql -At -U aiops_runtime -d postgres
        AND NOT has_table_privilege(current_user, 'schema_migrations', 'UPDATE')
        AND NOT has_table_privilege(current_user, 'schema_migrations', 'DELETE')
        AND NOT has_table_privilege(current_user, 'schema_migrations', 'TRUNCATE')
+       AND NOT has_table_privilege(current_user, 'incidents', 'DELETE')
+       AND NOT has_table_privilege(current_user, 'tasks', 'DELETE')
+       AND NOT has_table_privilege(current_user, 'outbox_events', 'DELETE')
+       AND NOT has_table_privilege(current_user, 'approvals', 'DELETE')
+       AND NOT has_table_privilege(current_user, 'incident_retrospectives', 'DELETE')
+       AND NOT has_table_privilege(current_user, 'users', 'DELETE')
+       AND has_table_privilege(current_user, 'oidc_login_transactions', 'DELETE')
+       AND has_table_privilege(current_user, 'revoked_sessions', 'DELETE')
        AND has_column_privilege(current_user, 'incidents', 'severity', 'UPDATE')
        AND has_column_privilege(current_user, 'incidents', 'assignee_user_id', 'UPDATE')
        AND has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')
@@ -98,6 +106,19 @@ docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postg
     -c "INSERT INTO users (id, username, role) VALUES ('00000000-0000-0000-0000-000000000010', 'permission-test', 'viewer')" >/dev/null
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
     -c "UPDATE users SET session_generation = session_generation + 1 WHERE username = 'permission-test'" >/dev/null
+docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postgres \
+    -c "CREATE TABLE public.runtime_delete_probe (id integer PRIMARY KEY); INSERT INTO public.runtime_delete_probe VALUES (1)" >/dev/null
+future_table_delete=$(docker exec "$container_name" psql -At -U aiops_runtime -d postgres -c \
+    "SELECT has_table_privilege(current_user, 'public.runtime_delete_probe', 'DELETE')")
+if [[ "$future_table_delete" != f ]]; then
+    echo "runtime role unexpectedly has DELETE on a future migrator-owned table" >&2
+    exit 1
+fi
+if docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
+    -c "DELETE FROM public.runtime_delete_probe WHERE false" >/dev/null 2>&1; then
+    echo "runtime role unexpectedly deleted from a future migrator-owned table" >&2
+    exit 1
+fi
 
 worker_privileges=$(docker exec "$container_name" psql -At -U aiops_worker -d postgres -c "
     SELECT has_table_privilege(current_user, 'incidents', 'SELECT')
@@ -126,6 +147,13 @@ for statement in \
     "UPDATE audit_events SET event_type = 'tampered'" \
     "DELETE FROM audit_events" \
     "TRUNCATE audit_events" \
+    "DELETE FROM incidents WHERE false" \
+    "DELETE FROM tasks WHERE false" \
+    "DELETE FROM outbox_events WHERE false" \
+    "DELETE FROM approvals WHERE false" \
+    "DELETE FROM incident_retrospectives WHERE false" \
+    "DELETE FROM users WHERE false" \
+    "DELETE FROM public.runtime_delete_probe WHERE false" \
     "INSERT INTO schema_migrations (version) VALUES ('runtime.must.not.write')" \
     "UPDATE schema_migrations SET version = version WHERE false" \
     "DELETE FROM schema_migrations WHERE false" \
@@ -151,4 +179,7 @@ for statement in \
     fi
 done
 
-echo "PostgreSQL role verification passed: 10 migrations; worker task/outbox updates and audit inserts allowed while user access, incident mutation, audit mutation, and schema creation are denied"
+docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
+    -c "DELETE FROM oidc_login_transactions WHERE false; DELETE FROM revoked_sessions WHERE false" >/dev/null
+
+echo "PostgreSQL role verification passed: 11 migrations; API deletes are limited to expired authentication/session records and worker task/outbox updates/audit inserts are scoped"

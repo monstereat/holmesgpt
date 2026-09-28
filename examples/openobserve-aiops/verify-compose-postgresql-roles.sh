@@ -23,7 +23,7 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
                   has_table_privilege(current_user, 'schema_migrations', 'INSERT')"""
     ).fetchone()
     assert current_user == "aiops_runtime", "Incident API is not using the runtime role"
-    assert migration_count == 10, f"expected 10 migrations, found {migration_count}"
+    assert migration_count == 11, f"expected 11 migrations, found {migration_count}"
     assert not can_create and not can_update_audit and not can_update_ledger and not can_insert_ledger
     identity_columns = conn.execute(
         "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('session_generation', 'reactivation_requested_at')"
@@ -32,6 +32,10 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
     assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')").fetchone()[0]
     assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')").fetchone()[0]
     assert conn.execute("SELECT has_table_privilege(current_user, 'users', 'UPDATE')").fetchone()[0]
+    assert conn.execute("SELECT has_table_privilege(current_user, 'oidc_login_transactions', 'DELETE')").fetchone()[0]
+    assert conn.execute("SELECT has_table_privilege(current_user, 'revoked_sessions', 'DELETE')").fetchone()[0]
+    for table in ("incidents", "tasks", "outbox_events", "approvals", "incident_retrospectives", "users", "audit_events", "schema_migrations"):
+        assert not conn.execute("SELECT has_table_privilege(current_user, %s, 'DELETE')", (table,)).fetchone()[0], f"runtime can delete from {table}"
 
     denied_statements = (
         "CREATE TABLE public.compose_role_probe (id integer)",
@@ -39,6 +43,12 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         "UPDATE schema_migrations SET version = version WHERE false",
         "DELETE FROM schema_migrations WHERE false",
         "TRUNCATE schema_migrations",
+        "DELETE FROM incidents WHERE false",
+        "DELETE FROM tasks WHERE false",
+        "DELETE FROM outbox_events WHERE false",
+        "DELETE FROM approvals WHERE false",
+        "DELETE FROM incident_retrospectives WHERE false",
+        "DELETE FROM users WHERE false",
     )
     for statement in denied_statements:
         try:
@@ -47,6 +57,8 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
                 raise AssertionError(f"runtime unexpectedly permitted: {statement.split()[0]}")
         except InsufficientPrivilege:
             pass
+    conn.execute("DELETE FROM oidc_login_transactions WHERE false")
+    conn.execute("DELETE FROM revoked_sessions WHERE false")
 
 users = json.loads(os.environ["AIOPS_TEST_USERS_JSON"])
 operator = next(user for user in users if user.get("role") == "operator")
@@ -78,4 +90,4 @@ if [[ "$migrator_user" != "aiops_migrator" ]]; then
     exit 1
 fi
 
-echo "Compose PostgreSQL role verification passed: 10 migrations; API=aiops_runtime, worker=aiops_worker, migrations=aiops_migrator."
+echo "Compose PostgreSQL role verification passed: 11 migrations; API=aiops_runtime, worker=aiops_worker, migrations=aiops_migrator."

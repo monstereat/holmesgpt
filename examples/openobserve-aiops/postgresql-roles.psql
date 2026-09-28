@@ -19,7 +19,8 @@ SELECT format('GRANT CONNECT ON DATABASE %I TO aiops_runtime, aiops_migrator, ai
 
 GRANT USAGE ON SCHEMA public TO aiops_runtime;
 GRANT USAGE, CREATE ON SCHEMA public TO aiops_migrator;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aiops_runtime;
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO aiops_runtime;
+REVOKE DELETE ON ALL TABLES IN SCHEMA public FROM aiops_runtime;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO aiops_runtime;
 
 -- Audit history is append-only for the application identity, including when
@@ -33,6 +34,13 @@ BEGIN
 
     IF to_regclass('public.schema_migrations') IS NOT NULL THEN
         EXECUTE 'REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.schema_migrations FROM aiops_runtime';
+    END IF;
+
+    IF to_regclass('public.oidc_login_transactions') IS NOT NULL THEN
+        EXECUTE 'GRANT DELETE ON TABLE public.oidc_login_transactions TO aiops_runtime';
+    END IF;
+    IF to_regclass('public.revoked_sessions') IS NOT NULL THEN
+        EXECUTE 'GRANT DELETE ON TABLE public.revoked_sessions TO aiops_runtime';
     END IF;
 
 END
@@ -63,6 +71,6 @@ END
 $$;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE aiops_migrator IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO aiops_runtime;
+    GRANT SELECT, INSERT, UPDATE ON TABLES TO aiops_runtime;
 ALTER DEFAULT PRIVILEGES FOR ROLE aiops_migrator IN SCHEMA public
     GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO aiops_runtime;
