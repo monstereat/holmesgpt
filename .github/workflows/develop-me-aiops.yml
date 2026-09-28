@@ -23,6 +23,7 @@ on:
       - 'examples/openobserve-aiops/verify-postgresql-roles.sh'
       - 'examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh'
       - 'examples/openobserve-aiops/verify-postgresql-tls.sh'
+      - 'examples/openobserve-aiops/verify-redis-tls.sh'
       - 'examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md'
       - '.github/workflows/develop-me-aiops.yml'
       - '.github/workflows/publish-aiops-images.yml'
@@ -79,6 +80,8 @@ jobs:
         run: docker compose --profile test up -d postgres-test
       - name: Verify PostgreSQL TLS handshake and certificate rejection
         run: bash examples/openobserve-aiops/verify-postgresql-tls.sh
+      - name: Verify Redis TLS handshake and certificate rejection
+        run: bash examples/openobserve-aiops/verify-redis-tls.sh
       - name: Validate production OpenTelemetry Collector template
         run: bash examples/openobserve-aiops/verify-production-otel-config.sh
       - name: Validate AIOps Prometheus alert rules

@@ -139,6 +139,14 @@ bash ./verify-postgresql-tls.sh
 
 It creates a temporary TLS certificate authority and PostgreSQL server on the internal test network, verifies a `sslmode=verify-full` handshake from the incident service image, and confirms rejection of an untrusted CA, mismatched hostname, and weaker `sslmode`. The database uses tmpfs only and is removed after the check. This proves local Psycopg/PostgreSQL behavior with a synthetic CA; the selected managed database's real CA chain and endpoint still need staging verification.
 
+The Celery/Redis production TLS path has a corresponding verifier:
+
+```bash
+bash ./verify-redis-tls.sh
+```
+
+It starts an authenticated Redis TLS server on the same internal network, verifies the actual Celery/redis-py handshake and rejects an untrusted CA, hostname mismatch, plaintext URL and disabled hostname verification. It uses a temporary server and generated test CA only; the chosen managed broker's endpoint, credentials, and CA chain still need staging verification.
+
 Create a private custom-format backup with the PostgreSQL client utilities installed. Configure the normal `PG*` connection variables and point `PGPASSFILE` at a secret-manager-provided passfile; the script does not accept or print a database password. It refuses to overwrite an existing file, writes with mode `0600`, and validates the archive before publishing it:
 
 ```bash
