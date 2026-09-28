@@ -10,9 +10,13 @@
 
 **本轮平台无关安全补充（2026-09-29）：**OpenObserve 与 Alertmanager webhook 分别新增一个 `*_PREVIOUS` token overlap slot；生产配置校验对 active/previous 所有已配置值按 UTF-8 byte 数要求至少 32 bytes，认证对 active 与 previous 分别执行 constant-time digest compare，不输出密钥。Alertmanager 的 active token 未设置时即使 previous slot 存在仍返回 disabled。Compose、README 与 `PRODUCTION-READINESS.md` 补充两阶段无停机轮换顺序。新增路由及配置核心测试但按暂停测试要求未运行；本轮只做源码/文档审阅和 diff 静态检查。
 
-- 2026-09-29 OTel Collector 指标端点 staging 安全门禁补齐：生产模板的 Collector internal `/metrics` 监听 `0.0.0.0:8888` 且无认证，控制依赖目标网络策略。生产准备文档现要求在 staging 留证：授权 scraper 可读、未授权私网来源不可达、public ingress/listener 不转发该端口，并在网络/ingress 变更后重做负向探测；失败即停止。仅文档修订，未运行 staging 探测或测试；平台网络策略仍待平台选定。
+**本轮 Collector 配置增量（2026-09-29，未验证）：**生产 Collector 无认证 `/metrics` reader 不再把监听地址写死为 `0.0.0.0`，模板改为要求部署者显式提供 `OTEL_METRICS_BIND_ADDRESS`；配置 verifier 调用示例提供 `127.0.0.1` 以供离线 schema 校验，未运行 verifier。此变量只决定 Collector 容器内绑定地址，不构成访问控制；仍必须用目标平台网络策略/ACL 限定 scraper，并在 staging 验证允许/拒绝路径。Collector 模板校验和 staging 门禁待恢复验证后完成。
+
+- 2026-09-29 OTel Collector 指标端点 staging 安全门禁补齐：生产模板的 Collector internal `/metrics` 无认证，网络策略决定实际可达性。当前模板要求部署提供 `OTEL_METRICS_BIND_ADDRESS`，该值只决定容器监听地址，不构成访问控制。生产准备文档要求在 staging 留证：授权 scraper 可读、未授权私网来源不可达、public ingress/listener 不转发该端口，并在网络/ingress 变更后重做负向探测；失败即停止。平台网络策略仍待平台选定，未运行 staging 探测或配置 verifier。
 
 - 2026-09-29 发布事件重放边界审计：签名仅覆盖请求体，没有 nonce/时间戳或持久幂等记录；sender 重试或重放有效签名会在 OpenObserve 留下重复事件。生产发布接入前需明确接受 at-least-once 重复，或由负责人确定稳定事件 ID、持久原子去重存储和保留期；当前不具备可在不作数据语义决策下安全实现的修复。未改代码、未运行测试。
+
+- 2026-09-29 同步简历证据文档：`RESUME-CLAIMS.md` 更新本机 Alertmanager firing 持久化证据，并标明 webhook token 轮换、action reconciler、Collector bind-address 与发布重放边界的当前验证状态；未运行测试。
 
 **本轮补充（2026-09-29）：**OIDC 身份流程与登录定向测试在隔离 `incident-test` / tmpfs `postgres-test` 中 **9 passed**；测试 fake 已同步当前数据库 admission 查询，未改业务身份逻辑。Alertmanager webhook receiver 定向契约测试 **4 passed**，同样在隔离测试数据库运行。发布关联 runbook/skill 明确 `release_deployed` 是 `app_logs.event_type` 值，保留 run/case 与时间窗约束且未扩大 stream/字段权限；`git diff --check` 通过，未做 live LLM 验证。真实 Alertmanager firing 端到端此前待完成，现已在下方补充记录本机验收结果。
 

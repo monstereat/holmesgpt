@@ -62,7 +62,9 @@ service:
         - pull:
             exporter:
               prometheus:
-                host: 0.0.0.0
+                # Deployment must provide the listener address explicitly.
+                # Network policy/ACL remains the access-control boundary.
+                host: ${env:OTEL_METRICS_BIND_ADDRESS}
                 port: 8888
                 without_type_suffix: true
                 without_units: true

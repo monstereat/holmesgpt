@@ -34,6 +34,7 @@ docker run --rm --network none \
     -e OTEL_QUEUE_STORAGE_DIR=/var/lib/otel-queue \
     -e OTEL_QUEUE_FILE_MAX_BYTES=536870912 \
     -e OTEL_EXPORT_RETRY_MAX_ELAPSED_TIME=5m \
+    -e OTEL_METRICS_BIND_ADDRESS=127.0.0.1 \
     -e OPENOBSERVE_HOST=observe.example.invalid \
     -e OPENOBSERVE_ORG=validation \
     -e OPENOBSERVE_OTLP_STREAM=validation \
