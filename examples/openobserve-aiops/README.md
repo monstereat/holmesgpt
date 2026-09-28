@@ -48,6 +48,7 @@ Logout revokes the current OIDC cookie or local bearer session server-side by st
 Check service state and liveness:
 
 ```bash
+bash ./verify-local-service-readiness.sh
 ./compose-local.sh ps
 curl -fsS http://127.0.0.1:5080/healthz
 curl -fsS http://127.0.0.1:5050/healthz
@@ -55,6 +56,8 @@ curl -fsS http://127.0.0.1:8081/healthz
 curl -fsS http://127.0.0.1:8081/readyz
 curl -fsS http://127.0.0.1:8080/
 ```
+
+`verify-local-service-readiness.sh` checks the nine required local services, Holmes/Incident API/OpenObserve readiness, the order-service page, and the worker's authenticated Holmes OpenObserve-toolset gate. It performs GET/readiness checks only; it does not call the model or write business data. The local Collector keeps default internal metrics loopback-only; production scraping is configured separately in `otel-collector-production.yaml`.
 
 The incident API `/healthz` is liveness; `/readyz` checks PostgreSQL connectivity. The incident worker health check requires a Celery ping response through Redis. Holmes `/healthz` is liveness; `/readyz` reflects model readiness and can fail when no model is configured. OpenObserve's image has no shell-based health probe, so its endpoint is checked from the host.
 
