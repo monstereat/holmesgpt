@@ -150,6 +150,7 @@
 1. 根因诊断评分 rubric 和 20 案 live 评测已准备；尚无两名独立 reviewer 的评分与分歧裁决，继续保持 `not_scored`。
 2. 本机 API/worker/DeepSeek/受限 OpenObserve 的成功日志与 500 告警调查链路均已验证；500 测试同时核对 worker 证据、独立 OFF 审批、不可自批、审计和最终 OFF。该证据仅针对本机 demo；若改变动作所有者协议或上线前的代码版本，需要在 staging 重跑。
 3. 生产部署决策与分阶段验收见 [`examples/openobserve-aiops/PRODUCTION-READINESS.md`](examples/openobserve-aiops/PRODUCTION-READINESS.md)，其中平台、身份、密钥、网络、容量/SLO、保留策略和生产动作仍待负责人确认与单独授权。
+4. OIDC 支持将 IdP group 映射为 `admin`，首个管理员可由受控管理员组登录引导创建；但全部应用管理员不可用时，没有已实现并演练的 break-glass 恢复流程。生产上线前必须由目标环境负责人批准并演练独立恢复路径。
 
 ## 阻塞与授权门槛
 
@@ -159,6 +160,8 @@
 - 用户要求先在当前 Mac Docker Desktop/Compose 本地测试环境运行和验证；正式生产平台尚未选择。实现和本地验证不代表生产部署授权；实际启用生产流量、迁移生产数据或执行生产处置前，仍需依据具体部署包、风险和回退计划完成最终确认。
 
 ## 最近验证（2026-09-28）
+
+- 2026-09-28 生产身份恢复审计：核对 `identity.py` 的 OIDC role/group 映射、首登 upsert 和 reactivation 流程，以及 `app.py` 最后一个 active admin 禁用保护。确认映射支持 `admin`，但当所有应用管理员都不可用时，现有 OIDC reactivation 需要另一名 active admin 批准，不能闭环恢复。生产准备文档已明确首次管理员 bootstrap、双 custodians 要求及该 lockout 阻断项；未触碰数据库、凭据或运行服务。
 
 - 2026-09-28 提交 `207a75639` 远端 CI：`develop-me AIOps checks` run [36344328302](https://github.com/monstereat/holmesgpt/actions/runs/36344328302) 成功；`AIOps container build and security` run [36344328400](https://github.com/monstereat/holmesgpt/actions/runs/36344328400) 的 Holmes API、policy proxy、order-service、incident API/worker 四个构建与安全扫描 job 均成功。该证据覆盖仓库 CI，不表示生产环境已部署。
 - 2026-09-28 worker 数据库最小权限与本机恢复：隔离 PostgreSQL 角色/bootstrap/备份恢复 verifier 通过，事故服务隔离 Compose 套件 **126 passed，1 个上游弃用 warning**；本机 migration `0010` 已应用。Docker VM 曾因构建空间不足触发 PostgreSQL recovery checkpoint 异常；清理 1.642 GiB 可重建缓存和本项目一张无容器引用旧镜像后，WAL recovery 与 finalize 成功，未删除数据卷或其他项目资源。随后从 README 指定的本机私密 key 文件恢复 Holmes/worker：Holmes 与 API readiness HTTP 200，worker healthy；合成告警调查 smoke 首次尝试完成，具体结果见相邻记录。Docker VM 仍约 99% 使用率，暂停进一步大型镜像构建。
