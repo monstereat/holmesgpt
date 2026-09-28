@@ -18,6 +18,7 @@ from app import (
     _oldest_pending_task_age_slo_seconds,
     _test_users_configuration,
     _validate_metrics_configuration,
+    _validate_webhook_configuration,
     app,
     readyz,
 )
@@ -94,6 +95,24 @@ def test_metrics_token_is_required_outside_local_runtime(monkeypatch):
         _validate_metrics_configuration()
     monkeypatch.setenv("AIOPS_METRICS_TOKEN", "m" * 40)
     _validate_metrics_configuration()
+
+
+def test_webhook_tokens_require_32_bytes_outside_local_runtime(monkeypatch):
+    monkeypatch.setenv("AIOPS_ENV", "production")
+    monkeypatch.setenv("ALERT_WEBHOOK_TOKEN", "a" * 32)
+    names = (
+        "ALERT_WEBHOOK_TOKEN_PREVIOUS",
+        "ALERTMANAGER_WEBHOOK_TOKEN",
+        "ALERTMANAGER_WEBHOOK_TOKEN_PREVIOUS",
+    )
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    for name in names:
+        monkeypatch.setenv(name, "short")
+        with pytest.raises(RuntimeError, match=name):
+            _validate_webhook_configuration()
+        monkeypatch.setenv(name, "t" * 32)
+    _validate_webhook_configuration()
 
 
 def test_non_local_database_urls_require_full_tls_verification(monkeypatch):

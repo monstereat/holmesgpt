@@ -114,11 +114,26 @@ def _validate_metrics_configuration() -> None:
 def _validate_webhook_configuration() -> None:
     if os.getenv("AIOPS_ENV", "production") == "local":
         return
-    if len(os.getenv("ALERT_WEBHOOK_TOKEN", "")) < 32:
+    alert_token = os.getenv("ALERT_WEBHOOK_TOKEN", "")
+    if len(alert_token.encode("utf-8")) < 32:
         raise RuntimeError("ALERT_WEBHOOK_TOKEN must contain at least 32 bytes outside local mode")
-    alertmanager_token = os.getenv("ALERTMANAGER_WEBHOOK_TOKEN", "")
-    if alertmanager_token and len(alertmanager_token) < 32:
-        raise RuntimeError("ALERTMANAGER_WEBHOOK_TOKEN must contain at least 32 bytes when configured")
+    for name in (
+        "ALERT_WEBHOOK_TOKEN_PREVIOUS",
+        "ALERTMANAGER_WEBHOOK_TOKEN",
+        "ALERTMANAGER_WEBHOOK_TOKEN_PREVIOUS",
+    ):
+        token = os.getenv(name, "")
+        if token and len(token.encode("utf-8")) < 32:
+            raise RuntimeError(f"{name} must contain at least 32 bytes when configured")
+
+
+def _matches_webhook_token(supplied: str, *configured_tokens: str) -> bool:
+    supplied_bytes = supplied.encode("utf-8")
+    matched = False
+    for token in configured_tokens:
+        if token:
+            matched |= hmac.compare_digest(supplied_bytes, token.encode("utf-8"))
+    return matched
 
 
 def _max_pending_tasks() -> int | None:
@@ -432,14 +447,14 @@ def _reconcile_action_executions_once(database_url: str) -> None:
                            WHERE e.status IN ('dispatching', 'rollback_pending')
                              AND e.updated_at < now() - interval '5 seconds'
                              AND a.status = 'approved' AND i.resource = 'order-service'
-                           ORDER BY e.updated_at, e.approval_id LIMIT 20"""
+                           ORDER BY e.updated_at, e.approval_id LIMIT 1"""
                     )
-                    pending = cursor.fetchall()
+                    pending = cursor.fetchone()
             if not pending:
                 return
 
             owner = _order_action_client()
-            for approval_id, incident_id, execution_status, before_state, requested_by, reviewed_by, action_id, parameters in pending:
+            for approval_id, incident_id, execution_status, before_state, requested_by, reviewed_by, action_id, parameters in (pending,):
                 if (
                     not reviewed_by or reviewed_by == requested_by or not isinstance(parameters, dict)
                     or parameters.get("action") != "set-chaos-mode"
@@ -459,6 +474,8 @@ def _reconcile_action_executions_once(database_url: str) -> None:
                 expected_enabled = before_state["chaos_mode"] == "on" if is_rollback else parameters["enabled"]
                 operation_id = f"{approval_id}:rollback" if is_rollback else str(approval_id)
                 try:
+                    if is_rollback and owner.operation_result(str(approval_id), parameters["enabled"]) is None:
+                        continue
                     operation = owner.operation_result(operation_id, expected_enabled)
                     if operation is None:
                         continue
@@ -2231,8 +2248,9 @@ def execute_approval(approval_id: str, request: Request, authorization: str | No
 @app.post("/", status_code=202, include_in_schema=False)
 async def openobserve_webhook(request: Request) -> dict[str, object]:
     configured = os.getenv("ALERT_WEBHOOK_TOKEN", "")
+    previous = os.getenv("ALERT_WEBHOOK_TOKEN_PREVIOUS", "")
     supplied = request.headers.get("X-Alert-Token", "")
-    if not configured or not hmac.compare_digest(supplied, configured):
+    if not _matches_webhook_token(supplied, configured, previous):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         name, traces, summary, fingerprint = normalize_alert(
@@ -2272,8 +2290,9 @@ async def alertmanager_webhook(request: Request) -> dict[str, object]:
     configured = os.getenv("ALERTMANAGER_WEBHOOK_TOKEN", "")
     if not configured:
         raise HTTPException(status_code=404, detail="Alertmanager webhook is disabled")
+    previous = os.getenv("ALERTMANAGER_WEBHOOK_TOKEN_PREVIOUS", "")
     supplied = request.headers.get("authorization", "")
-    if not hmac.compare_digest(supplied, f"Bearer {configured}"):
+    if not _matches_webhook_token(supplied, f"Bearer {configured}", f"Bearer {previous}" if previous else ""):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         alerts = normalize_alertmanager_payload(

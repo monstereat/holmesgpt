@@ -13,6 +13,7 @@ from app import app
 
 def test_webhook_rejects_missing_or_invalid_service_token(monkeypatch):
     monkeypatch.setenv("ALERT_WEBHOOK_TOKEN", "test-token")
+    monkeypatch.setenv("ALERT_WEBHOOK_TOKEN_PREVIOUS", "previous-test-token")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     with TestClient(app) as client:
         response = client.post("/webhooks/openobserve", json={"alert_name": "order-500"})
@@ -23,6 +24,33 @@ def test_webhook_rejects_missing_or_invalid_service_token(monkeypatch):
             json={"alert_name": "order-500"},
         )
         assert response.status_code == 401
+        response = client.post(
+            "/webhooks/openobserve",
+            headers={"X-Alert-Token": "previous-test-token", "Content-Type": "application/json"},
+            content=b"[]",
+        )
+        assert response.status_code == 400
+
+
+def test_alertmanager_grace_token_and_disabled_state(monkeypatch):
+    monkeypatch.setenv("ALERTMANAGER_WEBHOOK_TOKEN_PREVIOUS", "previous-alertmanager-token")
+    monkeypatch.delenv("ALERTMANAGER_WEBHOOK_TOKEN", raising=False)
+    with TestClient(app) as client:
+        response = client.post(
+            "/webhooks/prometheus-alertmanager",
+            headers={"Authorization": "Bearer previous-alertmanager-token"},
+            json={},
+        )
+        assert response.status_code == 404
+
+    monkeypatch.setenv("ALERTMANAGER_WEBHOOK_TOKEN", "current-alertmanager-token")
+    with TestClient(app) as client:
+        response = client.post(
+            "/webhooks/prometheus-alertmanager",
+            headers={"Authorization": "Bearer previous-alertmanager-token", "Content-Type": "application/json"},
+            content=b"[]",
+        )
+        assert response.status_code == 400
 
 
 def test_webhook_rejects_malformed_payload_before_persistence(monkeypatch):

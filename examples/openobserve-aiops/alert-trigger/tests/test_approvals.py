@@ -218,9 +218,14 @@ def test_interrupted_action_execution_resumes_from_persisted_phase(monkeypatch):
             with psycopg.connect(database_url) as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        """INSERT INTO action_executions (approval_id, incident_id, status, before_state)
-                           VALUES (%s, %s, 'dispatching', %s)""",
+                        """INSERT INTO action_executions (approval_id, incident_id, status, before_state, updated_at)
+                           VALUES (%s, %s, 'dispatching', %s, now() - interval '2 minutes')""",
                         (approvals[0], incidents[0]["incident_id"], Jsonb({"resource": "order-service", "chaos_mode": "off"})),
+                    )
+                    cursor.execute(
+                        """INSERT INTO action_executions (approval_id, incident_id, status, before_state, updated_at)
+                           VALUES (%s, %s, 'rollback_pending', %s, now() - interval '1 minute')""",
+                        (approvals[1], incidents[1]["incident_id"], Jsonb({"resource": "order-service", "chaos_mode": "off"})),
                     )
 
             owner = FakeOwner()
@@ -248,6 +253,16 @@ def test_interrupted_action_execution_resumes_from_persisted_phase(monkeypatch):
                 "action": "set-chaos-mode",
                 "resource": "order-service",
                 "chaos_mode": "off",
+            }
+            _reconcile_action_executions_once(database_url)
+            with psycopg.connect(database_url) as conn:
+                assert conn.execute("SELECT status FROM action_executions WHERE approval_id = %s", (approvals[1],)).fetchone() == ("rollback_pending",)
+            owner.operations[approvals[1]] = {
+                "accepted": True,
+                "action_id": approvals[1],
+                "action": "set-chaos-mode",
+                "resource": "order-service",
+                "chaos_mode": "on",
             }
             _reconcile_action_executions_once(database_url)
             with psycopg.connect(database_url) as conn:
