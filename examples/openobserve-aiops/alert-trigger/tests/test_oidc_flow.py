@@ -1,19 +1,29 @@
 import base64
+import asyncio
 import hashlib
 import json
+import os
 import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import MagicMock
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlparse, urlsplit
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+import psycopg
+import pytest
 
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 import app as app_module
+from auth import create_session
+from migration_runner import apply_migrations
+from models import Principal
 
 
 class FakeOIDCClient:
@@ -337,3 +347,189 @@ def test_oidc_callback_verifies_signed_id_token_against_discovered_jwks(monkeypa
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_oidc_claims_sync_waits_for_disable_and_does_not_reactivate_user(monkeypatch):
+    database_url = os.getenv("AIOPS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("AIOPS_TEST_DATABASE_URL is not set")
+    parsed_database_url = urlparse(database_url)
+    if parsed_database_url.hostname not in {"postgres", "host.docker.internal", "127.0.0.1", "localhost"}:
+        pytest.fail("integration tests only permit local Docker PostgreSQL hosts")
+    if parsed_database_url.path != "/aiops_test":
+        pytest.fail("OIDC lifecycle concurrency tests only permit the isolated aiops_test database")
+
+    configure_oidc(monkeypatch)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("SESSION_SIGNING_KEY", "local-test-session-signing-key-123456")
+    apply_migrations(database_url)
+
+    user_id = str(uuid.uuid4())
+    admin_id = str(uuid.uuid4())
+    subject = f"subject-{user_id}"
+    issuer = "https://id.example.com/tenant"
+    callback_state = f"lifecycle-state-{uuid.uuid4()}"
+
+    class ClaimsClient(FakeOIDCClient):
+        async def parse_id_token(self, token, *, nonce):
+            assert token["id_token"] == "signed-id-token"
+            assert nonce == "saved-nonce"
+            return {
+                "iss": self.issuer,
+                "sub": subject,
+                "preferred_username": "synced-operator",
+                "groups": ["aiops-operators"],
+            }
+
+    target_username = f"lifecycle-target-{user_id[:8]}"
+    admin_username = f"lifecycle-admin-{admin_id[:8]}"
+    client = ClaimsClient(issuer)
+    monkeypatch.setattr(app_module, "_oidc_client", lambda _settings: client)
+
+    async def exchange(_settings, _metadata, _code, _verifier):
+        return {"id_token": "signed-id-token"}
+
+    monkeypatch.setattr(app_module, "_exchange_oidc_code", exchange)
+
+    with psycopg.connect(database_url) as conn:
+        conn.execute(
+            """INSERT INTO users (id, username, role, resource_scopes, oidc_issuer, oidc_subject, active)
+               VALUES (%s, %s, 'viewer', %s, %s, %s, TRUE)""",
+            (user_id, target_username, ["legacy-service"], issuer, subject),
+        )
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, role, resource_scopes) VALUES (%s, %s, %s, 'admin', %s)",
+            (admin_id, admin_username, "not-used-by-signed-session", ["order-service"]),
+        )
+        conn.execute(
+            """INSERT INTO oidc_login_transactions (state_hash, code_verifier, nonce, expires_at)
+               VALUES (%s, %s, %s, now() + interval '5 minutes')""",
+            (hashlib.sha256(callback_state.encode()).hexdigest(), "unused-test-verifier", "saved-nonce"),
+        )
+
+    admin_token = create_session(
+        Principal(admin_id, admin_username, "admin", ("order-service",), 0),
+        os.environ["SESSION_SIGNING_KEY"],
+    )
+    claims_sync_has_lock = threading.Event()
+    disable_waiting = threading.Event()
+    release_claims_sync = threading.Event()
+    real_connect_database = app_module.connect_database
+
+    class CursorProxy:
+        def __init__(self, cursor, operation):
+            self.cursor = cursor
+            self.operation = operation
+
+        def __enter__(self):
+            self.cursor.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.cursor.__exit__(*args)
+
+        def execute(self, statement, params=None):
+            is_lifecycle_lock = (
+                statement.strip().upper() == "SELECT PG_ADVISORY_XACT_LOCK(%S)"
+                and params == (app_module.USER_LIFECYCLE_LOCK,)
+            )
+            if is_lifecycle_lock and self.operation == "disable":
+                disable_waiting.set()
+            result = self.cursor.execute(statement, params)
+            if is_lifecycle_lock and self.operation == "claims_sync":
+                claims_sync_has_lock.set()
+                if not release_claims_sync.wait(timeout=10):
+                    raise TimeoutError("test did not release the lifecycle lock holder")
+            return result
+
+        def __getattr__(self, name):
+            return getattr(self.cursor, name)
+
+    class ConnectionProxy:
+        def __init__(self, connection, operation):
+            self.connection = connection
+            self.operation = operation
+
+        def __enter__(self):
+            self.connection.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.connection.__exit__(*args)
+
+        def cursor(self, *args, **kwargs):
+            return CursorProxy(self.connection.cursor(*args, **kwargs), self.operation)
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
+    operation_context = threading.local()
+
+    def instrumented_connect_database(*args, **kwargs):
+        connection = real_connect_database(*args, **kwargs)
+        return ConnectionProxy(connection, getattr(operation_context, "name", "other"))
+
+    monkeypatch.setattr(app_module, "connect_database", instrumented_connect_database)
+
+    def request_for(path, query="", cookie_name=app_module.SESSION_COOKIE_NAME, token=admin_token):
+        return Request({
+            "type": "http",
+            "http_version": "1.1",
+            "method": "GET" if path == "/auth/oidc/callback" else "POST",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": query.encode(),
+            "headers": [(b"cookie", f"{cookie_name}={token}".encode())],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+        })
+
+    def request_disable():
+        operation_context.name = "disable"
+        return app_module.disable_user(
+            user_id,
+            request_for(f"/api/users/{user_id}/disable"),
+            authorization=None,
+        )
+
+    def request_callback():
+        operation_context.name = "claims_sync"
+        request = request_for(
+            "/auth/oidc/callback",
+            urlencode({"code": "authorization-code", "state": callback_state}),
+            cookie_name=app_module.OIDC_STATE_COOKIE_NAME,
+            token=callback_state,
+        )
+        return asyncio.run(app_module.oidc_callback(request))
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            callback_future = executor.submit(request_callback)
+            assert claims_sync_has_lock.wait(timeout=5), "claims sync did not acquire the lifecycle lock"
+            disable_future = executor.submit(request_disable)
+            assert disable_waiting.wait(timeout=5), "disable did not reach the lifecycle lock"
+            assert not disable_future.done(), "disable bypassed the lifecycle lock"
+            release_claims_sync.set()
+            callback_response = callback_future.result(timeout=10)
+            disable_result = disable_future.result(timeout=10)
+
+        assert callback_response.status_code == 303
+        assert disable_result["status"] == "disabled"
+
+        with psycopg.connect(database_url) as conn:
+            user = conn.execute(
+                "SELECT username, role, resource_scopes, active, session_generation FROM users WHERE id = %s",
+                (user_id,),
+            ).fetchone()
+            assert user == ("synced-operator", "operator", ["order-service"], False, 1)
+    finally:
+        release_claims_sync.set()
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM oidc_login_transactions WHERE state_hash = %s",
+                    (hashlib.sha256(callback_state.encode()).hexdigest(),),
+                )
+                cursor.execute("DELETE FROM audit_events WHERE actor_id = ANY(%s::uuid[])", ([user_id, admin_id],))
+                cursor.execute("DELETE FROM users WHERE id = ANY(%s::uuid[])", ([user_id, admin_id],))
