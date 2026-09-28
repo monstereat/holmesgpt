@@ -23,7 +23,7 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
                   has_table_privilege(current_user, 'schema_migrations', 'INSERT')"""
     ).fetchone()
     assert current_user == "aiops_runtime", "Incident API is not using the runtime role"
-    assert migration_count == 12, f"expected 12 migrations, found {migration_count}"
+    assert migration_count == 13, f"expected 13 migrations, found {migration_count}"
     assert not can_create and not can_update_audit and not can_update_ledger and not can_insert_ledger
     identity_columns = conn.execute(
         "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('session_generation', 'reactivation_requested_at')"
@@ -32,17 +32,23 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
     assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')").fetchone()[0]
     assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')").fetchone()[0]
     assert conn.execute("SELECT has_table_privilege(current_user, 'users', 'UPDATE')").fetchone()[0]
+    assert not conn.execute("SELECT has_table_privilege(current_user, 'break_glass_recovery_requests', 'SELECT')").fetchone()[0]
+    assert not conn.execute("SELECT has_sequence_privilege(current_user, 'break_glass_recovery_requests_id_seq', 'USAGE')").fetchone()[0]
     assert conn.execute("SELECT has_table_privilege(current_user, 'oidc_login_transactions', 'DELETE')").fetchone()[0]
     assert conn.execute("SELECT has_table_privilege(current_user, 'revoked_sessions', 'DELETE')").fetchone()[0]
-    assert not conn.execute("SELECT has_function_privilege(current_user, 'public.break_glass_reactivate_admin(uuid,text,text,text,boolean)', 'EXECUTE')").fetchone()[0]
     break_glass_privileges = conn.execute(
-        """SELECT has_function_privilege('aiops_break_glass', 'public.break_glass_reactivate_admin(uuid,text,text,text,boolean)', 'EXECUTE'),
+        """SELECT NOT (SELECT rolcanlogin FROM pg_roles WHERE rolname = 'aiops_break_glass'),
+                  has_function_privilege('aiops_break_glass', 'public.request_break_glass_admin_recovery(uuid,text)', 'EXECUTE'),
+                  has_function_privilege('aiops_break_glass', 'public.approve_break_glass_admin_recovery(bigint,boolean)', 'EXECUTE'),
+                  NOT has_function_privilege('aiops_break_glass', 'public.break_glass_reactivate_admin(uuid,text,text,text,boolean)', 'EXECUTE'),
                   has_schema_privilege('aiops_break_glass', 'public', 'USAGE'),
                   has_table_privilege('aiops_break_glass', 'users', 'SELECT'),
                   has_table_privilege('aiops_break_glass', 'users', 'UPDATE'),
-                  has_table_privilege('aiops_break_glass', 'audit_events', 'INSERT')"""
+                  has_table_privilege('aiops_break_glass', 'audit_events', 'INSERT'),
+                  has_table_privilege('aiops_break_glass', 'break_glass_recovery_requests', 'SELECT')"""
     ).fetchone()
-    assert break_glass_privileges == (True, True, False, False, False), "break-glass DB identity grants are too broad or incomplete"
+    assert break_glass_privileges == (True, True, True, True, True, False, False, False, False), "break-glass role grants are too broad or incomplete"
+    assert conn.execute("SELECT to_regprocedure('public.break_glass_reactivate_admin(uuid,text,text,text,boolean)') IS NOT NULL").fetchone()[0]
     for table in ("incidents", "tasks", "outbox_events", "approvals", "incident_retrospectives", "users", "audit_events", "schema_migrations"):
         assert not conn.execute("SELECT has_table_privilege(current_user, %s, 'DELETE')", (table,)).fetchone()[0], f"runtime can delete from {table}"
 
@@ -99,4 +105,4 @@ if [[ "$migrator_user" != "aiops_migrator" ]]; then
     exit 1
 fi
 
-echo "Compose PostgreSQL role verification passed: 12 migrations; API=aiops_runtime, worker=aiops_worker, migration=aiops_migrator, break-glass=function-only."
+echo "Compose PostgreSQL role verification passed: 13 migrations; API=aiops_runtime, worker=aiops_worker, migration=aiops_migrator, break-glass=two separately authenticated custodian functions."

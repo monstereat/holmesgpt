@@ -181,8 +181,15 @@ fi
 
 restored_migrations="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_restore_test -c 'SELECT count(*) FROM schema_migrations')"
-if [[ "$restored_migrations" != "12" ]]; then
-    echo "restored database contained $restored_migrations migration records instead of 12" >&2
+if [[ "$restored_migrations" != "13" ]]; then
+    echo "restored database contained $restored_migrations migration records instead of 13" >&2
+    exit 1
+fi
+
+restored_recovery_schema="$(docker exec "$container_name" psql -At -U postgres \
+    -d aiops_restore_test -c "SELECT to_regclass('public.break_glass_recovery_requests') IS NOT NULL AND to_regprocedure('public.request_break_glass_admin_recovery(uuid,text)') IS NOT NULL AND to_regprocedure('public.approve_break_glass_admin_recovery(bigint,boolean)') IS NOT NULL")"
+if [[ "$restored_recovery_schema" != "t" ]]; then
+    echo "restored database did not contain two-person break-glass recovery schema and functions" >&2
     exit 1
 fi
 
@@ -216,8 +223,8 @@ fi
 
 encrypted_migrations="$(docker exec "$container_name" psql -At -U postgres \
     -d aiops_encrypted_restore_test -c 'SELECT count(*) FROM schema_migrations')"
-if [[ "$encrypted_migrations" != "12" ]]; then
-    echo "encrypted backup restore contained $encrypted_migrations migration records instead of 12" >&2
+if [[ "$encrypted_migrations" != "13" ]]; then
+    echo "encrypted backup restore contained $encrypted_migrations migration records instead of 13" >&2
     exit 1
 fi
 
@@ -228,4 +235,4 @@ if [[ "$encrypted_identity_columns" != $'reactivation_requested_at\nsession_gene
     exit 1
 fi
 
-echo "PostgreSQL backup verification passed: plaintext and AES-256-GCM encrypted archives both restored 12 migrations, user reactivation columns, and a synthetic incident; overwrite protection held"
+echo "PostgreSQL backup verification passed: plaintext and AES-256-GCM encrypted archives both restored 13 migrations, two-person admin recovery functions, user reactivation columns, and a synthetic incident; overwrite protection held"

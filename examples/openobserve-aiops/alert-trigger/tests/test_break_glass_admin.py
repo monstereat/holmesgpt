@@ -49,46 +49,52 @@ class FakeConnection:
         return self.cursor_instance
 
 
-def test_recovery_calls_restricted_database_function_as_break_glass_role():
-    connection = FakeConnection([("aiops_break_glass",), (37,)])
+def test_request_uses_authenticated_database_identity_and_persisted_request_function():
+    connection = FakeConnection([("operator-alice", True), (37,)])
 
-    result = break_glass_admin.recover_admin_lockout(
+    result = break_glass_admin.request_admin_recovery(
         connection,
         UUID("00000000-0000-0000-0000-000000000123"),
-        "operator-alice",
-        "approver-bob",
         "INC-2026-123",
     )
 
-    assert result == ("00000000-0000-0000-0000-000000000123", 37)
+    assert result == (37, "operator-alice")
+    assert connection.transaction_committed is True
+    assert connection.cursor_instance.statements[0] == (
+        "SELECT session_user::text, pg_has_role(session_user, 'aiops_break_glass', 'member')",
+        None,
+    )
+    statement, params = connection.cursor_instance.statements[-1]
+    assert "public.request_break_glass_admin_recovery" in statement
+    assert params == ("00000000-0000-0000-0000-000000000123", "INC-2026-123")
+
+
+def test_approval_uses_separate_authenticated_session_and_records_audit_id():
+    connection = FakeConnection([("approver-bob", True), ("00000000-0000-0000-0000-000000000123", 41)])
+
+    result = break_glass_admin.approve_admin_recovery(connection, 37, True)
+
+    assert result == ("00000000-0000-0000-0000-000000000123", 41, "approver-bob")
     assert connection.transaction_committed is True
     statement, params = connection.cursor_instance.statements[-1]
-    assert "public.break_glass_reactivate_admin" in statement
-    assert params == (
-        "00000000-0000-0000-0000-000000000123",
-        "operator-alice",
-        "approver-bob",
-        "INC-2026-123",
-        True,
-    )
+    assert "public.approve_break_glass_admin_recovery" in statement
+    assert params == (37, True)
 
 
-def test_recovery_refuses_any_identity_other_than_break_glass_role():
-    connection = FakeConnection([("aiops_runtime",)])
+def test_recovery_refuses_database_identity_without_custodian_membership():
+    connection = FakeConnection([("unapproved-user", False)])
 
-    with pytest.raises(ValueError, match="aiops_break_glass database identity"):
-        break_glass_admin.recover_admin_lockout(
+    with pytest.raises(ValueError, match="not an approved break-glass custodian"):
+        break_glass_admin.request_admin_recovery(
             connection,
             UUID("00000000-0000-0000-0000-000000000123"),
-            "operator-alice",
-            "approver-bob",
             "INC-2026-123",
         )
 
     assert connection.transaction_committed is False
 
 
-def test_recovery_cli_requires_separate_people_and_explicit_confirmations(monkeypatch, capsys):
+def test_cli_requires_out_of_band_idp_check_for_approval(monkeypatch, capsys):
     monkeypatch.setenv("AIOPS_BREAK_GLASS_ENABLED", "true")
     monkeypatch.setenv("AIOPS_BREAK_GLASS_DATABASE_URL", "postgresql://not-a-real-dsn")
     monkeypatch.setattr(
@@ -97,20 +103,7 @@ def test_recovery_cli_requires_separate_people_and_explicit_confirmations(monkey
         lambda *_args, **_kwargs: pytest.fail("database must not be contacted"),
     )
 
-    result = break_glass_admin.main(
-        [
-            "--user-id",
-            "00000000-0000-0000-0000-000000000123",
-            "--operator-id",
-            "operator-alice",
-            "--approver-id",
-            "operator-alice",
-            "--change-reference",
-            "INC-2026-123",
-            "--confirm-zero-active-admins",
-            "--confirm-idp-admin-membership",
-        ]
-    )
+    result = break_glass_admin.main(["approve", "--request-id", "37"])
 
     assert result == 2
-    assert "must be different people" in capsys.readouterr().err
+    assert "independently verify target IdP admin-group membership" in capsys.readouterr().err

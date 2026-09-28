@@ -14,9 +14,11 @@ SELECT 'CREATE ROLE aiops_worker LOGIN'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aiops_worker')
 \gexec
 
-SELECT 'CREATE ROLE aiops_break_glass LOGIN'
+SELECT 'CREATE ROLE aiops_break_glass NOLOGIN'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aiops_break_glass')
 \gexec
+
+ALTER ROLE aiops_break_glass NOLOGIN;
 
 SELECT format('GRANT CONNECT ON DATABASE %I TO aiops_runtime, aiops_migrator, aiops_worker, aiops_break_glass', current_database())
 \gexec
@@ -46,6 +48,12 @@ BEGIN
     END IF;
     IF to_regclass('public.revoked_sessions') IS NOT NULL THEN
         EXECUTE 'GRANT DELETE ON TABLE public.revoked_sessions TO aiops_runtime';
+    END IF;
+    IF to_regclass('public.break_glass_recovery_requests') IS NOT NULL THEN
+        EXECUTE 'REVOKE ALL ON TABLE public.break_glass_recovery_requests FROM aiops_runtime, aiops_worker, aiops_break_glass, PUBLIC';
+    END IF;
+    IF to_regclass('public.break_glass_recovery_requests_id_seq') IS NOT NULL THEN
+        EXECUTE 'REVOKE ALL ON SEQUENCE public.break_glass_recovery_requests_id_seq FROM aiops_runtime, aiops_worker, aiops_break_glass, PUBLIC';
     END IF;
 
 END

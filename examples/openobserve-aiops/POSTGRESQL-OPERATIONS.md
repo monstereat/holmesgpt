@@ -17,20 +17,27 @@ command at its credentials or volume.
 - A one-shot migration job uses the separate migration identity. It must finish
   successfully before application replicas start. The migration runner takes a
   PostgreSQL advisory transaction lock and records each applied migration.
-- The current migrations are numbered `0001` through `0012`. They run in
+- The current migrations are numbered `0001` through `0013`. They run in
   transactions. There are no automatic down migrations: do not delete migration
   records or manually reverse DDL to make an older binary start.
 
-Migration `0012_break_glass_admin_recovery` adds a `SECURITY DEFINER` function
-owned by `aiops_migrator` for the all-admins-disabled case. The distinct
-`aiops_break_glass` login receives only schema usage and function execution; it
-cannot read or directly mutate application tables. The function takes an
-exclusive lock on `users`, requires zero active admins and two distinct named
-custodians, then reactivates only an existing disabled admin, bumps
-`session_generation`, and inserts an audit event in one transaction. The
-operator must separately verify current IdP admin-group membership. Rehearse
-the command and managed-identity mapping in staging; do not test it against
-production data.
+Migration `0012_break_glass_admin_recovery` introduced the recovery function;
+migration `0013_two_person_admin_recovery` replaces its shared-login invocation
+with separately authenticated request and approval functions. `aiops_break_glass`
+is a `NOLOGIN` group with only schema usage and function execution. The request
+function records `session_user` as the requester; approval requires a different
+authenticated login in that custodian group and records both database
+identities in the audit event. It rejects an active administrator, a changed
+target, an expired request, and missing out-of-band IdP membership attestation.
+The approval step rechecks the lockout and target under an exclusive lock, then
+reactivates the account, increments `session_generation`, completes the request,
+and appends the audit event in one transaction. Rehearse both separately
+authenticated stages and managed-identity mapping in staging; do not test it
+against production data.
+When upgrading from the earlier shared `aiops_break_glass LOGIN` role, a database
+administrator must rerun `postgresql-roles.psql` before migration 0013. The
+migration fails closed if that role can still log in; the migration identity
+cannot disable database roles itself.
 
 The repository role template is [`postgresql-roles.psql`](postgresql-roles.psql).
 It is for a fresh database and does not transfer ownership of an existing
@@ -61,7 +68,7 @@ The bootstrap ownership transfer is intentionally specific to the local
 
 On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; the Compose role verifier confirmed those live service identities, denied API DDL/migration-ledger/audit mutation, and authenticated a local operator workbench read. A direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. After loading the documented mode-0600 local DeepSeek key file, Holmes and the Celery worker became healthy. A synthetic webhook then produced one incident/task; the worker completed the first attempt, persisted the matching Trace ID and OpenObserve query tool in the task result, and appended `task.completed` to audit history. Counts are 12 incidents, 12 tasks, 54 audit rows, and 12 outbox rows. A custom-format dump of this current local database was encrypted and restored into a separate isolated PostgreSQL 16.6 container; all 10 migration records, business row counts, and the completed smoke-task evidence/audit matched. The temporary archive, certificate, and restore container were removed after verification. This is still test-only evidence.
 
-Later on 2026-09-28 migration `0011_restrict_runtime_delete` was applied transactionally to the same local test database after the API runtime role was found to have unnecessary DELETE on business tables. Migration `0012_break_glass_admin_recovery` was subsequently applied to the persistent local test database, and the migration service image was rebuilt to include it. The live Compose role verifier confirms 12 migration records and the restricted API, worker, and break-glass role behavior; the local readiness smoke also passed. The `0012` implementation and role/backup verifiers were exercised against isolated PostgreSQL 16 containers. The persistent test data counts remain 12 incidents, 12 tasks, 54 audit events, and 12 outbox rows. Provider key custody, off-host retention, target-platform identity mapping, and managed service restore remain untested.
+Later on 2026-09-28 migration `0011_restrict_runtime_delete` was applied transactionally to the same local test database after the API runtime role was found to have unnecessary DELETE on business tables. Migrations `0012` and `0013` add function-only, two-custodian administrator recovery. The live Compose role verifier confirms 13 migration records and tests the request/approval path with distinct database logins, the disabled shared-role identity, and restricted API/worker grants. The PostgreSQL role and backup verifiers exercise the current source against isolated PostgreSQL 16. The persistent test data counts remain 12 incidents, 12 tasks, 54 audit events, and 12 outbox rows. Provider key custody, off-host retention, target-platform identity mapping, and managed service restore remain untested.
 
 ## Release migration sequence
 
