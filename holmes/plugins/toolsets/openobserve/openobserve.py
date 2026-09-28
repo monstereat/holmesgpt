@@ -322,6 +322,71 @@ class OpenObserveSearchLogs(_BaseOpenObserveTool):
         ):
             raise ValueError("Evaluation query must filter the exact run and case IDs with AND")
 
+    @staticmethod
+    def _request_header(context: ToolInvokeContext | None, name: str) -> Any:
+        request_context = getattr(context, "request_context", None) or {}
+        headers = request_context.get("headers") or {}
+        return next((value for key, value in headers.items() if str(key).lower() == name), None)
+
+    @classmethod
+    def apply_task_scope(
+        cls,
+        sql: str,
+        context: ToolInvokeContext | None,
+        start_time: int,
+        end_time: int,
+    ) -> tuple[str, int, int]:
+        # Evaluation searches have a separate exact run/case constraint.
+        if cls._request_header(context, "x-aiops-evaluation-run-id") is not None or cls._request_header(
+            context, "x-aiops-evaluation-case-id"
+        ) is not None:
+            return sql, start_time, end_time
+
+        raw_traces = cls._request_header(context, "x-aiops-trace-ids")
+        raw_start = cls._request_header(context, "x-aiops-search-window-start")
+        raw_end = cls._request_header(context, "x-aiops-search-window-end")
+        if raw_traces is None and raw_start is None and raw_end is None:
+            return sql, start_time, end_time  # Preserve generic Holmes API calls without incident task scope.
+        if not isinstance(raw_traces, str):
+            if raw_start is None and raw_end is None:
+                raise ValueError("Trusted task trace scope is missing")
+            raw_traces = "none"
+        trace_ids = [] if raw_traces == "none" else raw_traces.split(",")
+        if len(trace_ids) > 100 or any(not re.fullmatch(r"[a-f0-9]{32}", trace_id) for trace_id in trace_ids):
+            raise ValueError("Trusted task trace scope is invalid")
+
+        if (raw_start is None) != (raw_end is None):
+            raise ValueError("Trusted task time scope is incomplete")
+        if raw_start is not None:
+            try:
+                scope_start, scope_end = int(raw_start), int(raw_end)
+            except (TypeError, ValueError):
+                raise ValueError("Trusted task time scope is invalid") from None
+            if scope_start <= 0 or scope_end <= scope_start:
+                raise ValueError("Trusted task time scope is invalid")
+            if start_time < scope_start or end_time > scope_end:
+                raise ValueError("Search time range exceeds the trusted task window")
+        elif not trace_ids:
+            raise ValueError("A trusted task time window is required when no alert trace is available")
+
+        if trace_ids:
+            where_match = re.search(r"\bwhere\b", sql, re.IGNORECASE)
+            if where_match:
+                suffix_match = re.search(r"\b(group\s+by|order\s+by|limit)\b", sql[where_match.end():], re.IGNORECASE)
+                predicate_end = where_match.end() + suffix_match.start() if suffix_match else len(sql)
+                predicate = sql[where_match.end():predicate_end].strip()
+                if not predicate or re.search(r"\bor\b", predicate, re.IGNORECASE):
+                    raise ValueError("Task-scoped search cannot contain an empty or OR predicate")
+                suffix = sql[predicate_end:]
+                sql = sql[:where_match.start()] + "WHERE (" + predicate + ") AND "
+            else:
+                suffix_match = re.search(r"\b(group\s+by|order\s+by|limit)\b", sql, re.IGNORECASE)
+                predicate_end = suffix_match.start() if suffix_match else len(sql)
+                suffix = sql[predicate_end:]
+                sql = sql[:predicate_end] + "WHERE "
+            sql += "trace_id IN (" + ", ".join(f"'{trace_id}'" for trace_id in trace_ids) + ")" + suffix
+        return sql, start_time, end_time
+
     def _invoke(self, params: dict, context: ToolInvokeContext) -> StructuredToolResult:
         try:
             sql = self.validate_sql(str(params["sql"]))
@@ -331,6 +396,7 @@ class OpenObserveSearchLogs(_BaseOpenObserveTool):
             end_time = int(params["end_time"])
             if start_time <= 0 or end_time <= 0 or end_time <= start_time:
                 raise ValueError("end_time must be greater than start_time")
+            sql, start_time, end_time = self.apply_task_scope(sql, context, start_time, end_time)
             if end_time - start_time > self._toolset.openobserve_config.max_window_seconds * 1_000_000:
                 raise ValueError("Search time range exceeds the configured limit")
             requested_size = int(params.get("size") or 50)
@@ -369,10 +435,11 @@ class OpenObserveSearchLogs(_BaseOpenObserveTool):
                     "end_time": end_time,
                 },
             }
+            result_params = {**params, "sql": sql, "start_time": start_time, "end_time": end_time}
             return StructuredToolResult(
                 status=StructuredToolResultStatus.SUCCESS,
                 data=result,
-                params=params,
+                params=result_params,
             )
         except Exception as exc:
             return self._error(params, "log search", exc)

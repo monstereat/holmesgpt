@@ -25,15 +25,16 @@
 
 ### R02：Holmes 只读调查和可核验证据
 
-- 状态：**代理边界已实现；live 模型调查仍待 DeepSeek API Key**。
+- 状态：**代理边界已实现；本机 DeepSeek live 合成调查已有证据检索结果；RCA 质量仍未评分**。
 - 范围：调用现有 Holmes 调查能力，限制 OpenObserve 只读查询范围，保存结论、时间窗口、Trace 和证据来源；无证据结论标作假设。
-- 验收：代理 11 项安全测试通过；Holmes 无法直连 OpenObserve；原生 Toolset 经代理成功发现 allowlist 流并查询实际日志。完整目标还需提供 live Holmes 模型调用、真实告警与证据保存，不能以代理/health/mock 替代。
+- 验收：代理安全测试、本机 Holmes→OpenObserve 合成 live 调查和 20 案 exact evidence 检索结果已有路线图证据。RCA 质量必须经独立人工盲评与分歧裁决；已有 live 合成检索结果不证明诊断准确率，也不替代当前源码恢复测试或生产验收。
 
 ### R03：本机事故工作台和处理闭环
 
-- 状态：**已实现；持久复盘 API 和工作台表单已部署。完整浏览器登录与审批手工走查待记录**。
+- 状态：**核心界面与 API 已实现；状态/严重级别/指派人/全文筛选和列表 keyset 分页源码已补齐，本地登录支持从配置身份切换并自动填充凭据；事故新增 service resource scope 和 migration 0014，已应用到获授权的本机测试库；工作台显示当前身份服务范围，身份映射管理按全局 admin 角色授权；OIDC 登录事务已有跨副本容量上限；详情审计时间线改为最近 50 条 + 按资源授权的 keyset 分页，并新增 migration 0015 索引（尚未应用到本机测试库）；当前权限、登录上限及时间线代码均未功能验证，PostgreSQL verifier 虽按 migration 文件动态计数但未执行；按用户要求暂停自动化与浏览器验证，完整走查待恢复后记录**。
 - 范围：在现有 demo 前端呈现事故、任务状态、重试、Trace、结论、证据、审批、执行结果、时间线和复盘；approver/admin 能持久化复盘草稿和审核状态。
 - 验收：浏览器从演示故障追到告警、任务和可核验证据；授权操作清楚受角色限制。
+- 新增 service scope 约定：Alertmanager 使用 alert `service` label，OpenObserve 使用顶层 `service`，小写服务标识映射 OIDC `resource_scopes`；生产 webhook 缺少标识时拒绝，本机 local mode 才回退 `order-service`。服务 scope 不代表 tenant isolation。Migration `0014_incident_resource_scope.sql` 已应用到本机测试库，对应 API/worker 已重建并更新，但功能与 verifier 尚未验证。
 
 ### R04：隔离测试处置、执行验证和恢复
 
@@ -44,13 +45,13 @@
 
 ### R05：发布/Runbook 上下文与 20 例评测
 
-- 状态：**20 例 mock 和本地发布/Runbook fixture 已验证；live 评测待模型凭据**。
+- 状态：**20 例 mock/live 检索评测材料已有；盲评/比较 CLI 已有，保留分歧与输入指纹的第三方裁决汇总入口已编码但未验证；独立人工 RCA 盲评和评分仍待完成**。
 - 范围：回放发布事件和 Runbook fixture；把 20 个已知根因样本接入评测，生成机器可读报告。
-- 验收：事故/任务/Trace/来源可互查；报告区分合成、mock、live；统计证据引用、诊断和误处置建议，不虚构准确率或性能。
+- 验收：事故/任务/Trace/来源可互查；报告区分合成、mock、live；检索覆盖有机器报告，诊断评分必须由两名独立评审盲评并裁决，不以检索命中率替代 RCA 质量。
 
 ### R06：本机 Compose 运维及正式环境迁移准备
 
-- 状态：**本机 Compose、恢复演练和部署文档已完成；生产目标待后续确认**。
+- 状态：**本机 Compose、恢复演练和平台无关的生产准备文档已完成；并新增逐服务流量准入矩阵。Alertmanager receiver/template（含 per-alert 与 common annotation 解析、100 条显式上限）、synthetic v4 payload 和独立 staging 验收清单，HTTPS 私网 Prometheus scrape 示例、流式 webhook body 上限及 webhook 4xx/5xx、OIDC 容量拒绝告警已写入源码但暂停验证；OIDC 登录事务生产上限需 owner 通过 `AIOPS_OIDC_MAX_PENDING_LOGINS` 配置，本地 OIDC 默认值为 500；事故审计时间线 keyset 分页及 migration 0015 源码已增加但迁移未应用、功能未验证；生产目标待后续确认**。
 - 范围：本机启动、健康检查、数据卷、运行时配置、数据备份/恢复和演示流程；文档列明正式迁移前待确认的域名/TLS、密钥管理、身份、网络、容量/SLO、保留合规、CI/CD 与外部集成。
 - 验收：本机测试环境可重复启动、恢复和演示；文档不声称正式集成已实现或验证。
 - 禁止范围：本目标不部署正式环境、不迁移正式数据、不执行真实生产动作。
@@ -59,8 +60,8 @@
 
 - 正式部署平台和身份提供方、租户/RBAC 模型、SLO、数据保留与合规要求。
 - 正式环境逐项允许的处置动作、动作拥有方授权接口、审批角色和回退方案。
-- Git/CI、Runbook 和是否接 Keep 的正式集成目标。
-- 用户在本机配置 DeepSeek API Key，以运行真实 Holmes 调查和 live 评测。
+- Git/CI、Runbook、Alertmanager 实例和是否接 Keep 的目标环境验收。
+- 当前 latest live report 的两份盲评打分与分歧裁决；RCA 诊断质量保持 `not_scored` 直到完成。
 - 正式环境如需原生 OpenObserve RBAC，需选择支持 RBAC 的发行版；当前本机 OSS 使用网络隔离的策略代理。
 
 ## 依赖关系

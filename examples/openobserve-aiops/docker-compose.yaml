@@ -272,10 +272,11 @@ services:
       # Optional local CI release webhook authentication. Never commit a real secret.
       RELEASE_WEBHOOK_SECRET: ${RELEASE_WEBHOOK_SECRET:-}
       ORDER_ACTION_TOKEN: ${ORDER_ACTION_TOKEN:?Export ORDER_ACTION_TOKEN before starting the local demo}
+      ORDER_ACTION_STATE_PATH: /var/lib/order-service/test-action-state.json
       OTEL_SERVICE_NAME: order-service
       RELEASE_VERSION: ${RELEASE_VERSION:-v1.0.0}
-    ports:
-      - "127.0.0.1:8080:8080"
+    volumes:
+      - order-action-data:/var/lib/order-service
     networks:
       - app
       - telemetry-write
@@ -295,6 +296,7 @@ services:
     command: ["python", "migrate.py"]
     environment:
       AIOPS_ENV: local
+      MIGRATION_DATABASE_ROLE: aiops_migrator
       MIGRATION_DATABASE_URL: postgresql://aiops_migrator:${AIOPS_DB_MIGRATOR_PASSWORD:?Export AIOPS_DB_MIGRATOR_PASSWORD before starting the local demo}@postgres:5432/aiops
     networks:
       - app
@@ -322,14 +324,13 @@ services:
       AIOPS_DEMO_ACTIONS_ENABLED: "true"
       AIOPS_METRICS_TOKEN: ${AIOPS_METRICS_TOKEN:-}
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:?Export ALERT_WEBHOOK_TOKEN before starting the local demo}
+      ALERTMANAGER_WEBHOOK_TOKEN: ${ALERTMANAGER_WEBHOOK_TOKEN:-}
       DATABASE_URL: postgresql://aiops_runtime:${AIOPS_DB_RUNTIME_PASSWORD:?Export AIOPS_DB_RUNTIME_PASSWORD before starting the local demo}@postgres:5432/aiops
       REDIS_URL: redis://redis:6379/0
       SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:?Export SESSION_SIGNING_KEY before starting the local demo}
       AIOPS_TEST_USERS_JSON: ${AIOPS_TEST_USERS_JSON:?Export AIOPS_TEST_USERS_JSON with local test accounts before starting the local demo}
       ORDER_SERVICE_URL: http://order-service:8080
       ORDER_ACTION_SERVICE_TOKEN: ${ORDER_ACTION_TOKEN:?Export ORDER_ACTION_TOKEN before starting the local demo}
-    ports:
-      - "127.0.0.1:${AIOPS_API_HOST_PORT:-8081}:8081"
     networks:
       - app
       - incident-webhook
@@ -343,12 +344,48 @@ services:
       redis:
         condition: service_healthy
       order-service:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/readyz', timeout=4)"]
       interval: 10s
       timeout: 5s
       retries: 12
+
+  # Docker Desktop does not publish ports for services attached only to
+  # internal networks. Keep the app containers isolated and publish localhost
+  # ports from this fixed-target proxy instead.
+  local-ingress:
+    image: nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+    restart: unless-stopped
+    entrypoint: ["nginx"]
+    command: ["-g", "daemon off;"]
+    user: "101:101"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - ./local-ingress.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:${ORDER_SERVICE_HOST_PORT:-8080}:8080"
+      - "127.0.0.1:${AIOPS_API_HOST_PORT:-8081}:8081"
+    networks:
+      - default
+      - app
+      - incident-webhook
+    depends_on:
+      order-service:
+        condition: service_healthy
+      incident-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8081/readyz && wget -q -O /dev/null http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   incident-worker:
     build:
@@ -413,9 +450,11 @@ volumes:
   oo-data:
   aiops-postgres-data:
   aiops-redis-data:
+  order-action-data:
 
 networks:
   app:
+    internal: true
   observe-ui:
   telemetry-write:
     internal: true

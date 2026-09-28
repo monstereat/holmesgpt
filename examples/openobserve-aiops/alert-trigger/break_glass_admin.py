@@ -9,6 +9,7 @@ from uuid import UUID
 
 import psycopg
 
+from db_config import connect_database
 
 def _authorized_session(connection: psycopg.Connection) -> str:
     with connection.cursor() as cursor:
@@ -83,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        with psycopg.connect(dsn) as connection:
+        with connect_database(dsn) as connection:
             if args.command == "request":
                 request_id, identity = request_admin_recovery(connection, args.user_id, args.change_reference)
                 print(f"Recovery request {request_id} recorded for disabled admin {args.user_id} by {identity}.")

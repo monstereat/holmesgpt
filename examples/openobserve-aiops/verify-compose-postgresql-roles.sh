@@ -3,9 +3,10 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$repo_dir/../.."
-compose=(docker compose -f "$repo_dir/docker-compose.yaml")
+compose=("$repo_dir/compose-local.sh")
+expected_migrations=$(find "$repo_dir/alert-trigger/migrations" -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')
 
-"${compose[@]}" exec -T incident-api python - <<'PY'
+"${compose[@]}" exec -e AIOPS_EXPECTED_MIGRATION_COUNT="$expected_migrations" -T incident-api python - <<'PY'
 import json
 import os
 from urllib.request import Request, urlopen
@@ -23,15 +24,32 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
                   has_table_privilege(current_user, 'schema_migrations', 'INSERT')"""
     ).fetchone()
     assert current_user == "aiops_runtime", "Incident API is not using the runtime role"
-    assert migration_count == 13, f"expected 13 migrations, found {migration_count}"
+    expected_migrations = int(os.environ["AIOPS_EXPECTED_MIGRATION_COUNT"])
+    assert migration_count == expected_migrations, f"expected {expected_migrations} migrations, found {migration_count}"
     assert not can_create and not can_update_audit and not can_update_ledger and not can_insert_ledger
+    action_execution_contract = conn.execute(
+        """SELECT to_regclass('public.action_executions') IS NOT NULL
+                    AND to_regclass('public.action_executions_recovery_idx') IS NOT NULL
+                    AND to_regclass('public.tasks_pending_created_at_idx') IS NOT NULL
+                    AND to_regclass('public.tasks_metrics_status_attempt_idx') IS NOT NULL
+                    AND to_regclass('public.outbox_investigation_task_available_idx') IS NOT NULL
+                    AND has_table_privilege(current_user, 'action_executions', 'SELECT')
+                    AND has_table_privilege(current_user, 'action_executions', 'INSERT')
+                    AND has_table_privilege(current_user, 'action_executions', 'UPDATE')"""
+    ).fetchone()[0]
+    assert action_execution_contract, "action execution recovery schema, runtime grants, or metrics indexes are missing"
+    assert conn.execute("SELECT has_column_privilege(current_user, 'outbox_events', 'dead_lettered_at', 'UPDATE')").fetchone()[0], "Incident API runtime cannot dead-letter exhausted outbox events"
     identity_columns = conn.execute(
         "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('session_generation', 'reactivation_requested_at')"
     ).fetchone()[0]
     assert identity_columns == 2, "user reactivation migration columns are missing"
     assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')").fetchone()[0]
     assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')").fetchone()[0]
-    assert conn.execute("SELECT has_table_privilege(current_user, 'users', 'UPDATE')").fetchone()[0]
+    assert not conn.execute("SELECT has_table_privilege(current_user, 'users', 'UPDATE')").fetchone()[0]
+    assert not conn.execute("SELECT has_table_privilege(current_user, 'users', 'INSERT')").fetchone()[0]
+    assert conn.execute("SELECT has_column_privilege(current_user, 'users', 'role', 'UPDATE')").fetchone()[0]
+    assert not conn.execute("SELECT has_column_privilege(current_user, 'users', 'oidc_issuer', 'UPDATE')").fetchone()[0]
+    assert not conn.execute("SELECT has_column_privilege(current_user, 'users', 'oidc_subject', 'UPDATE')").fetchone()[0]
     assert not conn.execute("SELECT has_table_privilege(current_user, 'break_glass_recovery_requests', 'SELECT')").fetchone()[0]
     assert not conn.execute("SELECT has_sequence_privilege(current_user, 'break_glass_recovery_requests_id_seq', 'USAGE')").fetchone()[0]
     assert conn.execute("SELECT has_table_privilege(current_user, 'oidc_login_transactions', 'DELETE')").fetchone()[0]
@@ -93,9 +111,20 @@ with urlopen(request, timeout=5) as response:
 print("Incident API runtime identity, denied DDL/ledger/audit mutation, and authenticated workbench read passed.")
 PY
 
+worker_dead_letter_access="$("${compose[@]}" exec -T incident-worker python -c 'import os,psycopg; conn=psycopg.connect(os.environ["WORKER_DATABASE_URL"]); print(conn.execute("SELECT has_column_privilege(current_user, %s, %s, %s)", ("outbox_events", "dead_lettered_at", "UPDATE")).fetchone()[0]); conn.close()')"
+if [[ "$worker_dead_letter_access" != "False" ]]; then
+    echo "Compose worker has unnecessary dead-letter update access" >&2
+    exit 1
+fi
+
 worker_user="$("${compose[@]}" exec -T incident-worker python -c 'import os,psycopg; conn=psycopg.connect(os.environ["WORKER_DATABASE_URL"]); print(conn.execute("SELECT current_user").fetchone()[0]); conn.close()')"
 if [[ "$worker_user" != "aiops_worker" ]]; then
     echo "Incident worker is not using the worker role" >&2
+    exit 1
+fi
+worker_action_access="$("${compose[@]}" exec -T incident-worker python -c 'import os,psycopg; conn=psycopg.connect(os.environ["WORKER_DATABASE_URL"]); print(conn.execute("SELECT NOT has_table_privilege(current_user, %s, %s) AND NOT has_table_privilege(current_user, %s, %s) AND NOT has_table_privilege(current_user, %s, %s)", ("action_executions", "SELECT", "action_executions", "INSERT", "action_executions", "UPDATE")).fetchone()[0]); conn.close()')"
+if [[ "$worker_action_access" != "True" ]]; then
+    echo "Incident worker unexpectedly has access to action execution recovery records" >&2
     exit 1
 fi
 
@@ -105,4 +134,4 @@ if [[ "$migrator_user" != "aiops_migrator" ]]; then
     exit 1
 fi
 
-echo "Compose PostgreSQL role verification passed: 13 migrations; API=aiops_runtime, worker=aiops_worker, migration=aiops_migrator, break-glass=two separately authenticated custodian functions."
+echo "Compose PostgreSQL role verification passed: $expected_migrations migrations; API=aiops_runtime, worker=aiops_worker, migration=aiops_migrator, break-glass=two separately authenticated custodian functions."

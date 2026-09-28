@@ -1,0 +1,48 @@
+{
+  "receiver": "holmes-aiops",
+  "status": "firing",
+  "notification_reason": "alerts",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "AIOpsSyntheticWebhookSmoke",
+        "cluster": "example-test-cluster",
+        "service": "order-service",
+        "severity": "warning",
+        "trace_id": "0123456789abcdef0123456789abcdef"
+      },
+      "annotations": {
+        "summary": "Synthetic Alertmanager webhook payload for integration acceptance",
+        "description": "A local synthetic warning used to verify one bounded incident intake path.",
+        "runbook_url": "https://runbooks.example.test/aiops/alertmanager-webhook",
+        "dashboard_url": "https://grafana.example.test/d/aiops-overview"
+      },
+      "startsAt": "2026-09-28T12:00:00.000Z",
+      "endsAt": "2026-09-28T12:05:00.000Z",
+      "generatorURL": "https://prometheus.example.test/graph?g0.expr=up",
+      "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "groupLabels": {
+    "alertname": "AIOpsSyntheticWebhookSmoke",
+    "cluster": "example-test-cluster",
+    "service": "order-service"
+  },
+  "commonLabels": {
+    "alertname": "AIOpsSyntheticWebhookSmoke",
+    "cluster": "example-test-cluster",
+    "service": "order-service",
+    "severity": "warning"
+  },
+  "commonAnnotations": {
+    "summary": "Synthetic Alertmanager webhook payload for integration acceptance",
+    "description": "A local synthetic warning used to verify one bounded incident intake path.",
+    "runbook_url": "https://runbooks.example.test/aiops/alertmanager-webhook",
+    "dashboard_url": "https://grafana.example.test/d/aiops-overview"
+  },
+  "externalURL": "https://alertmanager.example.test",
+  "version": "4",
+  "groupKey": "[holmes-aiops]:{alertname=\"AIOpsSyntheticWebhookSmoke\", cluster=\"example-test-cluster\", service=\"order-service\"}",
+  "truncatedAlerts": 0
+}

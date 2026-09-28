@@ -10,6 +10,8 @@ from holmes_client import HolmesClient, build_investigation_question, extract_ev
 from evaluation import has_evaluation_record
 from task_errors import PermanentTaskError, RetryableTaskError
 
+SCOPED_TEST_TASK = {"alert_name": "order-500", "trace_ids": ["a" * 32], "summary": {}}
+
 
 class FakeResponse:
     status = 200
@@ -151,6 +153,12 @@ def test_production_alert_search_window_is_server_anchored_and_proxy_bounded():
     assert "do not center a new window or extend it" in question
 
 
+def test_investigation_fails_closed_without_trace_or_alert_timestamp():
+    client = HolmesClient("http://holmes:5050", "service-key", opener=FakeOpener())
+    with pytest.raises(PermanentTaskError, match="task_scope_missing"):
+        client.investigate({"alert_name": "alert", "trace_ids": [], "summary": {}})
+
+
 def test_invalid_alert_timestamp_does_not_create_search_anchors():
     question = build_investigation_question({
         "alert_name": "order-500",
@@ -221,6 +229,35 @@ def test_find_trace_uses_the_generated_sql_and_must_match_the_alert_trace_id():
         extract_evidence([call], expected_trace_ids=[])
 
 
+def test_search_evidence_rejects_out_of_scope_query_or_rows():
+    trace_id = "a" * 32
+    window = {"search_window_start_unix_us": 100, "search_window_end_unix_us": 200}
+    call = {
+        "tool_name": "openobserve_search_logs",
+        "result": {
+            "status": "success",
+            "params": {
+                "sql": f"SELECT * FROM app_logs WHERE trace_id IN ('{trace_id}')",
+                "start_time": 100,
+                "end_time": 200,
+            },
+            "data": {"hits": [{"trace_id": trace_id, "_timestamp": 150}], "query": {"start_time": 100, "end_time": 200}},
+        },
+    }
+    evidence, verified = extract_evidence(
+        [call], expected_trace_ids=[trace_id], expected_search_window=window, enforce_task_scope=True
+    )
+    assert verified is True
+    assert len(evidence) == 1
+
+    for bad_hit in ({"trace_id": "b" * 32, "_timestamp": 150}, {"trace_id": trace_id, "_timestamp": 201}):
+        scoped = {**call, "result": {**call["result"], "data": {"hits": [bad_hit], "query": {"start_time": 100, "end_time": 200}}}}
+        with pytest.raises(PermanentTaskError, match="holmes_no_openobserve_calls"):
+            extract_evidence(
+                [scoped], expected_trace_ids=[trace_id], expected_search_window=window, enforce_task_scope=True
+            )
+
+
 def test_openobserve_toolset_readiness_uses_authenticated_info_endpoint():
     response = FakeResponse({
         "toolsets": [{"name": "openobserve", "enabled": True, "status": "enabled", "tool_count": 3}],
@@ -281,7 +318,7 @@ def test_permanent_http_errors_are_classified_without_returning_upstream_body(st
     error = HTTPError("http://holmes/api/chat", status, "upstream-key-must-not-leak", headers, BytesIO(b"api-key=secret"))
     client = HolmesClient("http://holmes", "do-not-log", opener=FakeOpener(error=error))
     with pytest.raises(PermanentTaskError) as raised:
-        client.investigate({})
+        client.investigate(SCOPED_TEST_TASK)
     assert raised.value.code == expected_code
     assert "secret" not in str(raised.value)
 
@@ -291,7 +328,7 @@ def test_rate_limit_is_retryable():
     error = HTTPError("http://holmes/api/chat", status, "secret upstream details", Message(), BytesIO(b"secret"))
     client = HolmesClient("http://holmes", "key", opener=FakeOpener(error=error))
     with pytest.raises(RetryableTaskError) as raised:
-        client.investigate({})
+        client.investigate(SCOPED_TEST_TASK)
     assert raised.value.code == "holmes_rate_limited"
     assert "secret" not in str(raised.value)
 
@@ -301,7 +338,7 @@ def test_server_errors_have_unknown_outcome_and_are_not_retried(status):
     error = HTTPError("http://holmes/api/chat", status, "secret upstream details", Message(), BytesIO(b"secret"))
     client = HolmesClient("http://holmes", "key", opener=FakeOpener(error=error))
     with pytest.raises(PermanentTaskError) as raised:
-        client.investigate({})
+        client.investigate(SCOPED_TEST_TASK)
     assert raised.value.code == "holmes_outcome_unknown"
     assert "secret" not in str(raised.value)
 
@@ -310,7 +347,7 @@ def test_server_errors_have_unknown_outcome_and_are_not_retried(status):
 def test_transport_failures_have_unknown_outcome_and_are_not_retried(error):
     client = HolmesClient("http://holmes", "key", opener=FakeOpener(error=error))
     with pytest.raises(PermanentTaskError) as raised:
-        client.investigate({})
+        client.investigate(SCOPED_TEST_TASK)
     assert raised.value.code == "holmes_outcome_unknown"
     assert "private" not in str(raised.value)
 
@@ -318,6 +355,6 @@ def test_transport_failures_have_unknown_outcome_and_are_not_retried(error):
 def test_invalid_response_and_redirects_fail_closed():
     malformed = HolmesClient("http://holmes", "key", opener=FakeOpener(FakeResponse({"analysis": "answer", "tool_calls": []})))
     with pytest.raises(PermanentTaskError, match="holmes_no_openobserve_calls"):
-        malformed.investigate({})
+        malformed.investigate(SCOPED_TEST_TASK)
     with pytest.raises(ValueError, match="embedded credentials"):
         HolmesClient("http://user:password@holmes", "key")

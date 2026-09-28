@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 import psycopg
 
+from db_config import connect_database
 from migration_runner import apply_migrations
 from models import IncidentInput
 from store import TaskQueueAtCapacity, create_incident
@@ -63,7 +64,7 @@ def percentile(samples: list[float], fraction: float) -> float:
 
 
 def table_counts(database_url: str) -> dict[str, int]:
-    with psycopg.connect(database_url) as conn:
+    with connect_database(database_url) as conn:
         return {
             table: conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
             for table in ("incidents", "tasks", "outbox_events")
@@ -71,7 +72,7 @@ def table_counts(database_url: str) -> dict[str, int]:
 
 
 def cleanup_run(database_url: str, alert_prefix: str) -> None:
-    with psycopg.connect(database_url) as conn, conn.transaction(), conn.cursor() as cursor:
+    with connect_database(database_url) as conn, conn.transaction(), conn.cursor() as cursor:
         cursor.execute(
             """DELETE FROM outbox_events
                WHERE aggregate_type = 'incident'
@@ -111,7 +112,7 @@ def run_benchmark(database_url: str, requests: int, concurrency: int, capacity: 
         alert = IncidentInput(fingerprint=fingerprint, alert_name=alert_name)
         request_started = time.perf_counter()
         try:
-            with psycopg.connect(database_url) as conn:
+            with connect_database(database_url) as conn:
                 create_incident(conn, alert, max_pending_tasks=capacity)
             outcome = "accepted"
         except TaskQueueAtCapacity:

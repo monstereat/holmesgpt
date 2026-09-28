@@ -35,13 +35,15 @@ for migration in "$repo_dir"/alert-trigger/migrations/*.sql; do
         < "$migration"
 done
 
+expected_migrations=$(find "$repo_dir/alert-trigger/migrations" -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')
+
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postgres \
-    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only'), ('0009_user_reactivation'), ('0010_worker_database_privileges'), ('0011_restrict_runtime_delete'), ('0012_break_glass_admin_recovery'), ('0013_two_person_admin_recovery') ON CONFLICT DO NOTHING" >/dev/null
+    -c "INSERT INTO schema_migrations (version) VALUES ('0003_incident_retrospectives'), ('0006_audit_events_append_only'), ('0009_user_reactivation'), ('0010_worker_database_privileges'), ('0011_restrict_runtime_delete'), ('0012_break_glass_admin_recovery'), ('0013_two_person_admin_recovery'), ('0014_incident_resource_scope') ON CONFLICT DO NOTHING" >/dev/null
 
 migration_count=$(docker exec "$container_name" psql -At -U aiops_migrator -d postgres \
     -c "SELECT count(*) FROM schema_migrations")
-if [[ "$migration_count" != "13" ]]; then
-    echo "migration runner applied $migration_count records instead of 13" >&2
+if [[ "$migration_count" != "$expected_migrations" ]]; then
+    echo "migration runner applied $migration_count records instead of $expected_migrations" >&2
     exit 1
 fi
 
@@ -153,19 +155,54 @@ privileges=$(docker exec "$container_name" psql -At -U aiops_runtime -d postgres
        AND NOT has_table_privilege(current_user, 'approvals', 'DELETE')
        AND NOT has_table_privilege(current_user, 'incident_retrospectives', 'DELETE')
        AND NOT has_table_privilege(current_user, 'users', 'DELETE')
+       AND NOT has_table_privilege(current_user, 'users', 'INSERT')
+       AND NOT has_table_privilege(current_user, 'users', 'UPDATE')
+       AND has_column_privilege(current_user, 'users', 'id', 'INSERT')
+       AND has_column_privilege(current_user, 'users', 'role', 'INSERT')
+       AND has_column_privilege(current_user, 'users', 'oidc_issuer', 'INSERT')
+       AND has_column_privilege(current_user, 'users', 'oidc_subject', 'INSERT')
+       AND NOT has_column_privilege(current_user, 'users', 'created_at', 'INSERT')
+       AND NOT has_column_privilege(current_user, 'users', 'session_generation', 'INSERT')
+       AND NOT has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'INSERT')
+       AND NOT has_column_privilege(current_user, 'users', 'id', 'UPDATE')
+       AND NOT has_column_privilege(current_user, 'users', 'created_at', 'UPDATE')
+       AND has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')
+       AND has_column_privilege(current_user, 'users', 'role', 'UPDATE')
+       AND has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')
+       AND NOT has_column_privilege(current_user, 'users', 'oidc_issuer', 'UPDATE')
+       AND NOT has_column_privilege(current_user, 'users', 'oidc_subject', 'UPDATE')
        AND has_table_privilege(current_user, 'oidc_login_transactions', 'DELETE')
        AND has_table_privilege(current_user, 'revoked_sessions', 'DELETE')
+       AND has_table_privilege(current_user, 'action_executions', 'SELECT')
+       AND has_table_privilege(current_user, 'action_executions', 'INSERT')
+       AND has_table_privilege(current_user, 'action_executions', 'UPDATE')
        AND has_column_privilege(current_user, 'incidents', 'severity', 'UPDATE')
        AND has_column_privilege(current_user, 'incidents', 'assignee_user_id', 'UPDATE')
        AND has_column_privilege(current_user, 'users', 'session_generation', 'UPDATE')
        AND has_column_privilege(current_user, 'users', 'reactivation_requested_at', 'UPDATE')
-       AND has_table_privilege(current_user, 'users', 'UPDATE')
        AND NOT has_table_privilege(current_user, 'break_glass_recovery_requests', 'SELECT')
        AND NOT has_sequence_privilege(current_user, 'break_glass_recovery_requests_id_seq', 'USAGE')
        AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
 ")
 if [[ "$privileges" != t ]]; then
-    echo "runtime role has unexpected audit or schema privileges" >&2
+    echo "runtime role has unexpected user, audit, or schema privileges" >&2
+    exit 1
+fi
+
+action_execution_schema=$(docker exec "$container_name" psql -At -U aiops_migrator -d postgres -c "
+    SELECT to_regclass('public.action_executions') IS NOT NULL
+       AND to_regclass('public.action_executions_recovery_idx') IS NOT NULL
+       AND to_regclass('public.tasks_metrics_status_attempt_idx') IS NOT NULL
+       AND to_regclass('public.outbox_investigation_task_available_idx') IS NOT NULL
+       AND EXISTS (
+           SELECT 1 FROM pg_constraint
+           WHERE conrelid = 'public.action_executions'::regclass
+             AND contype = 'c'
+             AND pg_get_constraintdef(oid) LIKE '%dispatching%rollback_pending%'
+       )
+")
+if [[ "$action_execution_schema" != t ]]; then
+    echo "action execution recovery schema or migration 0021 metrics index is missing" >&2
     exit 1
 fi
 
@@ -177,6 +214,8 @@ docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postg
     -c "INSERT INTO users (id, username, role) VALUES ('00000000-0000-0000-0000-000000000010', 'permission-test', 'viewer')" >/dev/null
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
     -c "UPDATE users SET session_generation = session_generation + 1 WHERE username = 'permission-test'" >/dev/null
+docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
+    -c "INSERT INTO users (id, username, password_hash, role, resource_scopes, active) VALUES ('00000000-0000-0000-0000-000000000011', 'runtime-insert-test', NULL, 'viewer', ARRAY['order-service'], TRUE)" >/dev/null
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_migrator -d postgres \
     -c "CREATE TABLE public.runtime_delete_probe (id integer PRIMARY KEY); INSERT INTO public.runtime_delete_probe VALUES (1)" >/dev/null
 future_table_delete=$(docker exec "$container_name" psql -At -U aiops_runtime -d postgres -c \
@@ -194,8 +233,13 @@ fi
 worker_privileges=$(docker exec "$container_name" psql -At -U aiops_worker -d postgres -c "
     SELECT has_table_privilege(current_user, 'incidents', 'SELECT')
        AND has_table_privilege(current_user, 'tasks', 'SELECT')
+       AND NOT has_table_privilege(current_user, 'action_executions', 'SELECT')
+       AND NOT has_table_privilege(current_user, 'action_executions', 'INSERT')
+       AND NOT has_table_privilege(current_user, 'action_executions', 'UPDATE')
        AND has_column_privilege(current_user, 'tasks', 'status', 'UPDATE')
        AND has_column_privilege(current_user, 'outbox_events', 'delivery_attempts', 'UPDATE')
+       AND NOT has_column_privilege(current_user, 'outbox_events', 'dead_lettered_at', 'UPDATE')
+       AND has_column_privilege('aiops_runtime', 'outbox_events', 'dead_lettered_at', 'UPDATE')
        AND has_column_privilege(current_user, 'audit_events', 'event_type', 'INSERT')
        AND has_sequence_privilege(current_user, 'audit_events_id_seq', 'USAGE')
        AND NOT has_table_privilege(current_user, 'users', 'SELECT')
@@ -224,6 +268,7 @@ for statement in \
     "DELETE FROM approvals WHERE false" \
     "DELETE FROM incident_retrospectives WHERE false" \
     "DELETE FROM users WHERE false" \
+    "UPDATE users SET oidc_subject = 'not-authorized' WHERE false" \
     "DELETE FROM public.runtime_delete_probe WHERE false" \
     "INSERT INTO schema_migrations (version) VALUES ('runtime.must.not.write')" \
     "UPDATE schema_migrations SET version = version WHERE false" \
@@ -253,4 +298,4 @@ done
 docker exec "$container_name" psql -v ON_ERROR_STOP=1 -U aiops_runtime -d postgres \
     -c "DELETE FROM oidc_login_transactions WHERE false; DELETE FROM revoked_sessions WHERE false" >/dev/null
 
-echo "PostgreSQL role verification passed: 13 migrations; break-glass requires two separately authenticated database identities and exposes functions only, API deletes are limited to expired authentication/session records, and worker grants are scoped"
+echo "PostgreSQL role verification passed: $migration_count migrations; break-glass requires two separately authenticated database identities and exposes functions only, API deletes are limited to expired authentication/session records, and worker grants are scoped"

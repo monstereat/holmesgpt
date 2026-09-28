@@ -83,6 +83,9 @@ class FakeConnection:
     def cursor(self):
         return self.cursor_instance
 
+    def transaction(self):
+        return self
+
 
 def configure_oidc(monkeypatch):
     values = {
@@ -108,7 +111,7 @@ def test_oidc_authorization_and_callback_use_bound_state_pkce_and_http_only_sess
     fake = FakeOIDCClient("https://id.example.com/tenant")
     monkeypatch.setattr(app_module, "_oidc_client", lambda _settings: fake)
     connections = [
-        FakeConnection(None),
+        FakeConnection((0, 1)),
         FakeConnection(("code-verifier", "saved-nonce")),
         FakeConnection(("00000000-0000-0000-0000-000000000007", "ops-user", "operator", ["order-service"], True, 0, None)),
         FakeConnection(None),
@@ -162,10 +165,10 @@ def test_inactive_oidc_user_requests_reactivation_once_without_receiving_a_sessi
     disabled = (user_id, "ops-user", "operator", ["order-service"], False, 1, None)
     pending = (user_id, "ops-user", "operator", ["order-service"], False, 1, requested_at)
     connections = [
-        FakeConnection(None),
+        FakeConnection((0, 1)),
         FakeConnection(("code-verifier", "saved-nonce")),
         FakeConnection([disabled, (requested_at,), pending]),
-        FakeConnection(None),
+        FakeConnection((0, 1)),
         FakeConnection(("code-verifier", "saved-nonce")),
         FakeConnection([pending]),
     ]
@@ -300,7 +303,7 @@ def test_oidc_callback_verifies_signed_id_token_against_discovered_jwks(monkeypa
     monkeypatch.setenv("OIDC_REDIRECT_URI", "http://localhost:8081/auth/oidc/callback")
     monkeypatch.setenv("AIOPS_PUBLIC_ORIGIN", "http://localhost:8081")
     connections = [
-        FakeConnection(None),
+        FakeConnection((0, 1)),
         FakeConnection(("code-verifier", "saved-nonce")),
         FakeConnection(("00000000-0000-0000-0000-000000000007", "signed-user", "operator", ["order-service"], True, 0, None)),
     ]

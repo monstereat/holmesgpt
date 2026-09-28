@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import random
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +14,7 @@ from task_errors import PermanentTaskError, RetryableTaskError
 MAX_ATTEMPTS = 4
 RETRY_BASE_SECONDS = 5
 RETRY_MAX_SECONDS = 300
+RETRY_JITTER_MIN_RATIO = 0.8
 TASK_LEASE_SECONDS = 20 * 60
 
 
@@ -27,9 +30,18 @@ class ClaimedTask:
 
 
 def retry_delay(attempt: int, *, base: int = RETRY_BASE_SECONDS, cap: int = RETRY_MAX_SECONDS) -> int:
+    """Return the capped exponential retry delay before applying jitter."""
     if attempt < 1:
         raise ValueError("attempt must be at least one")
+
     return min(base * (2 ** (attempt - 1)), cap)
+
+
+def jittered_retry_delay(attempt: int, *, base: int = RETRY_BASE_SECONDS, cap: int = RETRY_MAX_SECONDS) -> int:
+    """Add bounded downward jitter to a capped exponential retry delay."""
+    ceiling = retry_delay(attempt, base=base, cap=cap)
+    floor = max(1, math.ceil(ceiling * RETRY_JITTER_MIN_RATIO))
+    return random.randint(floor, ceiling)
 
 
 def claim_task(conn: Any, task_id: str) -> ClaimedTask | None:
@@ -75,7 +87,8 @@ def complete_task(conn: Any, task: ClaimedTask, result: dict[str, Any]) -> bool:
             cursor.execute(
                 """UPDATE tasks SET status = 'completed', result = %s,
                    completed_at = now(), lease_expires_at = NULL, updated_at = now()
-                   WHERE id = %s AND status = 'running' AND attempt = %s""",
+                   WHERE id = %s AND status = 'running' AND attempt = %s
+                     AND lease_expires_at > now()""",
                 (Jsonb(result), task.task_id, task.attempt),
             )
             if cursor.rowcount != 1:
@@ -97,7 +110,7 @@ def fail_task(
 ) -> str:
     """Persist a safe error code and either schedule bounded retry or terminate."""
     will_retry = retryable and task.attempt < task.max_attempts
-    delay = retry_delay(task.attempt) if will_retry else 0
+    delay = jittered_retry_delay(task.attempt) if will_retry else 0
     next_status = "retrying" if will_retry else "failed"
     event = "task.retry_scheduled" if will_retry else "task.failed"
     with conn.transaction():
@@ -107,7 +120,8 @@ def fail_task(
                    available_at = now() + (%s * interval '1 second'),
                    completed_at = CASE WHEN %s = 'failed' THEN now() ELSE NULL END,
                    lease_expires_at = NULL, updated_at = now()
-                   WHERE id = %s AND status = 'running' AND attempt = %s""",
+                   WHERE id = %s AND status = 'running' AND attempt = %s
+                     AND lease_expires_at > now()""",
                 (
                     next_status,
                     code[:64],

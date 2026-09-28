@@ -6,14 +6,14 @@
  *           enriched with trace_id/span_id into the `app_logs` stream.
  * - Frontend errors from the demo page are persisted into the
  *           `frontend_errors` stream with the same trace_id.
- * - CHAOS_MODE=on simulates the bad release: POST /orders fails with 500.
+ * - CHAOS_MODE seeds the initial state when the persistent action volume is empty.
  *
  * Start with `node dist/main.js` (runs otel.ts first via main.js import order).
  */
 import "./otel"; // must be first
-import { createHash, timingSafeEqual } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import "reflect-metadata";
 import type { Request } from "express";
 import { NestFactory } from "@nestjs/core";
@@ -46,6 +46,8 @@ const RELEASE = process.env.RELEASE_VERSION || "v1.0.0";
 const CHAOS = (process.env.CHAOS_MODE || "off").toLowerCase() === "on";
 const RELEASE_WEBHOOK_SECRET = process.env.RELEASE_WEBHOOK_SECRET || "";
 const ORDER_ACTION_TOKEN = process.env.ORDER_ACTION_TOKEN || "";
+const ORDER_ACTION_STATE_PATH = process.env.ORDER_ACTION_STATE_PATH || "/var/lib/order-service/test-action-state.json";
+const MAX_PERSISTED_TEST_ACTIONS = 10_000;
 
 const ingester = new OpenObserveIngester(OO_URL, OO_ORG, OO_USER, OO_PASSWORD);
 
@@ -88,6 +90,10 @@ export class OrdersService {
     string,
     { fingerprint: string; result: Record<string, unknown> }
   >();
+
+  constructor() {
+    this.loadActionState();
+  }
 
   create(order: { sku: string; quantity: number; userId: string }): Record<string, unknown> {
     emitLog("info", "order create requested", {
@@ -177,7 +183,7 @@ export class OrdersService {
     if (!token || !this.matchesToken(token, ORDER_ACTION_TOKEN)) {
       throw new UnauthorizedException();
     }
-    if (!idempotencyKey || idempotencyKey.length > 128) {
+    if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9:_-]{1,128}$/.test(idempotencyKey)) {
       throw new BadRequestException("A valid Idempotency-Key is required");
     }
     if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -206,22 +212,134 @@ export class OrdersService {
       }
       return { ...previous.result, duplicate: true };
     }
+    if (this.testActions.size >= MAX_PERSISTED_TEST_ACTIONS) {
+      throw new ServiceUnavailableException("The durable test-action journal is full; operator intervention is required");
+    }
 
-    this.chaosMode = action.enabled;
+    const nextChaosMode = action.enabled;
     const result = {
       accepted: true,
       action_id: idempotencyKey,
       action: "set-chaos-mode",
       resource: "order-service",
-      chaos_mode: this.chaosMode ? "on" : "off",
+      chaos_mode: nextChaosMode ? "on" : "off",
       duplicate: false,
     };
-    this.testActions.set(idempotencyKey, { fingerprint, result });
-    if (this.testActions.size > 1000) {
-      const oldestKey = this.testActions.keys().next().value;
-      if (oldestKey) this.testActions.delete(oldestKey);
+    const nextActions = new Map(this.testActions);
+    nextActions.set(idempotencyKey, { fingerprint, result });
+    try {
+      this.persistActionState(nextChaosMode, nextActions);
+    } catch {
+      this.loadActionState();
+      throw new ServiceUnavailableException("The durable test-action journal could not be committed");
     }
+    this.chaosMode = nextChaosMode;
+    this.testActions.set(idempotencyKey, { fingerprint, result });
     return result;
+  }
+
+  private loadActionState(): void {
+    let contents: string;
+    try {
+      contents = readFileSync(ORDER_ACTION_STATE_PATH, "utf8");
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+        this.persistActionState(this.chaosMode, this.testActions);
+        return;
+      }
+      throw new Error("Could not read the durable test-action journal");
+    }
+
+    let value: unknown;
+    try {
+      value = JSON.parse(contents);
+    } catch {
+      throw new Error("The durable test-action journal is invalid JSON");
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("The durable test-action journal has an invalid format");
+    }
+    const state = value as Record<string, unknown>;
+    const operations = state.operations;
+    if (
+      state.schema_version !== 1
+      || !["on", "off"].includes(String(state.chaos_mode))
+      || !operations || typeof operations !== "object" || Array.isArray(operations)
+    ) {
+      throw new Error("The durable test-action journal has an unsupported format");
+    }
+    const entries = Object.entries(operations as Record<string, unknown>);
+    if (entries.length > MAX_PERSISTED_TEST_ACTIONS) {
+      throw new Error("The durable test-action journal exceeds its supported size");
+    }
+    const restored = new Map<string, { fingerprint: string; result: Record<string, unknown> }>();
+    for (const [key, rawOperation] of entries) {
+      if (!rawOperation || typeof rawOperation !== "object" || Array.isArray(rawOperation)) {
+        throw new Error("The durable test-action journal contains an invalid operation");
+      }
+      const operation = rawOperation as Record<string, unknown>;
+      const result = operation.result;
+      const resultRecord = result && typeof result === "object" && !Array.isArray(result)
+        ? result as Record<string, unknown>
+        : null;
+      if (
+        !/^[A-Za-z0-9:_-]{1,128}$/.test(key) || typeof operation.fingerprint !== "string"
+        || !resultRecord
+        || resultRecord.accepted !== true
+        || resultRecord.action_id !== key
+        || resultRecord.action !== "set-chaos-mode"
+        || resultRecord.resource !== "order-service"
+        || !["on", "off"].includes(String(resultRecord.chaos_mode))
+        || operation.fingerprint !== JSON.stringify({
+          action: "set-chaos-mode",
+          resource: "order-service",
+          enabled: resultRecord.chaos_mode === "on",
+        })
+      ) {
+        throw new Error("The durable test-action journal contains an invalid operation");
+      }
+      restored.set(key, { fingerprint: operation.fingerprint, result: resultRecord });
+    }
+
+    this.chaosMode = state.chaos_mode === "on";
+    this.testActions.clear();
+    for (const [key, operation] of restored) this.testActions.set(key, operation);
+  }
+
+  private persistActionState(
+    chaosMode: boolean,
+    actions: Map<string, { fingerprint: string; result: Record<string, unknown> }>,
+  ): void {
+    const directory = dirname(ORDER_ACTION_STATE_PATH);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const temporaryPath = join(directory, `.${basename(ORDER_ACTION_STATE_PATH)}.${process.pid}.${randomUUID()}.tmp`);
+    let fileDescriptor: number | undefined;
+    try {
+      fileDescriptor = openSync(temporaryPath, "wx", 0o600);
+      writeFileSync(fileDescriptor, JSON.stringify({
+        schema_version: 1,
+        chaos_mode: chaosMode ? "on" : "off",
+        operations: Object.fromEntries(actions),
+      }));
+      fsyncSync(fileDescriptor);
+      closeSync(fileDescriptor);
+      fileDescriptor = undefined;
+      renameSync(temporaryPath, ORDER_ACTION_STATE_PATH);
+      const directoryDescriptor = openSync(directory, "r");
+      try {
+        fsyncSync(directoryDescriptor);
+      } finally {
+        closeSync(directoryDescriptor);
+      }
+    } catch (error) {
+      if (fileDescriptor !== undefined) closeSync(fileDescriptor);
+      try {
+        unlinkSync(temporaryPath);
+      } catch {
+        // The temporary file may already have been renamed.
+      }
+      throw error;
+    }
   }
 
   testActionState(token: string | undefined): Record<string, string> {
@@ -350,13 +468,14 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(DemoModule, { logger: false, rawBody: true });
   app.enableCors();
   await app.listen(8080);
+  const initialChaosMode = app.get(OrdersService).demoState().chaos_mode;
   emitLog("info", "order-service started", {
     route: "-",
-    chaos_mode: CHAOS ? "on" : "off",
+    chaos_mode: initialChaosMode,
     release: RELEASE,
   });
   process.stdout.write(
-    `order-service listening on :8080 (CHAOS_MODE=${CHAOS ? "on" : "off"})\n`,
+    `order-service listening on :8080 (chaos_mode=${initialChaosMode})\n`,
   );
   process.on("SIGINT", () => {
     ingester.flush().finally(() => process.exit(0));

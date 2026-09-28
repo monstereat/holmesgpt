@@ -38,6 +38,8 @@ class IncidentInput:
     alert_name: str
     trace_ids: tuple[str, ...] = ()
     summary: dict[str, Any] = field(default_factory=dict)
+    severity: str = "medium"
+    resource: str = "order-service"
 
 
 @dataclass(frozen=True)

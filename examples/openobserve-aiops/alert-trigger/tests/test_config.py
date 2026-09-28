@@ -250,13 +250,14 @@ def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
     monkeypatch.setenv("WORKER_DATABASE_URL", "postgresql://worker-unused")
     cursor = MagicMock()
-    cursor.fetchall.return_value = [("queued", 2), ("completed", 4)]
-    cursor.fetchone.side_effect = [(5, 1.5, 9.2), (7.5,), (3,)]
+    cursor.fetchall.return_value = [("queued", 2, 3), ("completed", 4, 0)]
+    cursor.fetchone.side_effect = [(5, 1.5, 9.2), (7.5,), (3,), (2, 10.0, 4, 5), (0.0,), (1,)]
     cursor.__enter__.return_value = cursor
     connection = MagicMock()
     connection.cursor.return_value = cursor
     connection.__enter__.return_value = connection
     monkeypatch.setattr("app.psycopg.connect", lambda *args, **kwargs: connection)
+    monkeypatch.setattr("app.start_outbox_dispatcher", lambda database_url: MagicMock())
     with API_METRICS_LOCK:
         API_REQUEST_METRICS.clear()
 
@@ -273,6 +274,13 @@ def test_metrics_endpoint_requires_token_and_returns_queue_metrics(monkeypatch):
     assert 'aiops_tasks{status="failed"} 0' in response.text
     assert "aiops_oldest_pending_task_age_seconds 7.5" in response.text
     assert "aiops_task_retry_attempts_total 3" in response.text
+    assert "aiops_oidc_pending_login_transactions 3" in response.text
+    assert "aiops_outbox_unpublished_events 2" in response.text
+    assert "aiops_outbox_oldest_unpublished_age_seconds 10.0" in response.text
+    assert "aiops_outbox_max_unpublished_delivery_attempts 4" in response.text
+    assert "aiops_outbox_max_delivery_attempts 5" in response.text
+    assert "aiops_outbox_dead_lettered_events 1" in response.text
+    assert "aiops_action_execution_oldest_recovery_age_seconds 0\n" in response.text
     assert "aiops_pending_task_capacity 250" in response.text
     assert "aiops_oldest_pending_task_age_slo_seconds 90.0" in response.text
     assert 'aiops_worker_task_duration_seconds_windowed{quantile="0.50"} 1.5' in response.text

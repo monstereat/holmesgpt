@@ -13,6 +13,7 @@
       main { width: min(1240px, 100%); margin: 28px auto; padding: 0 20px; }
       .card { background: white; border: 1px solid #e1e6ec; border-radius: 10px; padding: 20px; box-shadow: 0 3px 12px #1822300a; }
       .login { max-width: 420px; margin: 9vh auto; }
+      .login select { width: 100%; }
       label { display: block; margin: 14px 0 6px; font-size: 13px; color: #526174; }
       input, textarea { width: 100%; min-height: 42px; padding: 8px 11px; border: 1px solid #cbd4df; border-radius: 6px; font: inherit; }
       textarea { min-height: 78px; resize: vertical; }
@@ -22,12 +23,17 @@
       .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
       .toolbar h2, .detail h2 { margin: 0; font-size: 17px; }
       .toolbar-actions { display: flex; gap: 8px; }
+      .filters { display: grid; grid-template-columns: 180px 150px minmax(180px, 1fr) auto auto; align-items: center; gap: 8px; margin-bottom: 14px; }
+      .filters .checkbox-filter { display: flex; align-items: center; gap: 7px; margin: 0; white-space: nowrap; }
+      .filters .checkbox-filter input { width: auto; min-height: auto; }
       .layout { display: grid; grid-template-columns: minmax(320px, .9fr) minmax(400px, 1.1fr); gap: 16px; }
       table { width: 100%; border-collapse: collapse; }
       th, td { padding: 11px 8px; border-bottom: 1px solid #edf0f3; text-align: left; vertical-align: top; font-size: 13px; }
       th { color: #627184; font-weight: 600; }
       tr[data-id] { cursor: pointer; }
       tr[data-id]:hover { background: #f5f9fc; }
+      .incident-link { min-height: 0; padding: 0; border: 0; background: transparent; color: #1769aa; text-align: left; text-decoration: underline; }
+      .incident-link:focus-visible { outline: 2px solid #1769aa; outline-offset: 2px; }
       .status { display: inline-block; padding: 3px 7px; border-radius: 99px; background: #edf2f7; color: #41556d; font-size: 12px; }
       .muted { color: #66778a; font-size: 13px; }
       .message { min-height: 20px; margin: 10px 0; color: #a33333; font-size: 13px; }
@@ -35,9 +41,15 @@
       .detail section { margin-top: 20px; }
       .detail h3 { margin: 0 0 8px; font-size: 14px; }
       .detail pre { max-height: 280px; overflow: auto; margin: 7px 0; padding: 12px; border-radius: 6px; background: #f4f6f8; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+      .alert-summary { margin: 0; border: 1px solid #e7ebef; border-radius: 7px; overflow: hidden; }
+      .alert-summary-row { display: grid; grid-template-columns: minmax(110px, 160px) 1fr; gap: 12px; padding: 9px 11px; border-bottom: 1px solid #edf0f3; font-size: 13px; }
+      .alert-summary-row:last-child { border-bottom: 0; }
+      .alert-summary-row dt { color: #66778a; }
+      .alert-summary-row dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+      .alert-links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 13px; }
       .task { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #edf0f3; font-size: 13px; }
       .hidden { display: none !important; }
-      @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } header { padding: 15px 18px; } main { margin-top: 16px; padding: 0 12px; } }
+      @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } .filters { grid-template-columns: 1fr 1fr; } .alert-summary-row { grid-template-columns: 1fr; gap: 4px; } header { padding: 15px 18px; } main { margin-top: 16px; padding: 0 12px; } }
     </style>
   </head>
   <body>
@@ -47,6 +59,7 @@
         <h2 id="local-login-title">登录本机测试环境</h2>
         <p id="local-login-description" class="muted">请使用由本地环境配置的测试账号。</p>
         <form id="login-form">
+          <label id="local-account-label" for="local-account" class="hidden">本地测试身份</label><select id="local-account" class="hidden" aria-label="选择本地测试身份"></select>
           <label for="username">用户名</label><input id="username" name="username" autocomplete="username" required />
           <label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required />
           <p id="login-message" class="message" role="alert"></p>
@@ -56,11 +69,15 @@
       </section>
       <section id="workbench" class="hidden">
         <div class="toolbar">
-          <div><h2>事故</h2><span class="muted">项目 · order-service</span></div>
-          <div class="toolbar-actions">
-            <select id="status-filter" aria-label="按状态筛选"><option value="">全部状态</option><option>open</option><option>investigating</option><option>awaiting_approval</option><option>resolved</option><option>closed</option></select>
-            <button id="refresh">刷新</button><button id="logout">退出</button>
-          </div>
+          <div><h2>事故</h2><span class="muted">按账号服务范围展示</span></div>
+          <div class="toolbar-actions"><button id="refresh">刷新</button><button id="logout">退出</button></div>
+        </div>
+        <div class="filters" role="search">
+          <select id="status-filter" aria-label="按状态筛选"><option value="">全部状态</option><option value="open">未处理</option><option value="investigating">调查中</option><option value="awaiting_approval">等待审批</option><option value="resolved">已解决</option><option value="closed">已关闭</option></select>
+          <select id="severity-filter" aria-label="按严重级别筛选"><option value="">全部级别</option><option value="critical">严重</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select>
+          <input id="incident-search" type="search" maxlength="120" placeholder="搜索告警、Trace ID 或摘要" aria-label="搜索事故" />
+          <label class="checkbox-filter"><input id="assigned-to-me" type="checkbox" />仅看我的</label>
+          <button id="apply-filters" type="button">筛选</button>
         </div>
         <p id="page-message" class="message" role="status"></p>
         <section id="user-admin" class="card hidden" aria-label="用户管理">
@@ -71,7 +88,8 @@
         <div class="layout">
           <section class="card" aria-label="事故列表">
             <div id="list-state" class="muted">等待加载…</div>
-            <table id="incident-table" class="hidden"><thead><tr><th>告警</th><th>状态</th><th>级别</th><th>负责人</th><th>Trace</th></tr></thead><tbody id="incident-rows"></tbody></table>
+            <table id="incident-table" class="hidden"><thead><tr><th>告警</th><th>服务资源</th><th>状态</th><th>级别</th><th>负责人</th><th>Trace</th></tr></thead><tbody id="incident-rows"></tbody></table>
+            <button id="load-more" class="hidden" type="button">加载更多事故</button>
           </section>
           <article id="incident-detail" class="card detail"><p class="muted">选择一条事故查看调查结果和时间线。</p></article>
         </div>

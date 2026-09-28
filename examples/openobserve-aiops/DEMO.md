@@ -2,6 +2,12 @@
 
 本流程仅操作当前机器上的 Docker 测试环境。先按 [`README.md`](README.md) 启动 Compose 并配置本地账户。浏览器入口默认为订单 demo `http://localhost:8080`、事故工作台 `http://localhost:8081`、OpenObserve `http://localhost:5080`；若设置了 `AIOPS_API_HOST_PORT`，事故工作台和下文发往主机的 curl 请求使用该端口，Compose 内部 webhook 地址仍使用 8081。
 
+`set-chaos-mode` 是本机演示动作，仅在 Incident API 使用 `AIOPS_ENV=local` 时开放。应用会拒绝在其他环境配置 demo 动作开关、owner 地址或 token；不要把它当成生产处置集成。
+
+故障注入状态保存在 `order-action-data` 命名卷中。`CHAOS_MODE` 只在该卷首次初始化时设定初始状态；卷中已有状态时，重启会恢复持久化值，环境变量不会覆盖。后续状态变更应在事故工作台通过审批动作完成。
+
+此文件 journal 是本地单实例、低频演示实现：不要通过 Compose `--scale order-service` 扩成多实例，也不要将其用于生产流量。每个动作会同步重写 journal 快照；记录越多写入越慢，达到 10,000 个 key 后需人工处置才能继续。
+
 ## 1. 验证订单遥测
 
 1. 在订单 demo 创建一个正常订单。
@@ -25,7 +31,7 @@ curl -fsS "http://127.0.0.1:${AIOPS_API_HOST_PORT:-8081}/webhooks/openobserve" \
   --data '{"alert_name":"OrderCreateFailure","trace_id":"0123456789abcdef0123456789abcdef","alert_count":1}'
 ```
 
-要连接 OpenObserve 原生告警，在 Alert Destination 使用内部地址 `http://incident-api:8081/webhooks/openobserve`，配置 `X-Alert-Token`，并使用字段 `alert_name`、`trace_id`、`alert_count`、`alert_trigger_time_str`。不要把 token 放进请求体或前端。
+要连接 OpenObserve 原生告警，在 Alert Destination 使用内部地址 `http://incident-api:8081/webhooks/openobserve`，配置 `X-Alert-Token`，并使用字段 `alert_name`、`trace_id`、`alert_count`、`alert_trigger_time_str`。`alert_trigger_time_str` 应包含 `Z` 或显式 UTC 偏移；服务端将其规范化为 UTC。缺失、无效或不带时区的值不会被用于构造事故检索时间窗，Holmes 会按受限近期窗口调查。不要把 token 放进请求体或前端。
 
 ## 3. 查看调查状态和证据
 
@@ -47,6 +53,8 @@ docker compose restart incident-api incident-worker redis
 ```
 
 PostgreSQL 是事故状态和 outbox 的持久化来源；worker 重启后会恢复可重试任务。隔离的 API/worker/PostgreSQL 测试运行方式以及不覆盖活动库的 `pg_dump`/`pg_restore` 演练见 [`README.md`](README.md)。保留当前 named volumes；不要用 `docker compose down -v` 清理演示数据。
+
+Order-service 将 `set-chaos-mode` 当前状态和幂等 operation journal 原子写入 `order-action-data` 卷。容器重启后会从同一文件恢复；同一 operation ID 和 payload 会返回已保存结果，不同 payload 会冲突。最多保留 10,000 个 operation ID，达到上限后 owner 会拒绝新动作，避免淘汰仍可能被重试的幂等记录。每个新动作同步重写完整 journal；它只适用于单实例、低频的本地演示，不支持多实例共享，也没有自动把未完成 owner 操作与 Incident API 审批记录对账。测试与生产处置仍关闭。
 
 ## 演示边界
 

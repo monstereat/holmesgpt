@@ -11,6 +11,19 @@ from urllib.parse import urlsplit
 from auth import ROLE_PERMISSIONS
 
 
+class _DuplicateJSONKeyError(ValueError):
+    pass
+
+
+def _unique_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateJSONKeyError
+        result[key] = value
+    return result
+
+
 @dataclass(frozen=True)
 class OIDCSettings:
     issuer: str
@@ -66,7 +79,9 @@ def load_oidc_settings(environ: dict[str, str]) -> OIDCSettings:
         raise ValueError("OIDC_REDIRECT_URI must use the configured public origin and contain no query")
 
     try:
-        raw_mappings = json.loads(environ["OIDC_GROUP_MAPPINGS_JSON"])
+        raw_mappings = json.loads(environ["OIDC_GROUP_MAPPINGS_JSON"], object_pairs_hook=_unique_object_pairs)
+    except _DuplicateJSONKeyError as exc:
+        raise ValueError("OIDC_GROUP_MAPPINGS_JSON must not contain duplicate object keys") from exc
     except json.JSONDecodeError as exc:
         raise ValueError("OIDC_GROUP_MAPPINGS_JSON must be valid JSON") from exc
     if not isinstance(raw_mappings, dict) or not raw_mappings:
@@ -74,18 +89,25 @@ def load_oidc_settings(environ: dict[str, str]) -> OIDCSettings:
 
     mappings: dict[str, dict[str, Any]] = {}
     for group, mapping in raw_mappings.items():
-        if not isinstance(group, str) or not group.strip() or not isinstance(mapping, dict):
+        if not isinstance(group, str) or not group.strip() or group != group.strip() or not isinstance(mapping, dict):
             raise ValueError("OIDC group mappings must map non-empty group names to objects")
         role = mapping.get("role")
         scopes = mapping.get("resource_scopes")
         if (
-            role not in ROLE_PERMISSIONS
+            set(mapping) != {"role", "resource_scopes"}
+            or not isinstance(role, str)
+            or role not in ROLE_PERMISSIONS
             or not isinstance(scopes, list)
             or not scopes
-            or not all(isinstance(scope, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", scope) for scope in scopes)
+            or not all(
+                isinstance(scope, str)
+                and (scope == "*" or re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", scope))
+                for scope in scopes
+            )
+            or ("*" in scopes and len(scopes) != 1)
         ):
             raise ValueError("OIDC group mappings require a valid role and non-empty resource scopes")
-        mappings[group] = {"role": role, "resource_scopes": sorted(set(scopes))}
+        mappings[group] = {"role": role, "resource_scopes": sorted({scope.lower() for scope in scopes})}
 
     groups_claim = environ.get("OIDC_GROUPS_CLAIM", "groups")
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", groups_claim):
@@ -120,7 +142,8 @@ def principal_claims(claims: dict[str, Any], settings: OIDCSettings) -> tuple[st
     roles = {item["role"] for item in mapped}
     if len(roles) != 1:
         raise ValueError("OIDC groups do not resolve to exactly one application role")
-    scopes = sorted({scope for item in mapped for scope in item["resource_scopes"]})
+    scope_set = {scope for item in mapped for scope in item["resource_scopes"]}
+    scopes = ["*"] if "*" in scope_set else sorted(scope_set)
     if not scopes:
         raise ValueError("OIDC groups resolve to invalid resource scopes")
     username = claims.get("preferred_username") or claims.get("email") or subject

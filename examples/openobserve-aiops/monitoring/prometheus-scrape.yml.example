@@ -1,0 +1,45 @@
+global:
+  scrape_interval: 30s
+
+rule_files:
+  - /etc/prometheus/rules/aiops-alerts.yml
+
+scrape_configs:
+  - job_name: aiops-incident-api
+    scheme: https
+    metrics_path: /_internal/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/aiops-metrics-token
+    tls_config:
+      ca_file: /run/secrets/aiops-api-ca.pem
+      server_name: incident-api.example.internal
+    static_configs:
+      - targets:
+          - incident-api.example.internal:443
+        labels:
+          cluster: replace-with-owner-selected-cluster-id
+  - job_name: aiops-openobserve-policy-proxy
+    scheme: https
+    metrics_path: /_internal/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/aiops-proxy-metrics-token
+    tls_config:
+      ca_file: /run/secrets/aiops-proxy-ca.pem
+      server_name: openobserve-policy-proxy.example.internal
+    static_configs:
+      - targets:
+          - openobserve-policy-proxy.example.internal:443
+        labels:
+          cluster: replace-with-owner-selected-cluster-id
+  # This endpoint is plain HTTP in the production Collector template. Keep port
+  # 8888 on a private network and allow connections only from this scraper.
+  - job_name: aiops-otel-collector
+    scheme: http
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - otel-collector.example.internal:8888
+        labels:
+          cluster: replace-with-owner-selected-cluster-id

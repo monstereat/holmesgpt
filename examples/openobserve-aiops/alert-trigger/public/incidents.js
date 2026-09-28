@@ -3,6 +3,10 @@
   const token = () => sessionStorage.getItem(tokenKey);
   const loginPanel = document.getElementById("login-panel");
   const workbench = document.getElementById("workbench");
+  const localAccountLabel = document.getElementById("local-account-label");
+  const localAccountSelector = document.getElementById("local-account");
+  const usernameInput = document.getElementById("username");
+  const passwordInput = document.getElementById("password");
   const loginMessage = document.getElementById("login-message");
   const pageMessage = document.getElementById("page-message");
   const listState = document.getElementById("list-state");
@@ -13,6 +17,12 @@
   const userAdminMessage = document.getElementById("user-admin-message");
   let authMode = "local";
   let principal = null;
+  let incidentCursor = null;
+  let incidentQueryVersion = 0;
+  let incidentDetailVersion = 0;
+  let selectedIncidentId = null;
+  let retrospectiveDirty = false;
+  let incidentFilters = null;
 
   async function api(path, options = {}) {
     const headers = new Headers(options.headers || {});
@@ -48,6 +58,64 @@
     target.textContent = error instanceof Error ? error.message : "发生未知错误";
   }
 
+  function confirmDiscardRetrospective() {
+    if (!retrospectiveDirty) return true;
+    if (!window.confirm("事故复盘有未保存的修改。继续操作会丢弃这些修改，是否继续？")) return false;
+    retrospectiveDirty = false;
+    return true;
+  }
+
+  function renderAlertSummary(value) {
+    const summary = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const labels = {
+      source: "来源",
+      alert_severity: "告警严重度",
+      alert_summary: "告警摘要",
+      alert_description: "告警描述",
+      alert_trigger_time_str: "告警开始时间",
+      cluster: "集群",
+      service: "服务",
+      namespace: "命名空间",
+      job: "Job",
+      instance: "实例",
+      err_count: "错误数",
+      alert_count: "告警数",
+    };
+    const section = document.createElement("section");
+    section.append(el("h3", "告警信息"));
+    const fields = document.createElement("dl");
+    fields.className = "alert-summary";
+    for (const [key, fieldValue] of Object.entries(summary)) {
+      if (["runbook_url", "dashboard_url"].includes(key) || fieldValue == null || typeof fieldValue === "object") continue;
+      const row = document.createElement("div");
+      row.className = "alert-summary-row";
+      row.append(el("dt", labels[key] || key), el("dd", String(fieldValue)));
+      fields.append(row);
+    }
+    if (fields.childElementCount) section.append(fields);
+
+    const links = document.createElement("div");
+    links.className = "alert-links";
+    for (const [key, label] of [["runbook_url", "打开运行手册"], ["dashboard_url", "打开监控面板"]]) {
+      const value = summary[key];
+      if (typeof value !== "string") continue;
+      try {
+        const url = new URL(value);
+        if (url.protocol !== "https:" || url.username || url.password || url.search) continue;
+        const link = el("a", label);
+        link.href = url.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        links.append(link);
+      } catch {
+        continue;
+      }
+    }
+    if (links.childElementCount) section.append(links);
+    if (!fields.childElementCount && !links.childElementCount) section.append(el("p", "没有附带告警上下文。", "muted"));
+    return section;
+  }
+
   const severityLabels = { critical: "严重", high: "高", medium: "中", low: "低" };
   const statusLabels = {
     open: "未处理",
@@ -64,26 +132,57 @@
     closed: [],
   };
 
-  async function loadIncidents() {
+  async function loadIncidents(append = false) {
+    const queryVersion = append ? incidentQueryVersion : ++incidentQueryVersion;
     pageMessage.textContent = "";
-    listState.textContent = "正在加载事故…";
-    listState.classList.remove("hidden");
-    table.classList.add("hidden");
+    const loadMore = document.getElementById("load-more");
+    if (!append) {
+      incidentCursor = null;
+      loadMore.classList.add("hidden");
+      listState.textContent = "正在加载事故…";
+      listState.classList.remove("hidden");
+      table.classList.add("hidden");
+      document.getElementById("incident-rows").replaceChildren();
+    }
+    loadMore.disabled = true;
     try {
-      const status = document.getElementById("status-filter").value;
-      const query = status ? `?status=${encodeURIComponent(status)}` : "";
-      const result = await api(`/api/incidents${query}`);
+      const params = new URLSearchParams();
+      if (!append) {
+        incidentFilters = {
+          status: document.getElementById("status-filter").value,
+          severity: document.getElementById("severity-filter").value,
+          search: document.getElementById("incident-search").value.trim(),
+          assignedToMe: document.getElementById("assigned-to-me").checked,
+        };
+      }
+      if (incidentFilters.status) params.set("status", incidentFilters.status);
+      if (incidentFilters.severity) params.set("severity", incidentFilters.severity);
+      if (incidentFilters.assignedToMe) params.set("assigned_to_me", "true");
+      if (incidentFilters.search) params.set("search", incidentFilters.search);
+      if (append && incidentCursor) params.set("cursor", incidentCursor);
+      const result = await api(`/api/incidents${params.size ? `?${params}` : ""}`);
+      if (queryVersion !== incidentQueryVersion) return;
       const rows = document.getElementById("incident-rows");
-      rows.replaceChildren();
-      if (!result.items.length) {
+      if (!append && !result.items.length) {
         listState.textContent = "当前没有符合条件的事故。";
+        loadMore.classList.add("hidden");
         return;
       }
       for (const incident of result.items) {
         const row = document.createElement("tr");
         row.dataset.id = incident.id;
+        const alertCell = document.createElement("td");
+        const alertButton = el("button", incident.alert_name, "incident-link");
+        alertButton.type = "button";
+        alertButton.setAttribute("aria-label", `查看事故 ${incident.alert_name}`);
+        alertButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          loadIncident(incident.id);
+        });
+        alertCell.append(alertButton);
         row.append(
-          el("td", incident.alert_name),
+          alertCell,
+          el("td", incident.resource || "order-service"),
           el("td", statusLabels[incident.status] || incident.status, "status"),
           el("td", severityLabels[incident.severity] || incident.severity),
           el("td", incident.assignee_username || "未指派"),
@@ -92,11 +191,16 @@
         row.addEventListener("click", () => loadIncident(incident.id));
         rows.append(row);
       }
+      incidentCursor = result.next_cursor;
       listState.classList.add("hidden");
       table.classList.remove("hidden");
+      loadMore.classList.toggle("hidden", !incidentCursor);
     } catch (error) {
+      if (queryVersion !== incidentQueryVersion) return;
       showError(pageMessage, error);
-      listState.textContent = "事故列表加载失败。请重试。";
+      if (!append) listState.textContent = "事故列表加载失败。请重试。";
+    } finally {
+      if (queryVersion === incidentQueryVersion) loadMore.disabled = false;
     }
   }
 
@@ -141,15 +245,17 @@
   }
 
   async function loadIncident(id) {
+    if (!confirmDiscardRetrospective()) return;
+    selectedIncidentId = id;
+    const detailVersion = ++incidentDetailVersion;
     detail.replaceChildren(el("p", "正在加载事故详情…", "muted"));
     try {
       const incident = await api(`/api/incidents/${encodeURIComponent(id)}`);
+      if (detailVersion !== incidentDetailVersion) return;
       detail.replaceChildren();
       detail.append(el("h2", incident.alert_name));
-      detail.append(el("p", `${statusLabels[incident.status] || incident.status} · ${new Date(incident.created_at).toLocaleString()} · Trace: ${(incident.trace_ids || []).join(", ") || "无"}`, "muted"));
-      const summary = document.createElement("section");
-      summary.append(el("h3", "告警信息"), el("pre", JSON.stringify(incident.summary || {}, null, 2)));
-      detail.append(summary);
+      detail.append(el("p", `${incident.resource || "order-service"} · ${statusLabels[incident.status] || incident.status} · ${new Date(incident.created_at).toLocaleString()} · Trace: ${(incident.trace_ids || []).join(", ") || "无"}`, "muted"));
+      detail.append(renderAlertSummary(incident.summary));
 
       const triage = document.createElement("section");
       triage.append(el("h3", "分级与负责人"));
@@ -157,7 +263,8 @@
       const canManageIncident = ["operator", "admin"].includes(principal.role);
       if (canManageIncident && !["resolved", "closed"].includes(incident.status)) {
         try {
-          const candidates = await api("/api/incident-assignees");
+          const candidates = await api(`/api/incident-assignees?resource=${encodeURIComponent(incident.resource || "order-service")}`);
+          if (detailVersion !== incidentDetailVersion) return;
           const severitySelect = document.createElement("select");
           severitySelect.setAttribute("aria-label", "事故严重级别");
           for (const value of ["critical", "high", "medium", "low"]) {
@@ -192,6 +299,7 @@
           const saveTriage = el("button", "保存分级与负责人");
           saveTriage.style.marginTop = "10px";
           saveTriage.addEventListener("click", async () => {
+            if (!confirmDiscardRetrospective()) return;
             saveTriage.disabled = true;
             const body = { severity: severitySelect.value };
             if (assigneeSelect.value !== initialAssigneeId) body.assignee_id = assigneeSelect.value || null;
@@ -206,6 +314,7 @@
           });
           triage.append(severitySelect, assigneeSelect, saveTriage);
         } catch (error) {
+          if (detailVersion !== incidentDetailVersion) return;
           showError(pageMessage, error);
         }
       }
@@ -228,6 +337,7 @@
           saveStatus.style.marginTop = "10px";
           saveStatus.addEventListener("click", async () => {
             if (statusSelect.value === incident.status) return;
+            if (!confirmDiscardRetrospective()) return;
             saveStatus.disabled = true;
             try {
               await api(`/api/incidents/${encodeURIComponent(id)}/status`, {
@@ -255,11 +365,13 @@
         const line = document.createElement("div");
         line.className = "task";
         line.append(el("span", `${task.task_type} · ${task.status} · 尝试 ${task.attempt}/${task.max_attempts}`));
-        const outcomeUnknown = ["holmes_outcome_unknown", "worker_outcome_unknown"].includes(task.error_code);
+        const outcomeUnknown = ["holmes_outcome_unknown", "worker_outcome_unknown"].includes(task.error_code)
+          || task.result?.possible_duplicate_charge === true;
         if (["operator", "admin"].includes(principal.role) && task.status === "failed") {
           const retry = el("button", "重试调查");
           retry.addEventListener("click", async () => {
-            if (outcomeUnknown && !window.confirm("上次 Holmes 调查是否完成无法确认。重试会再次调用模型，可能产生重复费用。仍要继续吗？")) return;
+            if (outcomeUnknown && !window.confirm("上次模型请求可能已被处理并计费，或调查结果无法确认。重试可能再次产生费用。仍要继续吗？")) return;
+            if (!confirmDiscardRetrospective()) return;
             retry.disabled = true;
             try {
               await api(`/api/tasks/${encodeURIComponent(task.id)}/retry`, {
@@ -272,9 +384,26 @@
           });
           line.append(retry);
         }
+        if (["operator", "admin"].includes(principal.role) && ["queued", "retrying"].includes(task.status)) {
+          const cancel = el("button", "取消调查");
+          cancel.addEventListener("click", async () => {
+            if (!window.confirm("取消尚未开始的调查任务？")) return;
+            if (!confirmDiscardRetrospective()) return;
+            cancel.disabled = true;
+            try {
+              await api(`/api/tasks/${encodeURIComponent(task.id)}/cancel`, { method: "POST" });
+              await loadIncident(id);
+              await loadIncidents();
+            } catch (error) { showError(pageMessage, error); cancel.disabled = false; }
+          });
+          line.append(cancel);
+        }
         tasks.append(line);
+        if (task.status === "running") {
+          tasks.append(el("p", "调查已开始，当前不能中断正在执行的 Holmes 请求。", "muted"));
+        }
         if (outcomeUnknown) {
-          tasks.append(el("p", "调查结果未知：Holmes 请求可能已完成并计费，人工重试可能再次产生费用。", "muted"));
+          tasks.append(el("p", "模型请求可能已被处理并计费，或调查结果无法确认；人工重试可能再次产生费用。", "muted"));
         } else if (task.error_code) {
           tasks.append(el("p", `错误代码：${task.error_code}`, "muted"));
         }
@@ -303,6 +432,7 @@
             request.className = "primary";
             request.style.margin = "8px 8px 4px 0";
             request.addEventListener("click", async () => {
+              if (!confirmDiscardRetrospective()) return;
               request.disabled = true;
               try {
                 await api(`/api/incidents/${encodeURIComponent(id)}/approvals`, {
@@ -320,14 +450,23 @@
       for (const approval of incident.approvals) {
         const row = document.createElement("div");
         row.className = "task";
-        row.append(el("span", `${approval.action_id} · ${approval.status} · 申请人 ${approval.requested_by}`));
+        const requester = approval.requested_by_username || approval.requested_by;
+        const reviewer = approval.reviewed_by_username || approval.reviewed_by;
+        const reviewerLabel = reviewer ? ` · 审核人 ${reviewer}` : "";
+        const executionLabel = approval.execution_status ? ` · 执行 ${approval.execution_status}${approval.execution_error ? `（${approval.execution_error}）` : ""}` : "";
+        row.append(el("span", `${approval.action_id} · ${approval.status}${executionLabel} · 申请人 ${requester}${reviewerLabel}`));
         const runApprovalAction = async (button, path, body) => {
+          if (!confirmDiscardRetrospective()) return;
           button.disabled = true;
           pageMessage.textContent = "";
           try {
             await api(path, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) });
             await loadIncident(id);
-          } catch (error) { showError(pageMessage, error); button.disabled = false; }
+          } catch (error) {
+            showError(pageMessage, error);
+            button.disabled = false;
+            await loadIncident(id);
+          }
         };
         if (approval.status === "pending" && ["approver", "admin"].includes(principal.role) && approval.requested_by !== principal.user_id) {
           const approve = el("button", "批准");
@@ -342,8 +481,8 @@
           cancel.addEventListener("click", () => runApprovalAction(cancel, `/api/approvals/${encodeURIComponent(approval.id)}/cancel`));
           row.append(cancel);
         }
-        if (approval.status === "approved" && canOperate) {
-          const execute = el("button", "执行测试动作");
+        if (approval.status === "approved" && canOperate && !["succeeded", "rolled_back", "failed"].includes(approval.execution_status)) {
+          const execute = el("button", approval.execution_status ? "恢复/重试执行" : "执行测试动作");
           execute.className = "primary";
           execute.addEventListener("click", () => runApprovalAction(execute, `/api/approvals/${encodeURIComponent(approval.id)}/execute`));
           row.append(execute);
@@ -353,6 +492,7 @@
       detail.append(approvals);
 
       const retrospective = await api(`/api/incidents/${encodeURIComponent(id)}/retrospective`);
+      if (detailVersion !== incidentDetailVersion) return;
       const reviewSection = document.createElement("section");
       reviewSection.append(el("h3", "事故复盘"));
       const canReview = ["approver", "admin"].includes(principal.role);
@@ -364,39 +504,54 @@
         ["影响范围", "impact", retrospective.impact],
         ["根因", "root_cause", retrospective.root_cause],
         ["恢复措施", "resolution", retrospective.resolution],
-        ["后续行动（每行一项）", "action_items", retrospective.action_items.join("\n")],
+        ["后续行动（最多 20 项，每项不超过 500 字）", "action_items", retrospective.action_items.join("\n")],
       ];
       const reviewInputs = {};
       for (const [labelText, key, value] of reviewFields) {
         const label = el("label", labelText);
         const input = document.createElement("textarea");
         input.value = value;
+        input.maxLength = key === "action_items" ? 10019 : 5000;
         input.readOnly = !canReview;
+        input.addEventListener("input", () => { retrospectiveDirty = true; });
         input.setAttribute("aria-label", labelText);
         label.append(input);
         reviewSection.append(label);
         reviewInputs[key] = input;
       }
       if (canReview) {
+        const saveButtons = [];
         for (const [label, reviewed] of [["保存草稿", false], ["保存并标记已审核", true]]) {
           const save = el("button", label);
+          saveButtons.push(save);
           save.className = reviewed ? "primary" : "";
           save.style.marginRight = "8px";
           save.addEventListener("click", async () => {
             save.disabled = true;
+            for (const input of Object.values(reviewInputs)) input.disabled = true;
+            for (const button of saveButtons) button.disabled = true;
             try {
+              const actionItems = reviewInputs.action_items.value.split("\n").map((item) => item.trim()).filter(Boolean);
+              if (actionItems.length > 20 || actionItems.some((item) => item.length > 500)) {
+                throw new Error("后续行动最多填写 20 项，每项最多 500 字。请修改后再保存。");
+              }
               await api(`/api/incidents/${encodeURIComponent(id)}/retrospective`, {
                 method: "PUT",
                 body: JSON.stringify({
                   impact: reviewInputs.impact.value,
                   root_cause: reviewInputs.root_cause.value,
                   resolution: reviewInputs.resolution.value,
-                  action_items: reviewInputs.action_items.value.split("\n").map((item) => item.trim()).filter(Boolean),
+                  action_items: actionItems,
                   reviewed,
                 }),
               });
+              retrospectiveDirty = false;
               await loadIncident(id);
-            } catch (error) { showError(pageMessage, error); save.disabled = false; }
+            } catch (error) {
+              showError(pageMessage, error);
+              for (const input of Object.values(reviewInputs)) input.disabled = false;
+              for (const button of saveButtons) button.disabled = false;
+            }
           });
           reviewSection.append(save);
         }
@@ -405,13 +560,42 @@
 
       const timeline = document.createElement("section");
       timeline.append(el("h3", "审计时间线"));
-      if (!incident.timeline.length) timeline.append(el("p", "暂无审计事件。", "muted"));
-      for (const event of incident.timeline) {
-        timeline.append(el("p", `${new Date(event.created_at).toLocaleString()} · ${event.event_type} · ${event.actor || "系统"}`, "muted"));
-        if (event.details && Object.keys(event.details).length) timeline.append(el("pre", JSON.stringify(event.details, null, 2)));
+      const timelineEntries = document.createElement("div");
+      const appendTimelineEvents = (events, older = false) => {
+        const fragment = document.createDocumentFragment();
+        for (const event of events) {
+          const entry = document.createElement("div");
+          entry.append(el("p", `${new Date(event.created_at).toLocaleString()} · ${event.event_type} · ${event.actor || "系统"}`, "muted"));
+          if (event.details && Object.keys(event.details).length) entry.append(el("pre", JSON.stringify(event.details, null, 2)));
+          fragment.append(entry);
+        }
+        if (older) timelineEntries.prepend(fragment);
+        else timelineEntries.append(fragment);
+      };
+      appendTimelineEvents(incident.timeline);
+      if (!incident.timeline.length) timelineEntries.append(el("p", "暂无审计事件。", "muted"));
+      timeline.append(timelineEntries);
+      let timelineCursor = incident.timeline_next_cursor;
+      if (timelineCursor) {
+        const loadOlder = el("button", "加载更早审计事件");
+        loadOlder.addEventListener("click", async () => {
+          loadOlder.disabled = true;
+          try {
+            const page = await api(`/api/incidents/${encodeURIComponent(id)}/timeline?limit=50&cursor=${encodeURIComponent(timelineCursor)}`);
+            appendTimelineEvents(page.items, true);
+            timelineCursor = page.next_cursor;
+            if (!timelineCursor) loadOlder.remove();
+            else loadOlder.disabled = false;
+          } catch (error) {
+            timelineEntries.prepend(el("p", error.message, "message"));
+            loadOlder.disabled = false;
+          }
+        });
+        timeline.append(loadOlder);
       }
       detail.append(timeline);
     } catch (error) {
+      if (detailVersion !== incidentDetailVersion) return;
       detail.replaceChildren(el("p", error.message, "message"));
     }
   }
@@ -421,7 +605,9 @@
       principal = await api("/auth/me");
       loginPanel.classList.add("hidden");
       workbench.classList.remove("hidden");
-      document.getElementById("identity").textContent = `${principal.username} · ${principal.role}`;
+      const resourceScopes = Array.isArray(principal.resource_scopes) ? principal.resource_scopes : [];
+      const scopeLabel = resourceScopes.includes("*") ? "全部服务" : resourceScopes.join("、") || "无服务范围";
+      document.getElementById("identity").textContent = `${principal.username} · ${principal.role} · 服务范围：${scopeLabel}`;
       if (principal.role === "admin") {
         userAdmin.classList.remove("hidden");
         await loadUsers();
@@ -451,9 +637,19 @@
     } catch (error) { showError(loginMessage, error); }
     finally { button.disabled = false; }
   });
-  document.getElementById("refresh").addEventListener("click", loadIncidents);
+  document.getElementById("refresh").addEventListener("click", async () => {
+    const detailId = selectedIncidentId;
+    await Promise.all([loadIncidents(), detailId ? loadIncident(detailId) : Promise.resolve()]);
+  });
+  document.getElementById("apply-filters").addEventListener("click", () => loadIncidents());
+  document.getElementById("load-more").addEventListener("click", () => loadIncidents(true));
+  document.getElementById("incident-search").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") loadIncidents();
+  });
   document.getElementById("refresh-users").addEventListener("click", loadUsers);
-  document.getElementById("status-filter").addEventListener("change", loadIncidents);
+  document.getElementById("status-filter").addEventListener("change", () => loadIncidents());
+  document.getElementById("severity-filter").addEventListener("change", () => loadIncidents());
+  document.getElementById("assigned-to-me").addEventListener("change", () => loadIncidents());
   oidcLogin.addEventListener("click", () => { window.location.assign("/auth/login"); });
   document.getElementById("logout").addEventListener("click", async () => {
     try {
@@ -480,9 +676,32 @@
         fetch("/auth/local-test-defaults", { cache: "no-store" })
           .then((response) => response.ok ? response.json() : null)
           .then((defaults) => {
-            if (!defaults || token()) return;
-            document.getElementById("username").value = defaults.username;
-            document.getElementById("password").value = defaults.password;
+            if (!defaults || !Array.isArray(defaults.accounts)) return;
+            const accounts = defaults.accounts.filter((account) =>
+              account && typeof account.username === "string" &&
+              typeof account.password === "string" && typeof account.role === "string"
+            );
+            if (!accounts.length) return;
+            localAccountSelector.replaceChildren();
+            for (const account of accounts) {
+              const option = document.createElement("option");
+              option.value = account.username;
+              option.textContent = `${account.username} (${account.role})`;
+              localAccountSelector.append(option);
+            }
+            localAccountLabel.classList.remove("hidden");
+            localAccountSelector.classList.remove("hidden");
+            const fillCredentials = () => {
+              const selected = accounts.find((account) => account.username === localAccountSelector.value);
+              if (!selected) return;
+              usernameInput.value = selected.username;
+              passwordInput.value = selected.password;
+            };
+            localAccountSelector.addEventListener("change", fillCredentials);
+            localAccountSelector.value = accounts.some((account) => account.username === defaults.default_username)
+              ? defaults.default_username
+              : accounts[0].username;
+            fillCredentials();
           });
       }
       if (token() || authMode === "oidc") enterWorkbench();

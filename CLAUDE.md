@@ -35,6 +35,8 @@ python3 -m venv /tmp/poetry185 && /tmp/poetry185/bin/pip install "poetry==1.8.5"
 
 ### Testing
 
+**Pause testing while implementing core features:** If the user asks to stop or defer all tests and focus on core functionality, do not run tests, smoke tests, browser checks, lint, type checks, or other automated verification until the user explicitly resumes testing. Continue implementing the requested features and update `ROADMAP.md`; clearly mark verification as deferred. This instruction overrides the core-test scope below for the duration of that user request.
+
 **Core-test scope:** When the user asks to test a change, run only the smallest
 set of tests that directly exercises the changed behavior and its critical
 integration boundary. Do not default to the full repository suite, all
@@ -112,6 +114,13 @@ poetry run mypy
 - Treat NestJS as outside the HolmesGPT backend. The `examples/openobserve-aiops` NestJS app is a telemetry-producing sample service, not HolmesGPT's API or an implemented incident-management service.
 - Keep Holmes investigations read-only by default and use narrowly scoped credentials. Any future remediation or other external side effect must be authorized by the service that owns that action; an Agent plan or approval state alone does not grant permission.
 - If this repository later adds a separate incident-management service, keep it independently deployable, give each incident/task record one owning service, and use authenticated service-to-service calls with task IDs and idempotency for retries. Do not claim that service exists until its implementation and tests are present.
+
+### Active HolmesGPT AIOps Task Guardrails
+
+- The current user task targets `examples/openobserve-aiops`; keep changes in that project unless the user expands scope.
+- The user has temporarily directed us to finish core functionality before testing. Until the user resumes verification, do not run test suites, LLM evaluations, or acceptance/performance test jobs. Continue implementation; builds, applying already-authorized migrations to the local test database, and starting local services are allowed when needed to advance the goal, but label changed behavior as unverified and do not treat a build or health check as functional verification. Once verification resumes, run only the core tests the user requested. Follow the repository's separate restriction on lint/type-check tools unless explicitly requested.
+- The current Docker Compose deployment and PostgreSQL database are local test resources. The user authorized applying migrations to this local test database, but that authorization does not include production data or deployments. Never infer or select a production platform; prepare a target-specific production deployment only after the user selects it, and require final authorization before production deployment.
+- Do not claim production readiness or résumé evidence for source changes until the corresponding behavior has been verified. Keep platform-dependent items, human RCA scoring, retention, and RPO/RTO decisions explicitly open in `ROADMAP.md`.
 
 ### Key Patterns
 

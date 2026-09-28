@@ -7,6 +7,7 @@ groups:
         for: 2m
         labels:
           severity: critical
+          service: holmes-aiops
         annotations:
           summary: AIOps telemetry Collector scrape target is unavailable
           description: The configured Collector metrics target has failed Prometheus scrapes for two minutes.
@@ -16,6 +17,7 @@ groups:
         for: 1m
         labels:
           severity: critical
+          service: holmes-aiops
         annotations:
           summary: AIOps telemetry export queue is full
           description: The Collector cannot accept more telemetry for an exporter; inspect OpenObserve reachability, credentials, and queue storage.
@@ -27,6 +29,7 @@ groups:
           or sum by (instance, exporter) (increase(otelcol_exporter_enqueue_failed_metric_points[5m])) > 0
         labels:
           severity: critical
+          service: holmes-aiops
         annotations:
           summary: AIOps Collector failed to enqueue telemetry
           description: Telemetry was rejected before durable export queueing; inspect Collector capacity, storage health, and exporter errors.

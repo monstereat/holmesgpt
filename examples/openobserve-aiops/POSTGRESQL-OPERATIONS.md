@@ -12,14 +12,80 @@ command at its credentials or volume.
 - The API uses `aiops_runtime` to perform authenticated business and OIDC
   identity lifecycle operations. The worker uses the separate `aiops_worker`
   identity, limited to reading incidents/tasks, updating task and outbox
-  processing fields, and appending worker audit events. Neither can create
-  schema objects, alter the migration ledger, or change/delete audit history.
+  processing fields, and appending worker audit events. The outbox dispatcher
+  runs in the Incident API process, so only `aiops_runtime` can update
+  `outbox_events.dead_lettered_at`; `aiops_worker` cannot access that column.
+  Neither identity can create schema objects, alter the migration ledger, or
+  change/delete audit history.
 - A one-shot migration job uses the separate migration identity. It must finish
   successfully before application replicas start. The migration runner takes a
   PostgreSQL advisory transaction lock and records each applied migration.
-- The current migrations are numbered `0001` through `0013`. They run in
-  transactions. There are no automatic down migrations: do not delete migration
-  records or manually reverse DDL to make an older binary start.
+- Incident API, worker, migration, recovery, and admission-benchmark connections
+  use a 3-second default connection timeout. A `connect_timeout` explicitly
+  present in the PostgreSQL DSN or supplied by a caller takes precedence. The
+  timeout bounds connection establishment only; it does not bound SQL execution,
+  lock waits, or total request duration.
+- The current migration files are numbered `0001` through `0021`. They run in
+  transactions. Migration `0014_incident_resource_scope` adds the persisted
+  incident service key and lookup index and is applied to the authorized local
+  test database. Migration `0015_incident_timeline_index` adds a partial index
+  for keyset-paged incident audit history; it has now been applied locally and
+  its pagination behavior is covered by repository code. Isolated role and
+  backup/restore verifiers now pass through migration 0021. It uses ordinary transactional index creation,
+  so measure lock/build time on a staging-sized copy before production. There are no
+  automatic down migrations: do not delete migration records or manually
+  reverse DDL to make an older binary start.
+
+Migration `0016_restrict_runtime_user_columns` removes table-level INSERT and
+UPDATE grants from `aiops_runtime` on `users`, then grants only the columns used
+by local test-user seeding, verified OIDC claim synchronization, and account
+lifecycle routes. It blocks direct updates to OIDC issuer/subject and creation
+timestamps. It does not remove runtime access to role/resource-scope or active
+state columns required by those application flows, so the API credential
+remains trusted. On 2026-09-28 the project Compose migration gate applied it to
+the authorized local test database; read-only checks confirmed migration 0016
+and the expected table/column privileges. No functional permission verifier
+was run at the time of the migration; the 2026-09-29 isolated role verifier now
+checks the column allowlist through migration 0021.
+
+The isolated role verifier also checks the deny side of this column allowlist:
+runtime cannot insert identity lifecycle counters/timestamps or change the
+user ID/creation timestamp, in addition to being unable to change OIDC issuer
+or subject. The role template is intended for a dedicated AIOps database and
+normalizes the grants it owns; it does not audit external role memberships or
+attributes provisioned by a managed database administrator.
+
+Migration `0017_action_execution_recovery` adds durable approval-action
+execution state and an index for operator reconciliation. Migration
+`0018_outbox_dead_letter` adds the outbox dead-letter timestamp and its index.
+Migration `0019_dispatcher_dead_letter_runtime_role` assigns that column's
+UPDATE permission to the API runtime identity and removes the redundant worker
+grant, matching the process that performs dispatch and exhaustion handling.
+Migrations 0017–0021 have been applied to the authorized local test database;
+the ledger and effective runtime/worker column privileges were checked with
+read-only queries. The 2026-09-29 isolated role verifier passed through
+migration 0021; the backup verifier also passed plain/encrypted restore into a
+fresh cluster. A focused current-source integration case verifies action
+recovery from persisted `dispatching` and `rollback_pending` phases. Dead-letter
+dispatch behavior and manual replay remain unverified.
+
+Migration `0020_pending_task_age_index` adds a partial index over `created_at`
+for queued, running, and retrying tasks. It matches the oldest-pending-age
+metrics query so PostgreSQL can seek the earliest active task without scanning
+terminal task history. The index is additive; its transactional build can still
+block writes while it is created, so measure it on a staging-sized copy before
+production. Local index presence does not prove the query plan or representative-
+scale performance.
+
+Migration `0021_metrics_scan_indexes` adds covering indexes for the exact task
+status/retry aggregation and the queued-task-to-outbox lookup. It can reduce
+heap reads, while the all-history aggregation remains O(retained tasks). The
+outbox query now starts from eligible queued/retrying tasks, whose count is
+bounded by the configured pending-task cap. The migration has been applied to
+the authorized local test database, and read-only catalog checks confirmed both
+indexes exist. Query behavior, query plans, verifier scripts, index size, write
+amplification, and lock time remain unverified; assess the latter three before
+a production migration.
 
 Migration `0012_break_glass_admin_recovery` introduced the recovery function;
 migration `0013_two_person_admin_recovery` replaces its shared-login invocation
@@ -68,7 +134,11 @@ The bootstrap ownership transfer is intentionally specific to the local
 
 On 2026-09-28 migration `0010_worker_database_privileges` was applied to the persistent local test database. The API uses `aiops_runtime`, Celery uses `aiops_worker`, and migrations use `aiops_migrator`; the Compose role verifier confirmed those live service identities, denied API DDL/migration-ledger/audit mutation, and authenticated a local operator workbench read. A direct privilege check confirmed the worker can perform task/outbox updates and audit inserts while user reads, incident writes, and audit mutation are denied. After loading the documented mode-0600 local DeepSeek key file, Holmes and the Celery worker became healthy. A synthetic webhook then produced one incident/task; the worker completed the first attempt, persisted the matching Trace ID and OpenObserve query tool in the task result, and appended `task.completed` to audit history. Counts are 12 incidents, 12 tasks, 54 audit rows, and 12 outbox rows. A custom-format dump of this current local database was encrypted and restored into a separate isolated PostgreSQL 16.6 container; all 10 migration records, business row counts, and the completed smoke-task evidence/audit matched. The temporary archive, certificate, and restore container were removed after verification. This is still test-only evidence.
 
-Later on 2026-09-28 migration `0011_restrict_runtime_delete` was applied transactionally to the same local test database after the API runtime role was found to have unnecessary DELETE on business tables. Migrations `0012` and `0013` add function-only, two-custodian administrator recovery. The live Compose role verifier confirms 13 migration records and tests the request/approval path with distinct database logins, the disabled shared-role identity, and restricted API/worker grants. The PostgreSQL role and backup verifiers exercise the current source against isolated PostgreSQL 16. The persistent test data counts remain 12 incidents, 12 tasks, 54 audit events, and 12 outbox rows. Provider key custody, off-host retention, target-platform identity mapping, and managed service restore remain untested.
+Later on 2026-09-28 migration `0011_restrict_runtime_delete` was applied transactionally to the same local test database after the API runtime role was found to have unnecessary DELETE on business tables. Migrations `0012` and `0013` add function-only, two-custodian administrator recovery. The live Compose role verifier last confirmed 13 migration records and tested the request/approval path with distinct database logins, the disabled shared-role identity, and restricted API/worker grants. The PostgreSQL role and backup verifiers exercise the source snapshot from that time against isolated PostgreSQL 16. Migration 0014_incident_resource_scope has now been applied to the local test database, bringing its ledger to 14 records; the API and worker images were rebuilt and recreated without functional checks. The previously recorded business row counts predate migration 0014. Provider key custody, off-host retention, target-platform identity mapping, and managed service restore remain untested.
+
+`0014_incident_resource_scope` preserves existing incidents as `order-service`, requires normalized lowercase resource keys, and supports filtering by service-level OIDC scopes. It has been applied only to the authorized local test database. The updated API/worker containers are running, but the feature and updated role/backup verifiers have not been functionally verified; staging and production remain gated on their own reviewed migration plan.
+
+`0015_incident_timeline_index` supports bounded keyset pagination of incident audit history. The workbench initially loads the latest 50 events and can fetch older pages. On 2026-09-28 it was applied to the authorized local test database through the project migration service; a read-only query confirmed `current_user=aiops_migrator`, 15 ledger rows and the expected index. Pagination behavior and the updated role/backup verifiers remain untested. The index creation is transactional and may hold a table lock while it builds, so measure its duration on a staging-sized copy before production.
 
 ## Release migration sequence
 
@@ -83,8 +153,10 @@ Later on 2026-09-28 migration `0011_restrict_runtime_delete` was applied transac
    point-in-time recovery window. Record the backup/PITR reference and the
    operator responsible for restore.
 4. Run exactly one migration job for the release with
-   `AIOPS_ENV=production` and `MIGRATION_DATABASE_URL` set to the dedicated
-   migration identity. Do not set `DATABASE_URL` as a migration fallback. Require
+   `AIOPS_ENV=production`, `MIGRATION_DATABASE_URL` set to the dedicated
+   migration identity, and `MIGRATION_DATABASE_ROLE` set to the exact effective
+   PostgreSQL `current_user`. The runner checks this identity before applying
+   any migration. Do not set `DATABASE_URL` as a migration fallback. Require
    job exit code zero and verify the expected migration versions in
    `schema_migrations` before rolling out API or worker replicas.
 5. Start the new application version, then verify `/readyz`, database
@@ -119,6 +191,28 @@ has rehearsed both an application rollback after a successful migration and a
 database restore/PITR into an isolated target, with measured recovery time and
 verified incident, task, outbox, and audit records.
 
+### Local Docker data-disk exhaustion
+
+If the local PostgreSQL log reports `No space left on device` while writing a
+checkpoint and the container repeatedly rejects connections, inspect Docker
+storage first with `docker system df`; do not delete or recreate the PostgreSQL
+volume, run `docker compose down -v`, or use `docker system prune --volumes`.
+The September 28, 2026 incident first recovered PostgreSQL after reclaiming
+924.8 MB of BuildKit cache. Redis still could not write its AOF because the
+shared Docker data disk remained full; reclaiming a further 900.2 MB of builder
+cache and 1.333 GB of dangling images restored PostgreSQL, Redis, Incident API,
+and the worker. No containers, volumes, or project files were removed. Both
+`docker builder prune --force` and `docker image prune --force` affect shared
+Docker resources across projects; inspect `docker system df` first and accept
+the rebuild or image re-download cost before using them. Never use `docker
+image prune --all` as part of this recovery procedure. After reclaiming space,
+confirm Redis AOF `aof_last_write_status=ok`, `pg_isready` acceptance, and
+healthy Compose states before using the migration service. Do not run
+`pg_resetwal` or retry a migration while PostgreSQL is still in crash recovery.
+The recorded recovery restored local service availability but did not validate
+backup integrity or replace an isolated restore rehearsal; the Docker data
+disk remained at 96% usage afterward.
+
 ## Backup and restore evidence
 
 For a database session configured through libpq environment or service-file
@@ -127,6 +221,16 @@ credentials, create a new archive path with:
 ```bash
 bash examples/openobserve-aiops/backup-postgres.sh /secure-backup-path/aiops-$(date -u +%Y%m%dT%H%M%SZ).dump
 ```
+
+The configured backup identity must be distinct from the application runtime
+identity and have `CONNECT`, schema `USAGE`, and read access to every table and
+sequence in the application database that the archive must preserve. Provision
+those grants through the database owner's supported process, including access
+to objects created by future migrations; the repository's
+`postgresql-roles.psql` template intentionally does not create a backup login.
+Do not grant cluster-wide read access on a shared PostgreSQL cluster merely to
+make this helper work. Prefer the selected provider's database backup/PITR
+service when it offers stronger isolation and managed retention.
 
 The helper uses custom format, mode `0600`, validates the archive catalog, and
 refuses to overwrite an existing file. It does not encrypt or copy the archive
@@ -152,17 +256,22 @@ plaintext input remains in place; create it only on approved encrypted or
 ephemeral storage and follow the platform's data-removal policy. This helper
 does not upload or retain backups off host and does not replace managed backup
 encryption/PITR. For restore, retrieve the matching private key from the
-approved secret manager, decrypt to protected scratch storage, then run
-`pg_restore --list` before restoring into a separate database:
+approved secret manager, then use the helper below to create a protected,
+mode-`0600` plaintext copy in scratch storage. It refuses to overwrite an
+existing path, validates the PostgreSQL archive before publishing the file,
+and removes an incomplete temporary file on failure:
 
 ```bash
-openssl cms -decrypt -binary -inform DER \
-  -in /secure-backup/aiops-backup.cms.der \
-  -recip /run/secrets/backup-recipient.crt \
-  -inkey /run/secrets/backup-recipient.key \
-  -out /secure-ephemeral/aiops-restore.dump
-pg_restore --list /secure-ephemeral/aiops-restore.dump
+bash examples/openobserve-aiops/decrypt-postgres-backup.sh \
+  /secure-backup/aiops-backup.cms.der \
+  /secure-ephemeral/aiops-restore.dump \
+  /run/secrets/backup-recipient.crt \
+  /run/secrets/backup-recipient.key
 ```
+
+Keep the plaintext copy only on approved encrypted or ephemeral storage and
+remove it according to the data owner's retention policy after the isolated
+restore has been accepted.
 
 OpenSSL CMS supports AES-GCM as an authenticated-encryption mode; confirm the
 selected platform's OpenSSL build and cryptographic policy before adopting this
@@ -170,26 +279,63 @@ format ([OpenSSL CMS command documentation](https://docs.openssl.org/3.4/man1/op
 
 Restore only to a new isolated database or instance first:
 
+For a new PostgreSQL cluster, first provision the database and the required
+roles or managed-identity mappings. The archive does not create cluster-level
+login roles. Run the reviewed [`postgresql-roles.psql`](postgresql-roles.psql)
+template as an authorized database administrator against the empty target
+database, then restore as `aiops_migrator` with ownership and ACL restoration
+disabled. This makes the migration identity own the restored objects and avoids
+references to source-cluster role names in archive ACLs. Re-run the role
+template after restore so its table-specific grants, break-glass function
+grants, and revocations apply to the restored schema as well. If the managed
+service cannot create roles or execute this template, use its approved
+identity/grant workflow and verify the equivalent effective privileges before
+connecting an application.
+
 ```bash
 createdb aiops_restore_check
-pg_restore --exit-on-error --single-transaction --no-owner \
+psql --set ON_ERROR_STOP=1 --dbname=aiops_restore_check \
+  --file=examples/openobserve-aiops/postgresql-roles.psql
+pg_restore --exit-on-error --single-transaction --no-owner --no-acl \
+  --username=aiops_migrator \
   --dbname=aiops_restore_check /secure-backup-path/aiops-backup.dump
+psql --set ON_ERROR_STOP=1 --dbname=aiops_restore_check \
+  --file=examples/openobserve-aiops/postgresql-roles.psql
 ```
 
-Then verify migration versions, representative incident/task/audit rows,
-constraints, indexes, application readiness, and an end-to-end synthetic task
-before any owner-approved cutover. The repository verifier
-[`verify-postgresql-backup.sh`](verify-postgresql-backup.sh) passed on an
-isolated PostgreSQL 16.6 container with no network or persistent volume. It
-  restored migrations `0001`–`0011`, the task duration index, incident triage,
-  user session-generation/reactivation columns, worker-role grants, and a
-  synthetic incident; it checked mode `0600`, archive validation, and overwrite
-  refusal. The same verifier creates an ephemeral recipient
-certificate, encrypts the archive, decrypts it, and restores it into a second
-isolated database. It also checks mode `0600`, overwrite refusal, and rejection
-after an encrypted artifact is tampered with. This verifies local encryption
-and restore mechanics, but does not establish production key custody, off-host
-retention, PITR, managed-service compatibility, or a production RPO/RTO.
+Before starting the target release's API image against this isolated database,
+compare the restored `schema_migrations` version set with that release's
+migration files. If it is behind, first confirm forward-migration compatibility
+from the backup's source release to the target release, then run that release's
+one-shot migration image against the isolated restore database as
+`aiops_migrator` (`AIOPS_ENV=production`, `MIGRATION_DATABASE_ROLE` set to the
+effective database identity, and `MIGRATION_DATABASE_URL` injected from the
+approved secret manager). Verify the exact migration set and application
+readiness on the isolated target. Never run recovery migrations directly
+against the source backup or the live database as part of this rehearsal.
+If the restored ledger contains a version absent from the target release, stop:
+do not start the older application against that schema. Select a compatible
+application release or a recovery point whose schema is compatible with the
+target, then repeat the isolated restore checks.
+
+When restore tooling runs under an identity other than the authorized DBA,
+provision its authentication through the selected secret manager rather than
+putting a password on the command line. Then verify migration versions,
+representative incident/task/audit rows, constraints, indexes, object ownership,
+effective API/worker/migrator privileges, application readiness, and an
+end-to-end synthetic task before any owner-approved cutover. The repository
+backup verifier source includes a second empty PostgreSQL cluster, role
+provisioning, restore as `aiops_migrator` with `--no-owner --no-acl`, reapplication
+of the role template, and assertions for table, sequence, and function ownership;
+exact migration-version sets, resource-scope/timeline schema objects and effective
+API/worker privileges. It also exercises `decrypt-postgres-backup.sh` for mode-
+`0600` output, content equality, overwrite refusal, and authenticated failure for
+a tampered archive. On 2026-09-29, the isolated verifier passed both plain and
+encrypted restores through migration `0021`, including a fresh cluster,
+least-privilege ownership/grants, tamper rejection, and overwrite protection.
+This verifies the repository script against synthetic local data only; it does
+not establish production key custody,
+off-host retention, PITR, managed-service compatibility, or a production RPO/RTO.
 
 The role verifier [`verify-postgresql-roles.sh`](verify-postgresql-roles.sh)
 also passed in an isolated PostgreSQL 16.6 container. It confirmed runtime audit

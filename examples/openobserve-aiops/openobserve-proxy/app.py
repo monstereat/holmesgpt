@@ -8,6 +8,7 @@ import http.client
 import json
 import os
 import re
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Mapping
@@ -24,8 +25,27 @@ MAX_RESPONSE_BYTES = 4_194_304
 MAX_ROWS = 100
 MAX_WINDOW_US = 3_600 * 1_000_000
 MAX_TIMEOUT_SECONDS = 30
+LOCAL_MAX_CONCURRENT_REQUESTS = 16
+MAX_CONCURRENT_REQUESTS = 256
 SQL_COMMENT_MARKERS = re.compile(r"--|/\*|\*/|#|;")
 FIELD_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
+METRICS_LOCK = threading.Lock()
+METRICS_ACTIVE_REQUESTS = 0
+METRICS_CAPACITY_REJECTIONS_TOTAL = 0
+METRICS_REQUESTS_TOTAL = {"2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, "other": 0}
+
+
+class _DuplicateJSONKeyError(ValueError):
+    pass
+
+
+def _unique_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateJSONKeyError
+        result[key] = value
+    return result
 
 
 def _required_env(name: str) -> str:
@@ -33,6 +53,56 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"Missing required environment variable: {name}")
     return value
+
+
+def _max_concurrent_requests() -> int:
+    raw = os.getenv("OPENOBSERVE_PROXY_MAX_CONCURRENT_REQUESTS", "").strip()
+    if not raw and os.getenv("AIOPS_ENV", "production") == "local":
+        return LOCAL_MAX_CONCURRENT_REQUESTS
+    try:
+        limit = int(raw)
+    except ValueError:
+        raise RuntimeError("OPENOBSERVE_PROXY_MAX_CONCURRENT_REQUESTS must be an integer from 1 to 256") from None
+    if not 1 <= limit <= MAX_CONCURRENT_REQUESTS:
+        raise RuntimeError("OPENOBSERVE_PROXY_MAX_CONCURRENT_REQUESTS must be an integer from 1 to 256")
+    return limit
+
+
+def _metrics_token() -> str:
+    token = os.getenv("OPENOBSERVE_PROXY_METRICS_TOKEN", "")
+    if not token and os.getenv("AIOPS_ENV", "production") != "local":
+        raise RuntimeError("OPENOBSERVE_PROXY_METRICS_TOKEN is required outside local mode")
+    if token and (not token.isascii() or len(token) < 32):
+        raise RuntimeError("OPENOBSERVE_PROXY_METRICS_TOKEN must contain at least 32 bytes")
+    return token
+
+
+def _record_proxy_response(status: int) -> None:
+    status_class = f"{status // 100}xx" if 200 <= status < 600 else "other"
+    with METRICS_LOCK:
+        METRICS_REQUESTS_TOTAL[status_class] += 1
+
+
+def _proxy_metrics_text() -> str:
+    with METRICS_LOCK:
+        active_requests = METRICS_ACTIVE_REQUESTS
+        capacity_rejections = METRICS_CAPACITY_REJECTIONS_TOTAL
+        request_counts = dict(METRICS_REQUESTS_TOTAL)
+    lines = [
+        "# HELP aiops_openobserve_proxy_active_requests Active policy-proxy request handlers.",
+        "# TYPE aiops_openobserve_proxy_active_requests gauge",
+        f"aiops_openobserve_proxy_active_requests {active_requests}",
+        "# HELP aiops_openobserve_proxy_capacity_rejections_total Accepted connections rejected because all request slots were occupied.",
+        "# TYPE aiops_openobserve_proxy_capacity_rejections_total counter",
+        f"aiops_openobserve_proxy_capacity_rejections_total {capacity_rejections}",
+        "# HELP aiops_openobserve_proxy_responses_total Policy-proxy responses by bounded status class.",
+        "# TYPE aiops_openobserve_proxy_responses_total counter",
+    ]
+    lines.extend(
+        f'aiops_openobserve_proxy_responses_total{{status_class="{status_class}"}} {count}'
+        for status_class, count in sorted(request_counts.items())
+    )
+    return "\n".join(lines) + "\n"
 
 
 def _upstream_settings() -> tuple[str, str, str, str, int]:
@@ -62,7 +132,9 @@ def _upstream_settings() -> tuple[str, str, str, str, int]:
 def load_field_allowlists(raw: str | None = None) -> dict[str, tuple[str, ...]]:
     configured = raw if raw is not None else _required_env("OPENOBSERVE_ALLOWED_FIELDS_JSON")
     try:
-        value = json.loads(configured)
+        value = json.loads(configured, object_pairs_hook=_unique_object_pairs)
+    except _DuplicateJSONKeyError as exc:
+        raise RuntimeError("OPENOBSERVE_ALLOWED_FIELDS_JSON must not contain duplicate object keys") from exc
     except json.JSONDecodeError as exc:
         raise RuntimeError("OPENOBSERVE_ALLOWED_FIELDS_JSON must be valid JSON") from exc
     if not isinstance(value, dict) or set(value) != ALLOWED_STREAMS:
@@ -234,10 +306,68 @@ def _upstream_request(method: str, path: str, body: bytes | None = None) -> tupl
         connection.close()
 
 
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """Bound active handler threads and reject excess work with a retryable response."""
+
+    request_queue_size = MAX_CONCURRENT_REQUESTS
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        request_handler_class: type[BaseHTTPRequestHandler],
+        *,
+        max_concurrent_requests: int,
+    ) -> None:
+        self._request_slots = threading.BoundedSemaphore(max_concurrent_requests)
+        self.request_queue_size = max_concurrent_requests
+        super().__init__(server_address, request_handler_class)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        global METRICS_ACTIVE_REQUESTS, METRICS_CAPACITY_REJECTIONS_TOTAL
+        if not self._request_slots.acquire(blocking=False):
+            with METRICS_LOCK:
+                METRICS_CAPACITY_REJECTIONS_TOTAL += 1
+                METRICS_REQUESTS_TOTAL["5xx"] += 1
+            try:
+                request.settimeout(1)
+                request.sendall(
+                    b"HTTP/1.1 503 Service Unavailable\r\n"
+                    b"Connection: close\r\n"
+                    b"Cache-Control: no-store\r\n"
+                    b"Retry-After: 1\r\n"
+                    b"Content-Length: 0\r\n\r\n"
+                )
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            return
+        try:
+            with METRICS_LOCK:
+                METRICS_ACTIVE_REQUESTS += 1
+            request.settimeout(10)
+            super().process_request(request, client_address)
+        except Exception:
+            with METRICS_LOCK:
+                METRICS_ACTIVE_REQUESTS -= 1
+            self._request_slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        global METRICS_ACTIVE_REQUESTS
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            with METRICS_LOCK:
+                METRICS_ACTIVE_REQUESTS -= 1
+            self._request_slots.release()
+
+
 class ProxyHandler(BaseHTTPRequestHandler):
     server_version = "AIOpsOpenObservePolicy/1.0"
     client_user = ""
     client_password = ""
+    metrics_token = ""
     organization = ORGANIZATION
     field_allowlists: Mapping[str, tuple[str, ...]] = {}
 
@@ -248,6 +378,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def _reply(self, status: int, value: dict[str, Any], extra_headers: dict[str, str] | None = None) -> None:
         payload = json.dumps(value, separators=(",", ":")).encode()
         self.send_response(status)
+        _record_proxy_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
@@ -280,6 +411,24 @@ class ProxyHandler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path == "/healthz" and not parsed.query:
             self._reply(200, {"status": "healthy"})
+            return
+        if parsed.path == "/_internal/metrics" and not parsed.query:
+            if not self.metrics_token:
+                self._reply(404, {"error": "metrics are disabled"})
+                return
+            supplied = self.headers.get("authorization", "").encode("utf-8")
+            expected = f"Bearer {self.metrics_token}".encode("ascii")
+            if not hmac.compare_digest(supplied, expected):
+                self._reply(401, {"error": "unauthorized"})
+                return
+            payload = _proxy_metrics_text().encode()
+            self.send_response(200)
+            _record_proxy_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload)
             return
         if not self._require_auth():
             return
@@ -404,17 +553,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
 def main() -> None:
     _scheme, _host, organization, _username, _port = _upstream_settings()
     field_allowlists = load_field_allowlists()
+    max_concurrent_requests = _max_concurrent_requests()
+    metrics_token = _metrics_token()
     handler = type(
         "ConfiguredProxyHandler",
         (ProxyHandler,),
         {
             "client_user": _required_env("OPENOBSERVE_PROXY_USERNAME"),
             "client_password": _required_env("OPENOBSERVE_PROXY_PASSWORD"),
+            "metrics_token": metrics_token,
             "organization": organization,
             "field_allowlists": field_allowlists,
         },
     )
-    server = ThreadingHTTPServer(("0.0.0.0", 8090), handler)
+    server = BoundedThreadingHTTPServer(
+        ("0.0.0.0", 8090), handler, max_concurrent_requests=max_concurrent_requests
+    )
     server.daemon_threads = True
     server.serve_forever()
 

@@ -10,7 +10,14 @@ class RetryableTaskError(Exception):
 
 
 class PermanentTaskError(Exception):
-    def __init__(self, code: str = "investigation_failed", *, evidence: list[dict[str, Any]] | None = None):
+    def __init__(
+        self,
+        code: str = "investigation_failed",
+        *,
+        evidence: list[dict[str, Any]] | None = None,
+        possible_duplicate_charge: bool = False,
+    ):
         super().__init__(code)
         self.code = code
         self.evidence = evidence or []
+        self.possible_duplicate_charge = possible_duplicate_charge

@@ -56,8 +56,9 @@ def _alert_search_window(summary: dict[str, Any]) -> dict[str, int] | None:
         parsed = datetime.fromisoformat(trigger_time.replace("Z", "+00:00"))
     except ValueError:
         return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    parsed = parsed.astimezone(UTC)
     alert_time_us = int(parsed.timestamp() * 1_000_000)
     return {
         "alert_time_unix_us": alert_time_us,
@@ -66,19 +67,21 @@ def _alert_search_window(summary: dict[str, Any]) -> dict[str, int] | None:
     }
 
 
-def build_investigation_question(task: dict[str, Any], *, evaluation: bool = False) -> str:
+def build_investigation_question(
+    task: dict[str, Any], *, evaluation: bool = False, search_window: dict[str, int] | None = None
+) -> str:
     alert = {
         "alert_name": task.get("alert_name", ""),
         "trace_ids": task.get("trace_ids", []),
         "summary": task.get("summary", {}),
     }
-    search_window = _alert_search_window(alert["summary"]) if not evaluation else None
+    search_window = (search_window or _alert_search_window(alert["summary"])) if not evaluation else None
     search_window_context = (
         " The trusted server-generated alert search window is "
         + json.dumps(search_window, separators=(",", ":"))
         + ". Use these exact start_time and end_time values for log searches; do not center a new window or extend it."
         if search_window
-        else "" if evaluation else " No valid alert timestamp was supplied; use one bounded recent window and do not invent an alert time."
+        else "" if evaluation else " No valid alert timestamp was supplied; do not invent one or run an unscoped log search."
     )
     evaluation_context = ""
     if evaluation:
@@ -138,6 +141,8 @@ def extract_evidence(
     tool_calls: Any,
     *,
     expected_trace_ids: list[str] | None = None,
+    expected_search_window: dict[str, int] | None = None,
+    enforce_task_scope: bool = False,
 ) -> tuple[list[dict[str, Any]], bool]:
     if not isinstance(tool_calls, list):
         raise PermanentTaskError("holmes_tool_calls_invalid")
@@ -155,6 +160,7 @@ def extract_evidence(
         result = call.get("result")
         if not isinstance(result, dict):
             continue
+        status = result.get("status")
         if name not in {"openobserve_find_trace", "openobserve_search_logs"}:
             continue
         params = result.get("params") or {}
@@ -182,8 +188,46 @@ def extract_evidence(
             streams = re.findall(r'\bfrom\s+"?([A-Za-z0-9_]+)"?(?=\s|$)', sql, re.IGNORECASE) if isinstance(sql, str) else []
             if len(streams) != 1 or streams[0] not in ALLOWED_STREAMS:
                 continue
+            summary = params
+            data = _parse_json_result_data(result.get("data"))
+            query = data.get("query") if isinstance(data, dict) else None
+            if isinstance(query, dict):
+                summary = query
+            if status in {"success", "no_data"} and expected_search_window is not None:
+                try:
+                    start_time = int(summary["start_time"])
+                    end_time = int(summary["end_time"])
+                    scope_start = expected_search_window["search_window_start_unix_us"]
+                    scope_end = expected_search_window["search_window_end_unix_us"]
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if start_time < scope_start or end_time > scope_end or end_time <= start_time:
+                    continue
+            if status in {"success", "no_data"} and enforce_task_scope and expected_trace_ids:
+                if not isinstance(sql, str) or not re.search(r"\btrace_id\s+in\s*\(", sql, re.IGNORECASE):
+                    continue
+            hits = data.get("hits", []) if isinstance(data, dict) else []
+            if status in {"success", "no_data"} and (not isinstance(data, dict) or not isinstance(hits, list)):
+                continue
+            if status in {"success", "no_data"} and expected_search_window is not None and any(
+                not isinstance(hit, dict)
+                or isinstance(hit.get("_timestamp"), bool)
+                or not isinstance(hit.get("_timestamp"), int)
+                or not expected_search_window["search_window_start_unix_us"]
+                <= hit["_timestamp"]
+                <= expected_search_window["search_window_end_unix_us"]
+                for hit in hits
+            ):
+                continue
+            if status in {"success", "no_data"} and enforce_task_scope and expected_trace_ids:
+                if any(
+                    not isinstance(hit, dict)
+                    or not isinstance(hit.get("trace_id"), str)
+                    or hit["trace_id"].lower() not in expected_traces
+                    for hit in hits
+                ):
+                    continue
         openobserve_calls.append(call)
-        status = result.get("status")
         item = {
             "tool_name": name,
             "status": status if isinstance(status, str) else "unknown",
@@ -264,7 +308,11 @@ class HolmesClient:
             raise RetryableTaskError("holmes_toolset_unavailable")
 
     def investigate(self, task: dict[str, Any], *, evaluation: bool = False) -> dict[str, Any]:
-        payload = json.dumps({"ask": build_investigation_question(task, evaluation=evaluation), "stream": False}).encode("utf-8")
+        summary = task.get("summary", {})
+        search_window = _alert_search_window(summary) if isinstance(summary, dict) else None
+        payload = json.dumps(
+            {"ask": build_investigation_question(task, evaluation=evaluation, search_window=search_window), "stream": False}
+        ).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}/api/chat",
             data=payload,
@@ -277,7 +325,12 @@ class HolmesClient:
             for trace_id in trace_ids[:100]
             if isinstance(trace_id, str) and re.fullmatch(r"[a-fA-F0-9]{32}", trace_id)
         ] if isinstance(trace_ids, list) else []
+        if not evaluation and not allowed_trace_ids and search_window is None:
+            raise PermanentTaskError("task_scope_missing")
         request.add_header("X-AIOPS-Trace-IDs", ",".join(allowed_trace_ids) or "none")
+        if not evaluation and search_window is not None:
+            request.add_header("X-AIOPS-Search-Window-Start", str(search_window["search_window_start_unix_us"]))
+            request.add_header("X-AIOPS-Search-Window-End", str(search_window["search_window_end_unix_us"]))
         if evaluation:
             summary = task.get("summary", {})
             request.add_header("X-AIOPS-Evaluation-Run-ID", summary["evaluation_run_id"])
@@ -285,7 +338,7 @@ class HolmesClient:
         try:
             with self.opener.open(request, timeout=self.timeout_seconds) as response:
                 if response.status < 200 or response.status >= 300:
-                    raise PermanentTaskError("holmes_unexpected_status")
+                    raise PermanentTaskError("holmes_unexpected_status", possible_duplicate_charge=True)
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as exc:
             if exc.code == 429:
@@ -298,23 +351,32 @@ class HolmesClient:
         except (TimeoutError, urllib.error.URLError, OSError):
             raise PermanentTaskError("holmes_outcome_unknown") from None
         if len(raw) > MAX_RESPONSE_BYTES:
-            raise PermanentTaskError("holmes_response_too_large")
+            raise PermanentTaskError("holmes_response_too_large", possible_duplicate_charge=True)
         try:
             response = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            raise PermanentTaskError("holmes_response_invalid_json") from None
+            raise PermanentTaskError("holmes_response_invalid_json", possible_duplicate_charge=True) from None
         if not isinstance(response, dict) or not isinstance(response.get("analysis"), str):
-            raise PermanentTaskError("holmes_response_invalid")
+            raise PermanentTaskError("holmes_response_invalid", possible_duplicate_charge=True)
         analysis = response["analysis"].strip()
         if not analysis:
-            raise PermanentTaskError("holmes_analysis_empty")
+            raise PermanentTaskError("holmes_analysis_empty", possible_duplicate_charge=True)
         if PROTOCOL_ONLY_ANALYSIS.search(analysis):
-            raise PermanentTaskError("holmes_analysis_not_readable")
+            raise PermanentTaskError("holmes_analysis_not_readable", possible_duplicate_charge=True)
         trace_ids = task.get("trace_ids", [])
-        evidence, has_positive_evidence = extract_evidence(
-            response.get("tool_calls"),
-            expected_trace_ids=trace_ids if isinstance(trace_ids, list) else [],
-        )
+        try:
+            evidence, has_positive_evidence = extract_evidence(
+                response.get("tool_calls"),
+                expected_trace_ids=trace_ids if isinstance(trace_ids, list) else [],
+                expected_search_window=search_window if not evaluation else None,
+                enforce_task_scope=not evaluation,
+            )
+        except PermanentTaskError as exc:
+            raise PermanentTaskError(
+                exc.code,
+                evidence=exc.evidence,
+                possible_duplicate_charge=True,
+            ) from None
         return {
             "analysis": redact(analysis),
             "evidence": evidence,

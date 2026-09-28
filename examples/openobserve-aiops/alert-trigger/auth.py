@@ -15,9 +15,9 @@ PASSWORD_ROUNDS = 310_000
 SESSION_TTL_SECONDS = 8 * 60 * 60
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "viewer": frozenset({"incident:read", "task:read"}),
-    "operator": frozenset({"incident:read", "incident:manage", "task:read", "task:create", "task:retry"}),
+    "operator": frozenset({"incident:read", "incident:manage", "task:read", "task:create", "task:retry", "task:cancel"}),
     "approver": frozenset({"incident:read", "task:read", "approval:review", "incident:review"}),
-    "admin": frozenset({"incident:read", "incident:manage", "task:read", "task:create", "task:retry", "approval:review", "incident:review", "user:manage"}),
+    "admin": frozenset({"incident:read", "incident:manage", "task:read", "task:create", "task:retry", "task:cancel", "approval:review", "incident:review", "user:manage"}),
 }
 
 
@@ -140,5 +140,10 @@ def validate_test_identities(rows: Iterable[dict[str, str]]) -> list[Principal]:
         if not username or username in usernames or role not in ROLE_PERMISSIONS:
             raise ValueError("Invalid or duplicate test identity")
         usernames.add(username)
-        principals.append(Principal(row.get("user_id", ""), username, role, tuple(row.get("resource_scopes", "").split(","))))
+        principals.append(Principal(
+            row.get("user_id", ""),
+            username,
+            role,
+            tuple(scope.lower() for scope in row.get("resource_scopes", "").split(",")),
+        ))
     return principals

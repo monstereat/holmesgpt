@@ -8,6 +8,18 @@ tests:
     input_series:
       - series: 'up{job="aiops-incident-api",instance="api-1",cluster="test"}'
         values: "1 0 0 0"
+      - series: 'aiops_api_requests_total{route="/",status_class="4xx",method="POST",instance="api-1",cluster="test"}'
+        values: "0 0 1 1 1 1 1 1"
+      - series: 'aiops_api_requests_total{route="/webhooks/openobserve",status_class="5xx",method="POST",instance="api-1",cluster="test"}'
+        values: "0 0 1 2 3 4 5 6"
+      - series: 'aiops_oidc_login_admission_rejections_total{instance="api-1",cluster="test"}'
+        values: "0 0 1 1 1 1 1 1"
+      - series: 'aiops_outbox_unpublished_events{instance="api-1",cluster="test"}'
+        values: "0 0 1 1 1 1 1 1"
+      - series: 'aiops_outbox_max_unpublished_delivery_attempts{instance="api-1",cluster="test"}'
+        values: "0 1 2 2 2 2 2 2"
+      - series: 'aiops_outbox_max_delivery_attempts{instance="api-1",cluster="test"}'
+        values: "0 1 2 2 2 2 2 2"
       - series: 'aiops_tasks{status="queued",instance="api-1",cluster="test"}'
         values: "2 2 2 2"
       - series: 'aiops_tasks{status="running",instance="api-1",cluster="test"}'
@@ -29,6 +41,7 @@ tests:
           - exp_labels:
               cluster: test
               severity: warning
+              service: holmes-aiops
             exp_annotations:
               summary: AIOps oldest pending task age exceeded its configured SLO
               description: The oldest queued, running, or retrying task is older than the operator-configured pending-task age SLO.
@@ -38,6 +51,7 @@ tests:
           - exp_labels:
               cluster: test
               severity: critical
+              service: holmes-aiops
             exp_annotations:
               summary: AIOps pending task queue reached its admission limit
               description: New unique alerts are being rejected with HTTP 503 until pending work falls below the configured capacity.
@@ -47,6 +61,7 @@ tests:
           - exp_labels:
               cluster: test
               severity: warning
+              service: holmes-aiops
             exp_annotations:
               summary: AIOps has one or more permanently failed tasks
               description: Review the incident task timeline and failure evidence; this alert remains active while failed tasks are present.
@@ -58,6 +73,67 @@ tests:
               instance: api-1
               job: aiops-incident-api
               severity: critical
+              service: holmes-aiops
             exp_annotations:
               summary: AIOps incident API scrape target is unavailable
               description: The configured incident API target has failed Prometheus scrapes for two minutes.
+      - eval_time: 5m
+        alertname: AIOpsWebhookRejectedRequests
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: warning
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps rejected an alert webhook request
+              description: Inspect webhook authentication and payload configuration; Alertmanager does not retry 4xx responses.
+      - eval_time: 5m
+        alertname: AIOpsWebhookServerErrors
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: critical
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps alert webhook requests are failing
+              description: Inspect incident API, PostgreSQL and queue capacity; Alertmanager retries 5xx responses, so delivery may be delayed.
+      - eval_time: 5m
+        alertname: AIOpsOIDCLoginCapacityReached
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: warning
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps rejected OIDC sign-ins because login capacity was full
+              description: The shared pending OIDC transaction limit was reached; check sign-in volume and API/IdP behavior.
+      - eval_time: 2m
+        alertname: AIOpsOutboxRepeatedDeliveryAttempts
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: warning
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps outbox has reserved repeated broker deliveries
+              description: At least one queued or retrying investigation has reserved a second or later broker publish attempt, including messages accepted by the broker but not yet claimed by a worker. Check dispatcher logs, Redis/Celery connectivity and worker claiming; repeated messages stop at the configured delivery limit.
+
+  - interval: 1m
+    input_series:
+      - series: 'aiops_outbox_unpublished_events{instance="api-1",cluster="test"}'
+        values: "1 0 0 0"
+      - series: 'aiops_outbox_max_unpublished_delivery_attempts{instance="api-1",cluster="test"}'
+        values: "0 0 0 0"
+      - series: 'aiops_outbox_max_delivery_attempts{instance="api-1",cluster="test"}'
+        values: "0 2 2 2"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: AIOpsOutboxRepeatedDeliveryAttempts
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: warning
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps outbox has reserved repeated broker deliveries
+              description: At least one queued or retrying investigation has reserved a second or later broker publish attempt, including messages accepted by the broker but not yet claimed by a worker. Check dispatcher logs, Redis/Celery connectivity and worker claiming; repeated messages stop at the configured delivery limit.

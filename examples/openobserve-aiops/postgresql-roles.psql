@@ -42,6 +42,17 @@ BEGIN
     IF to_regclass('public.schema_migrations') IS NOT NULL THEN
         EXECUTE 'REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.schema_migrations FROM aiops_runtime';
     END IF;
+    IF to_regclass('public.users') IS NOT NULL THEN
+        EXECUTE 'REVOKE INSERT, UPDATE ON TABLE public.users FROM aiops_runtime, PUBLIC';
+        IF (SELECT count(*) FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users'
+              AND column_name IN ('id', 'username', 'password_hash', 'role', 'resource_scopes', 'active', 'created_at', 'oidc_issuer', 'oidc_subject', 'session_generation', 'reactivation_requested_at')) = 11 THEN
+            EXECUTE 'REVOKE INSERT (id, username, password_hash, role, resource_scopes, active, created_at, oidc_issuer, oidc_subject, session_generation, reactivation_requested_at) ON TABLE public.users FROM aiops_runtime, PUBLIC';
+            EXECUTE 'REVOKE UPDATE (id, username, password_hash, role, resource_scopes, active, created_at, oidc_issuer, oidc_subject, session_generation, reactivation_requested_at) ON TABLE public.users FROM aiops_runtime, PUBLIC';
+            EXECUTE 'GRANT INSERT (id, username, password_hash, role, resource_scopes, active, oidc_issuer, oidc_subject) ON TABLE public.users TO aiops_runtime';
+            EXECUTE 'GRANT UPDATE (username, password_hash, role, resource_scopes, active, session_generation, reactivation_requested_at) ON TABLE public.users TO aiops_runtime';
+        END IF;
+    END IF;
 
     IF to_regclass('public.oidc_login_transactions') IS NOT NULL THEN
         EXECUTE 'GRANT DELETE ON TABLE public.oidc_login_transactions TO aiops_runtime';
@@ -54,6 +65,17 @@ BEGIN
     END IF;
     IF to_regclass('public.break_glass_recovery_requests_id_seq') IS NOT NULL THEN
         EXECUTE 'REVOKE ALL ON SEQUENCE public.break_glass_recovery_requests_id_seq FROM aiops_runtime, aiops_worker, aiops_break_glass, PUBLIC';
+    END IF;
+    IF to_regprocedure('public.break_glass_reactivate_admin(uuid,text,text,text,boolean)') IS NOT NULL THEN
+        EXECUTE 'REVOKE ALL ON FUNCTION public.break_glass_reactivate_admin(uuid,text,text,text,boolean) FROM PUBLIC, aiops_runtime, aiops_worker, aiops_break_glass';
+    END IF;
+    IF to_regprocedure('public.request_break_glass_admin_recovery(uuid,text)') IS NOT NULL THEN
+        EXECUTE 'REVOKE ALL ON FUNCTION public.request_break_glass_admin_recovery(uuid,text) FROM PUBLIC, aiops_runtime, aiops_worker';
+        EXECUTE 'GRANT EXECUTE ON FUNCTION public.request_break_glass_admin_recovery(uuid,text) TO aiops_break_glass';
+    END IF;
+    IF to_regprocedure('public.approve_break_glass_admin_recovery(bigint,boolean)') IS NOT NULL THEN
+        EXECUTE 'REVOKE ALL ON FUNCTION public.approve_break_glass_admin_recovery(bigint,boolean) FROM PUBLIC, aiops_runtime, aiops_worker';
+        EXECUTE 'GRANT EXECUTE ON FUNCTION public.approve_break_glass_admin_recovery(bigint,boolean) TO aiops_break_glass';
     END IF;
 
 END
@@ -79,6 +101,13 @@ BEGIN
     IF to_regclass('public.outbox_events') IS NOT NULL THEN
         EXECUTE 'GRANT SELECT ON TABLE public.outbox_events TO aiops_worker';
         EXECUTE 'GRANT UPDATE (last_enqueued_at, delivery_attempts, published_at) ON TABLE public.outbox_events TO aiops_worker';
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'outbox_events' AND column_name = 'dead_lettered_at'
+        ) THEN
+            EXECUTE 'REVOKE UPDATE (dead_lettered_at) ON TABLE public.outbox_events FROM aiops_worker';
+            EXECUTE 'GRANT UPDATE (dead_lettered_at) ON TABLE public.outbox_events TO aiops_runtime';
+        END IF;
     END IF;
 END
 $$;

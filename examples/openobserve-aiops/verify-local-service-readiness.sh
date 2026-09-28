@@ -16,6 +16,7 @@ required_health = {
     "holmes-api": "healthy",
     "incident-api": "healthy",
     "incident-worker": "healthy",
+    "local-ingress": "healthy",
     "openobserve": None,
     "openobserve-proxy": "healthy",
     "order-service": "healthy",
@@ -77,9 +78,9 @@ check_json_status() {
 }
 
 holmes_url="$(local_url holmes-api 5050)"
-incident_url="$(local_url incident-api 8081)"
+incident_url="$(local_url local-ingress 8081)"
 openobserve_url="$(local_url openobserve 5080)"
-order_url="$(local_url order-service 8080)"
+order_url="$(local_url local-ingress 8080)"
 
 check_json_status "Holmes readiness" "$holmes_url/readyz" "ready"
 check_json_status "Incident API readiness" "$incident_url/readyz" "ready"

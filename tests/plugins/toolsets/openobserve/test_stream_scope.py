@@ -37,6 +37,41 @@ def test_allowed_stream_query(toolset, monkeypatch):
     assert len(seen) == 1
 
 
+def test_incident_search_forces_trace_scope_and_rejects_wider_window(toolset, monkeypatch):
+    seen = []
+    monkeypatch.setattr(toolset, "_request", lambda *a, **kw: (seen.append(kw["json_body"]) or {"hits": []}))
+    trace_id = "a" * 32
+    context = SimpleNamespace(request_context={"headers": {
+        "x-aiops-trace-ids": trace_id,
+        "x-aiops-search-window-start": "1700000000000000",
+        "x-aiops-search-window-end": "1700000300000000",
+    }})
+    params = {
+        "sql": "SELECT * FROM frontend_logs WHERE level = 'error'",
+        "start_time": 1700000000000000,
+        "end_time": 1700000300000000,
+    }
+
+    result = OpenObserveSearchLogs(toolset)._invoke(params, context)
+
+    assert result.status == StructuredToolResultStatus.SUCCESS
+    assert f"trace_id IN ('{trace_id}')" in result.params["sql"]
+    assert f"trace_id IN ('{trace_id}')" in seen[0]["query"]["sql"]
+    assert OpenObserveSearchLogs(toolset)._invoke(
+        {**params, "start_time": 1699999999999999}, context
+    ).status == StructuredToolResultStatus.ERROR
+
+
+def test_incident_search_without_trace_requires_server_time_window(toolset, monkeypatch):
+    monkeypatch.setattr(toolset, "_request", lambda *a, **kw: pytest.fail("network called"))
+    result = OpenObserveSearchLogs(toolset)._invoke({
+        "sql": "SELECT * FROM frontend_logs",
+        "start_time": 1700000000000000,
+        "end_time": 1700000300000000,
+    }, SimpleNamespace(request_context={"headers": {"x-aiops-trace-ids": "none"}}))
+    assert result.status == StructuredToolResultStatus.ERROR
+
+
 def test_evaluation_search_requires_exact_run_and_case_scope(toolset, monkeypatch):
     seen = []
     monkeypatch.setattr(toolset, "_request", lambda *a, **kw: (seen.append(kw["json_body"]) or {"hits": []}))

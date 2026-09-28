@@ -22,6 +22,7 @@ tests:
               job: aiops-otel-collector
               instance: collector-1
               severity: critical
+              service: holmes-aiops
             exp_annotations:
               summary: AIOps telemetry Collector scrape target is unavailable
               description: The configured Collector metrics target has failed Prometheus scrapes for two minutes.
@@ -32,6 +33,7 @@ tests:
               instance: collector-1
               exporter: otlp_http/openobserve
               severity: critical
+              service: holmes-aiops
             exp_annotations:
               summary: AIOps telemetry export queue is full
               description: The Collector cannot accept more telemetry for an exporter; inspect OpenObserve reachability, credentials, and queue storage.
@@ -42,6 +44,7 @@ tests:
               instance: collector-1
               exporter: otlp_http/openobserve
               severity: critical
+              service: holmes-aiops
             exp_annotations:
               summary: AIOps Collector failed to enqueue telemetry
               description: Telemetry was rejected before durable export queueing; inspect Collector capacity, storage health, and exporter errors.

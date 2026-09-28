@@ -19,7 +19,7 @@
 <p>当前发布：<code id="release">加载中</code> ｜ 故障注入：<code id="chaos-state">加载中</code></p>
 <div>
   <button id="create">创建订单</button>
-  <button id="chaos">切换故障注入（服务端环境变量）</button>
+  <button id="chaos">查看故障注入说明</button>
 </div>
 <div class="log" id="log"></div>
 
@@ -56,7 +56,7 @@
         return { status: r.status, body: body };
       });
     }).then(function (res) {
-      if (res.status === 200) {
+      if (res.status >= 200 && res.status < 300) {
         log("订单创建成功 " + res.body.order_id, false, traceId);
       } else {
         var safeMessage = HolmesMonitor.redact(res.body.message || "", 300);
@@ -67,11 +67,8 @@
   };
 
   document.getElementById("chaos").onclick = function () {
-    alert("故障注入由服务端环境变量 CHAOS_MODE 控制：\n\n" +
-      "在项目目录执行：\n" +
-      "CHAOS_MODE=on docker compose up -d --build order-service\n\n" +
-      "恢复时执行：\n" +
-      "CHAOS_MODE=off docker compose up -d --build order-service");
+    alert("请在事故工作台通过独立审批申请并执行故障注入。\n\n" +
+      "CHAOS_MODE 只用于 order-action-data 持久卷首次初始化；持久化状态会在容器重启后恢复，之后修改环境变量不会覆盖它。");
   };
 </script>
 </body>
