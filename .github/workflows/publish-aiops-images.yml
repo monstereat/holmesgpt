@@ -15,10 +15,6 @@ on:
         description: Comma-separated Linux target platforms, for example linux/amd64,linux/arm64
         required: true
         type: string
-      release_environment:
-        description: Pre-created protected GitHub Environment holding the registry credentials
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -29,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment:
-      name: ${{ inputs.release_environment }}
+      name: aiops-image-publish
     permissions:
       contents: read
       packages: write
