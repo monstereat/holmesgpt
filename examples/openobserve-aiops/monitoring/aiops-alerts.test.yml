@@ -8,6 +8,12 @@ tests:
     input_series:
       - series: 'up{job="aiops-incident-api",instance="api-1",cluster="test"}'
         values: "1 0 0 0"
+      - series: 'up{job="aiops-openobserve-policy-proxy",instance="proxy-1",cluster="test"}'
+        values: "1 1 1 1 1 1 1 1"
+      - series: 'aiops_openobserve_proxy_capacity_rejections_total{instance="proxy-1",cluster="test"}'
+        values: "0 0 1 1 1 1 1 1"
+      - series: 'aiops_openobserve_proxy_responses_total{status_class="5xx",instance="proxy-1",cluster="test"}'
+        values: "0 0 1 2 3 4 5 6"
       - series: 'aiops_api_requests_total{route="/",status_class="4xx",method="POST",instance="api-1",cluster="test"}'
         values: "0 0 1 1 1 1 1 1"
       - series: 'aiops_api_requests_total{route="/webhooks/openobserve",status_class="5xx",method="POST",instance="api-1",cluster="test"}'
@@ -16,6 +22,16 @@ tests:
         values: "0 0 1 1 1 1 1 1"
       - series: 'aiops_outbox_unpublished_events{instance="api-1",cluster="test"}'
         values: "0 0 1 1 1 1 1 1"
+      - series: 'aiops_outbox_oldest_unpublished_age_seconds{instance="api-1",cluster="test"}'
+        values: "0 0 180 180 180 180 180 180"
+      - series: 'aiops_outbox_unpublished_age_slo_seconds{instance="api-1",cluster="test"}'
+        values: "120 120 120 120 120 120 120 120"
+      - series: 'aiops_outbox_dead_lettered_events{instance="api-1",cluster="test"}'
+        values: "0 0 1 1 1 1 1 1"
+      - series: 'aiops_action_execution_oldest_recovery_age_seconds{instance="api-1",cluster="test"}'
+        values: "0 0 180 180 180 180 180 180"
+      - series: 'aiops_action_execution_recovery_age_slo_seconds{instance="api-1",cluster="test"}'
+        values: "120 120 120 120 120 120 120 120"
       - series: 'aiops_outbox_max_unpublished_delivery_attempts{instance="api-1",cluster="test"}'
         values: "0 1 2 2 2 2 2 2"
       - series: 'aiops_outbox_max_delivery_attempts{instance="api-1",cluster="test"}'
@@ -35,6 +51,56 @@ tests:
       - series: 'aiops_oldest_pending_task_age_slo_seconds{instance="api-1",cluster="test"}'
         values: "90 90 90 90"
     alert_rule_test:
+      - eval_time: 3m
+        alertname: AIOpsOpenObserveProxyCapacityRejected
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: warning
+              service: holmes-aiops
+            exp_annotations:
+              summary: Holmes OpenObserve queries exceeded proxy concurrency capacity
+              description: The policy proxy rejected accepted connections because all request slots were occupied; inspect concurrency, latency, and retry behavior.
+      - eval_time: 4m
+        alertname: AIOpsOpenObserveProxyServerErrors
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: critical
+              service: holmes-aiops
+            exp_annotations:
+              summary: Holmes OpenObserve policy proxy is returning server errors
+              description: Inspect OpenObserve availability, policy-proxy capacity, and upstream request failures.
+      - eval_time: 3m
+        alertname: AIOpsOutboxDeliveryAgeSLOBreached
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: critical
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps outbox events are not reaching the task broker within the configured SLO
+              description: Check Incident API outbox dispatch logs, Redis/Celery broker connectivity, and the unpublished event backlog.
+      - eval_time: 3m
+        alertname: AIOpsOutboxDeadLetteredEvents
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: critical
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps stopped dispatching an investigation after exhausting broker delivery attempts
+              description: Inspect the failed task timeline and Redis/Celery connectivity. After restoring the broker, an authorized operator can retry the failed task from the incident workbench.
+      - eval_time: 3m
+        alertname: AIOpsActionExecutionRecoverySLOBreached
+        exp_alerts:
+          - exp_labels:
+              cluster: test
+              severity: critical
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps has an interrupted action awaiting reconciliation beyond its owner-defined objective
+              description: Review the action execution state and audit timeline; an operator must resume reconciliation after confirming the action owner's current state.
       - eval_time: 2m
         alertname: AIOpsOldestPendingTaskAgeSLOBreached
         exp_alerts:
@@ -126,7 +192,19 @@ tests:
         values: "0 0 0 0"
       - series: 'aiops_outbox_max_delivery_attempts{instance="api-1",cluster="test"}'
         values: "0 2 2 2"
+      - series: 'aiops_outbox_oldest_unpublished_age_seconds{instance="api-1",cluster="test"}'
+        values: "0 180 180 180"
+      - series: 'aiops_outbox_unpublished_age_slo_seconds{instance="api-1",cluster="test"}'
+        values: "120 120 120 120"
+      - series: 'aiops_outbox_dead_lettered_events{instance="api-1",cluster="test"}'
+        values: "0 0 0 0"
     alert_rule_test:
+      - eval_time: 3m
+        alertname: AIOpsOutboxDeliveryAgeSLOBreached
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AIOpsOutboxDeadLetteredEvents
+        exp_alerts: []
       - eval_time: 2m
         alertname: AIOpsOutboxRepeatedDeliveryAttempts
         exp_alerts:

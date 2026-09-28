@@ -16,7 +16,8 @@ receivers:
         # The receiver accepts up to 100 alerts and rejects any truncated notification.
         # Keep alert groups below this limit; tune grouping and alert volume for the target.
         max_alerts: 100
-        timeout: 10s
+        # Keep this example compatible with Alertmanager v0.27; per-webhook timeout
+        # is available in newer releases only.
         http_config:
           authorization:
             type: Bearer

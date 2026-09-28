@@ -14,6 +14,10 @@ tests:
         values: "10 10 10 10"
       - series: 'otelcol_exporter_enqueue_failed_spans{instance="collector-1",exporter="otlp_http/openobserve"}'
         values: "0 1 1 1"
+      - series: 'otelcol_exporter_enqueue_failed_log_records{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 0 1 1"
+      - series: 'otelcol_exporter_enqueue_failed_metric_points{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 0 0 1"
     alert_rule_test:
       - eval_time: 3m
         alertname: AIOpsCollectorUnavailable
@@ -48,3 +52,50 @@ tests:
             exp_annotations:
               summary: AIOps Collector failed to enqueue telemetry
               description: Telemetry was rejected before durable export queueing; inspect Collector capacity, storage health, and exporter errors.
+
+  - interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_enqueue_failed_log_records{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 1 1 1"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AIOpsCollectorTelemetryEnqueueFailures
+        exp_alerts:
+          - exp_labels:
+              instance: collector-1
+              exporter: otlp_http/openobserve
+              severity: critical
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps Collector failed to enqueue telemetry
+              description: Telemetry was rejected before durable export queueing; inspect Collector capacity, storage health, and exporter errors.
+
+  - interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_enqueue_failed_metric_points{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 1 1 1"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AIOpsCollectorTelemetryEnqueueFailures
+        exp_alerts:
+          - exp_labels:
+              instance: collector-1
+              exporter: otlp_http/openobserve
+              severity: critical
+              service: holmes-aiops
+            exp_annotations:
+              summary: AIOps Collector failed to enqueue telemetry
+              description: Telemetry was rejected before durable export queueing; inspect Collector capacity, storage health, and exporter errors.
+
+  - interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_enqueue_failed_spans{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 0 0 0"
+      - series: 'otelcol_exporter_enqueue_failed_log_records{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 0 0 0"
+      - series: 'otelcol_exporter_enqueue_failed_metric_points{instance="collector-1",exporter="otlp_http/openobserve"}'
+        values: "0 0 0 0"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AIOpsCollectorTelemetryEnqueueFailures
+        exp_alerts: []
