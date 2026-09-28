@@ -66,6 +66,11 @@ openssl x509 -req -in "$temporary_dir/server.csr" \
 openssl req -x509 -newkey rsa:2048 -sha256 -days 2 -nodes \
     -keyout "$temporary_dir/wrong-ca.key" -out "$temporary_dir/wrong-ca.crt" \
     -subj "/CN=Wrong AIOps PostgreSQL TLS Test CA" >/dev/null 2>&1
+trust_dir="$temporary_dir/trust"
+mkdir -m 0755 "$trust_dir"
+cp "$temporary_dir/ca.crt" "$trust_dir/ca.crt"
+cp "$temporary_dir/wrong-ca.crt" "$trust_dir/wrong-ca.crt"
+chmod 0644 "$trust_dir/ca.crt" "$trust_dir/wrong-ca.crt"
 database_password="$(openssl rand -hex 32)"
 
 stage="starting temporary PostgreSQL TLS server"
@@ -102,7 +107,7 @@ fi
 
 stage="checking verified TLS and negative certificate cases"
 docker run --rm --interactive --network "$test_network" --entrypoint python \
-    --mount "type=bind,source=$temporary_dir,target=/run/certs,readonly" \
+    --mount "type=bind,source=$trust_dir,target=/run/certs,readonly" \
     --env AIOPS_ENV=production \
     --env "DATABASE_PASSWORD=$database_password" \
     --env PGSSLROOTCERT=/run/certs/ca.crt \
