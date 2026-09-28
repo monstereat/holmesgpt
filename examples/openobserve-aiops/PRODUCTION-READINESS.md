@@ -119,8 +119,7 @@ The reusable job pauses on the named environment's protection rules before it ac
 For a repeatable **local database-only baseline**, run the bounded admission-store benchmark inside the Compose test profile:
 
 ```bash
-source /tmp/holmesgpt-aiops-test-runtime.sh
-docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --build --rm incident-test \
+examples/openobserve-aiops/compose-local.sh --profile test run --build --rm incident-test \
   python benchmark_admission.py --requests 100 --concurrency 16 --capacity 80 --confirm-isolated-test-db
 ```
 

@@ -6,34 +6,19 @@ This project keeps HolmesGPT's existing Python/FastAPI investigation API (`serve
 
 Run from this directory. Compose binds browser/API ports to `127.0.0.1` and keeps PostgreSQL and Redis on the private Compose network. Do not use this demo configuration as a production deployment.
 
-Live investigation requires the private DeepSeek key file. Create `~/.config/holmesgpt-aiops/deepseek.env` with mode `0600` and put `export DEEPSEEK_API_KEY='paste-key-here'` in it. Source it in the same shell before Compose; the key is not stored in this repository. If it is missing, Holmes is marked unhealthy and the incident worker waits instead of accepting investigation tasks.
+Initialize the local Compose credentials once on a clean install. The generated file is stored outside the repository at `~/.config/holmesgpt-aiops/local-compose.env` with mode `0600`; it contains the database bootstrap passwords, service tokens, signing key and local demo identities. The initializer refuses to overwrite an existing file or generate new passwords when this Compose project already has containers or volumes. Keep this file when reusing existing volumes: changing bootstrap passwords does not rotate credentials already stored in PostgreSQL or OpenObserve. If you already have this stack and its volumes, restore the matching file instead of running the initializer.
+
+Live investigation also requires the private DeepSeek key file at `~/.config/holmesgpt-aiops/deepseek.env` with mode `0600`, containing `export DEEPSEEK_API_KEY='paste-key-here'`. The local Compose wrapper loads both files without adding either to this repository. If the key is missing, Holmes is marked unhealthy and the incident worker waits instead of accepting investigation tasks.
 
 ```bash
-export ZO_ROOT_USER_EMAIL="${ZO_ROOT_USER_EMAIL:-demo@example.test}"
-export ZO_ROOT_USER_PASSWORD="$(openssl rand -hex 24)"
-export OPENOBSERVE_PROXY_USERNAME="holmes-proxy"
-export OPENOBSERVE_PROXY_PASSWORD="$(openssl rand -hex 32)"
-export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
-export ALERT_WEBHOOK_TOKEN="$(openssl rand -hex 32)"
-export ORDER_ACTION_TOKEN="$(openssl rand -hex 32)"
-export HOLMES_API_KEY="$(openssl rand -hex 32)"
-export SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
-export AIOPS_API_HOST_PORT="${AIOPS_API_HOST_PORT:-8081}"
-export ADMIN_PASSWORD="$(openssl rand -hex 24)"
-export OPERATOR_PASSWORD="$(openssl rand -hex 24)"
-export APPROVER_PASSWORD="$(openssl rand -hex 24)"
-export AIOPS_TEST_USERS_JSON="$(python3 -c 'import json,os; print(json.dumps([{"username":"admin","password":os.environ["ADMIN_PASSWORD"],"role":"admin","resource_scopes":["order-service"]},{"username":"operator","password":os.environ["OPERATOR_PASSWORD"],"role":"operator","resource_scopes":["order-service"]},{"username":"approver","password":os.environ["APPROVER_PASSWORD"],"role":"approver","resource_scopes":["order-service"]}]))')"
-
-source "$HOME/.config/holmesgpt-aiops/deepseek.env"
-docker compose up -d --build
+bash ./init-local-runtime-env.sh   # only for a new, empty local Compose project
+./compose-local.sh up -d --build
 ```
 
-Keep these values in the current shell or a password manager. The incident service hashes account passwords before storing them. In local mode only, the workbench fills the operator login from `AIOPS_TEST_USERS_JSON` through a `Cache-Control: no-store` endpoint; OIDC/production mode does not expose the endpoint. Compose explicitly sets `AIOPS_ENV=local`; the service rejects `AIOPS_TEST_USERS_JSON` in every other environment. Reuse the same `ZO_ROOT_USER_PASSWORD` and `POSTGRES_PASSWORD` whenever restarting against existing volumes: generating new values does not rotate the credentials already stored inside OpenObserve or PostgreSQL. Reuse `OPENOBSERVE_PROXY_USERNAME` and `OPENOBSERVE_PROXY_PASSWORD` when recreating Holmes and the proxy together. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; a missing `DEEPSEEK_API_KEY` makes Holmes unhealthy and holds the incident worker until the key is loaded. The local Holmes readiness check confirms the key is present and the model is configured; it does not validate the remote provider credential.
+The incident service hashes account passwords before storing them. In local mode only, the workbench fills the operator login from `AIOPS_TEST_USERS_JSON` through a `Cache-Control: no-store` endpoint; OIDC/production mode does not expose the endpoint. Compose explicitly sets `AIOPS_ENV=local`; the service rejects `AIOPS_TEST_USERS_JSON` in every other environment. No project `.env` file is needed. `HOLMES_API_KEY` protects the internal Holmes API and is shared only with the incident worker. The stack defaults to `deepseek/deepseek-flash`; a missing `DEEPSEEK_API_KEY` makes Holmes unhealthy and holds the incident worker until the key is loaded. The local Holmes readiness check confirms the key is present and the model is configured; it does not validate the remote provider credential.
 
 ```bash
-source /tmp/holmesgpt-aiops-test-runtime.sh
-source "$HOME/.config/holmesgpt-aiops/deepseek.env"
-docker compose -f examples/openobserve-aiops/docker-compose.yaml up -d --force-recreate holmes-api
+./compose-local.sh up -d --force-recreate holmes-api
 ```
 
 DeepSeek's API key is passed only to the Holmes container; do not commit or log it.
@@ -54,7 +39,7 @@ After startup:
 
 The account seeded as `operator` can create/retry tasks and request the fixed `set-chaos-mode` test action; Compose explicitly enables it with `AIOPS_DEMO_ACTIONS_ENABLED=true`. The action is disabled by default in every other environment, including for already approved requests. The separate `approver` can approve or reject it and edit/review incident retrospectives. The requester cannot approve their own request. All three accounts are local demo identities, not a production identity provider.
 
-The incident API's host port defaults to `8081`; set `AIOPS_API_HOST_PORT=8082` before Compose commands if another local container already owns that port. The service remains on port `8081` inside the private Compose network, so the OpenObserve webhook destination does not change.
+The incident API's host port defaults to `8081`; if another local container owns that port, update `AIOPS_API_HOST_PORT` in the private `~/.config/holmesgpt-aiops/local-compose.env` file before starting the stack. The service remains on port `8081` inside the private Compose network, so the OpenObserve webhook destination does not change.
 
 The local `admin` can inspect application identity mappings, disable workbench access, and approve a pending restore request. A disabled user must complete a valid OIDC sign-in first; the callback refreshes IdP group mappings, creates one pending request, returns `403`, and does not issue a session. Admin restore does not change roles/scopes and writes an audit event with actor and target. Disabling increments a per-user session generation, so old sessions do not revive after restore; users must sign in again. During mixed-version deployments, wait until every old API instance is stopped before restoring accounts. This does not change the user's identity-provider account. No local admin credential is committed.
 
@@ -63,11 +48,11 @@ Logout revokes the current OIDC cookie or local bearer session server-side by st
 Check service state and liveness:
 
 ```bash
-docker compose ps
+./compose-local.sh ps
 curl -fsS http://127.0.0.1:5080/healthz
 curl -fsS http://127.0.0.1:5050/healthz
-curl -fsS "http://127.0.0.1:${AIOPS_API_HOST_PORT:-8081}/healthz"
-curl -fsS "http://127.0.0.1:${AIOPS_API_HOST_PORT:-8081}/readyz"
+curl -fsS http://127.0.0.1:8081/healthz
+curl -fsS http://127.0.0.1:8081/readyz
 curl -fsS http://127.0.0.1:8080/
 ```
 
@@ -117,10 +102,10 @@ For GitHub Actions, add this job to the deployment workflow after the deploy job
 
 The caller must expose the deployed version and changed paths as job outputs, and configure the two repository/environment secrets. This example is an integration template; no remote workflow or secret was changed or run.
 
-To exercise the sender, NestJS receiver, and OpenObserve persistence together in the local test stack, source the test runtime file and run:
+To exercise the sender, NestJS receiver, and OpenObserve persistence together in the local test stack, load the private runtime variables and run:
 
 ```bash
-source /tmp/holmesgpt-aiops-test-runtime.sh
+source "$HOME/.config/holmesgpt-aiops/local-compose.env"
 AIOPS_COMPOSE_PROJECT=holmesgpt-aiops-goal bash examples/openobserve-aiops/verify-release-event-e2e.sh
 ```
 
