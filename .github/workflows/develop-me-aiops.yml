@@ -74,6 +74,9 @@ jobs:
       - name: Run isolated Incident API and workbench regression suite
         working-directory: examples/openobserve-aiops
         run: docker compose --profile test run --build --rm incident-test
+      - name: Prepare isolated PostgreSQL TLS verifier network
+        working-directory: examples/openobserve-aiops
+        run: docker compose --profile test up -d postgres-test
       - name: Verify PostgreSQL TLS handshake and certificate rejection
         run: bash examples/openobserve-aiops/verify-postgresql-tls.sh
       - name: Validate production OpenTelemetry Collector template
