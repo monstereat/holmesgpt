@@ -7,10 +7,17 @@ postgres_image="postgres:16.6-alpine"
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/aiops-postgres-tls.XXXXXX")"
 postgres_container="aiops-pg-tls-${temporary_dir##*.}"
 test_network="${AIOPS_POSTGRES_TLS_TEST_NETWORK:-}"
+stage="locating internal test network"
 
 cleanup() {
+    local exit_status=$?
+    trap - EXIT
+    if [[ "$exit_status" -ne 0 ]]; then
+        echo "::error title=PostgreSQL TLS verifier::Failed during ${stage} (exit ${exit_status})."
+    fi
     docker rm -f "$postgres_container" >/dev/null 2>&1 || true
     rm -rf "$temporary_dir"
+    exit "$exit_status"
 }
 trap cleanup EXIT
 
@@ -34,8 +41,10 @@ if [[ "$(docker network inspect "$test_network" --format '{{.Internal}}')" != tr
     exit 1
 fi
 
+stage="building current incident test image"
 docker build --file "$script_dir/alert-trigger/Dockerfile" --target test --tag "$client_image" "$script_dir/alert-trigger"
 
+stage="generating temporary certificate authority and server certificate"
 umask 077
 openssl req -x509 -newkey rsa:2048 -sha256 -days 2 -nodes \
     -keyout "$temporary_dir/ca.key" -out "$temporary_dir/ca.crt" \
@@ -59,6 +68,7 @@ openssl req -x509 -newkey rsa:2048 -sha256 -days 2 -nodes \
     -subj "/CN=Wrong AIOps PostgreSQL TLS Test CA" >/dev/null 2>&1
 database_password="$(openssl rand -hex 32)"
 
+stage="starting temporary PostgreSQL TLS server"
 docker run --detach --name "$postgres_container" \
     --network "$test_network" --network-alias postgres-tls.test --network-alias wrong-postgres-tls.test \
     --tmpfs /var/lib/postgresql/data \
@@ -76,6 +86,7 @@ docker run --detach --name "$postgres_container" \
     ' >/dev/null
 
 ready=false
+stage="waiting for temporary PostgreSQL readiness"
 for attempt in {1..60}; do
     if docker exec "$postgres_container" pg_isready -U aiops -d aiops_test >/dev/null 2>&1; then
         ready=true
@@ -89,6 +100,7 @@ if [[ "$ready" != true ]]; then
     exit 1
 fi
 
+stage="checking verified TLS and negative certificate cases"
 docker run --rm --interactive --network "$test_network" --entrypoint python \
     --mount "type=bind,source=$temporary_dir,target=/run/certs,readonly" \
     --env AIOPS_ENV=production \
