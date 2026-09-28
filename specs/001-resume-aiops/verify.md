@@ -1,24 +1,27 @@
 # T000–T009 本机验收记录
 
-日期：2026-09-27
+日期：2026-09-29
 目标环境：当前电脑 Docker Compose 测试环境
-整体状态：**本机 live 调用和检索覆盖已验证，整体验收仍未完成**。最新 2026-09-27 synthetic live run `9d27bceb636747d192b839868afae3c9` 经当前字段策略代理完成 20/20 当前 run/case 证据命中、3/3 发布事件命中、0 个工具错误、0 次未限定成功搜索和 0 个检测到的跨案例命中；报告 schema 1.3 校验通过，SHA-256 为 `50fef9dd604e962363c6b8f8b9bb247f3e50d04020393194d7518a30d91d8377`。诊断质量仍未评分，生产部署未执行。
+整体状态：**本机核心服务、Alertmanager firing 持久化和 Collector trace 导出已验证；生产环境验收仍未完成**。最新 2026-09-27 synthetic live run `9d27bceb636747d192b839868afae3c9` 经当前字段策略代理完成 20/20 当前 run/case 证据命中、3/3 发布事件命中、0 个工具错误、0 次未限定成功搜索和 0 个检测到的跨案例命中；报告 schema 1.3 校验通过，SHA-256 为 `50fef9dd604e962363c6b8f8b9bb247f3e50d04020393194d7518a30d91d8377`。诊断质量仍未评分，生产部署未执行。
 
 | 验收项 | 结果 | 证据与限制 |
 | --- | --- | --- |
-| AC-01 告警安全接收和幂等 | 通过 | 事故服务测试通过；本机 HTTP Webhook 创建持久事故/任务，告警鉴权和事务写入由 T001/T002 定向测试覆盖。 |
+| AC-01 告警安全接收和幂等 | 通过（本机） | 事故服务定向测试覆盖鉴权、事务和幂等；真实 `prom/alertmanager:v0.27.0` 临时实例发送唯一 firing 通知，Incident API 返回 202 并持久化 incident/task/outbox。合成记录随后按 alertname 清理。单条投递通过，不覆盖告警重试或 on-call 路由。 |
 | AC-02 跨重启恢复 | 通过 | API、worker、Redis、PostgreSQL 重启后服务恢复；已创建 incident 仍存在；outbox/租约恢复由 T002 测试覆盖。 |
 | AC-03 有界重试和明确终态 | 通过（mock/故障路径） | Holmes 客户端/worker 的瞬时错误、超时、永久失败与脱敏由定向测试覆盖；本机缺外部配置时任务终态为 `failed:holmes_unavailable`。 |
 | AC-04 Holmes 只读调查和证据 | **部分完成，诊断质量验收未完成** | T008 增加服务端受限代理和网络隔离；Holmes 无法解析 OpenObserve 服务名，只能访问代理。真实 OpenObserve Toolset 通过代理发现 2 条 allowlist 流。修复 SQL AST 对合法 `AND` 条件的误判后，当前 Compose proxy 上的 DeepSeek live run 为 20/20 精确 run/case 证据命中、3/3 发布事件命中、0 个工具错误、0 个未限定成功查询和 0 个跨案例命中。根因评分仍为 `not_scored`，需要人工评分。OpenObserve OSS 仍无原生 RBAC。 |
 | AC-05 事故工作台 | 通过（本机手工 UI） | 浏览器使用 operator/approver 登录并查看事故详情、任务、审批和审计；operator 无复盘写入/审核按钮，approver 可编辑并审核。approver 保存的合成复盘明确记载模型调查未执行，未伪造 RCA。 |
 | AC-06 测试身份、角色、资源授权 | 通过 | operator 与 approver 分开；operator 自审批实测返回 HTTP 403；认证/权限矩阵测试通过。浏览器实际显示角色隔离的审批/执行/复盘控件。 |
 | AC-07 仅限 demo 的受控动作 | 通过（本机浏览器闭环） | 浏览器中 operator 请求动作、approver 批准、operator 执行并由 order-service owner 验证状态 OFF→ON；随后独立批准并执行恢复，验证 ON→OFF。审计时间线包含请求、审批和两条 `action.verified`；自动化测试另覆盖拒绝、验证失败和回退路径。 |
-| AC-08 本机部署、恢复和重复演示 | 通过（测试环境） | Holmes、incident API/worker、PostgreSQL、Redis、OpenObserve、order-service 在同一 Compose project 运行；健康端点均返回 200。隔离 `aiops_restore_test` 的 pg_dump/pg_restore 成功，活动数据库与 volume 未覆盖/删除。 |
+| AC-08 本机部署、恢复和重复演示 | 通过（测试环境） | Holmes、incident API/worker、PostgreSQL、Redis、OpenObserve、order-service 在同一 Compose project 运行；readiness 10/10 通过。隔离 `aiops_restore_test` 的 pg_dump/pg_restore 成功，活动数据库与 volume 未覆盖/删除。OTel Collector 对合成 OTLP span 返回 200，OpenObserve `POST /api/default/v1/traces` 返回 200，官方 trace search API 按 ID 查询命中 `total=1`；该 synthetic trace 保留在本机测试环境。 |
 | AC-09 发布和知识上下文关联 | **本机端到端通过；真实 CI 接入待完成** | `verify-release-event-e2e.sh` 用临时签名密钥调用发送脚本，经 NestJS 验签和 OpenObserve 入库后，以精确版本和 commit 查询到唯一 `release_deployed` 事件。可复用 GitHub workflow 已提供，但仍无部署 caller、远端 secret binding 或 staging 事件验收。 |
 | AC-10 20 例可重复评测 | **部分通过（诊断准确性未评分）** | 最新 live 报告 schema 1.3 通过 Draft 2020-12 校验；本轮 40 条 synthetic 行在 Holmes 调用前确认可搜索；20 案完成，20/20 exact run/case 证据命中、3/3 release event 命中，未限定成功查询、跨案例命中和工具错误均为 0。Diagnosis scoring 仍为 `not_scored`，不能代表诊断准确率。报告 [`live-2026-09-27.json`](../../examples/openobserve-aiops/evals/reports/live-2026-09-27.json) SHA-256：`50fef9dd604e962363c6b8f8b9bb247f3e50d04020393194d7518a30d91d8377`。 |
 | AC-11 正式环境边界 | 部分通过（准备文档；生产部署未执行） | 用户明确当前 macOS Docker Desktop 24.0.6 / Compose 2.23.0 仅是本地测试环境，正式生产平台尚未选择。身份、域名/TLS、数据服务身份、OpenObserve RBAC/租户、告警路由、SLO/RPO/RTO、动作责任人等仍待确认，尚无完整目标专属生产 manifest 或生产凭据。已增加 provider-neutral OTel Collector 生产配置模板和 PostgreSQL 运维手册，但模板未替代平台部署资产。托管库 IAM 兼容、加密异地备份、PITR 和实测 RPO/RTO 仍未验收。 |
 
 ## 验证结果
+
+- 2026-09-29 Alertmanager firing 本机集成：固定 `prom/alertmanager:v0.27.0` 临时容器通过 API v2 接收唯一 synthetic alert（200），使用 Bearer token 向 Incident API 的实际容器端口 `8081` 投递（202）；数据库写入一条 `source=prometheus-alertmanager`、`resource=order-service` 的 incident/task/outbox。worker 在验证时停止以阻止模型调用；清理唯一 synthetic 记录和临时容器/凭据后恢复 API 默认 token-off、worker running，主库基线 `13/13/13/55`，本机 readiness 10/10 通过。
+- 2026-09-29 Collector traces 本机端到端：唯一 synthetic span 经 OTLP/HTTP receiver 返回 200；OpenObserve 收到 Collector 的 `/api/default/v1/traces` POST 并返回 200；官方 trace search API `/api/default/default/traces/latest` 以 trace ID 和微秒窗口精确查到 `total=1`。通用日志 `/_search` 返回 `Search stream not found: default`，不作为 trace 投递失败证据；该 Trace 已通过专用 traces API 验收并保留在本机测试环境。
 
 - 2026-09-27 T007 Incident API/workbench 隔离 Compose suite 最新复验：`source /tmp/holmesgpt-aiops-test-runtime.sh && docker compose -f examples/openobserve-aiops/docker-compose.yaml --profile test run --rm incident-test`，**123 passed，1 个 Starlette/AnyIO 上游弃用 warning，26.54s**。测试 PostgreSQL 使用无持久卷隔离容器；本机 API `/readyz` 返回 `ready`，API、worker、Redis、PostgreSQL 均 healthy。运行栈通过分离 runtime/migrator 身份启动，保留既有 8 条 migration 与业务计数。既存 orphan `alert-trigger` 未清理。mock evaluation 已重新生成 20 案报告并通过 JSON 解析；`scoring=not_scored`。本机验收补齐，但生产目标、真实 RCA 人工评分及 staging 验收仍未完成。
 - 2026-09-27 生产准备离线 verifier 复跑：`verify-postgresql-roles.sh` 与 `verify-postgresql-backup.sh` 均通过；前者校验 8 个 migration 和 runtime 最小权限，后者将明文及 CMS AES-256-GCM 归档分别恢复到隔离数据库，并验证 8 个 migration、synthetic incident、覆盖拒绝与密文篡改认证拒绝。`verify-production-otel-config.sh` 使用固定 Collector digest、无网络容器通过配置验证；`verify-aiops-alerts.sh` 的 7 条规则语法检查和两组告警 firing tests 均通过。临时容器已退出，无生产端点参与；云凭据、托管服务兼容和 staging 交付仍未验证。
