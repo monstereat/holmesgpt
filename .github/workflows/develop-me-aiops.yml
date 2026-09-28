@@ -24,6 +24,7 @@ on:
       - 'examples/openobserve-aiops/verify-postgresql-local-bootstrap.sh'
       - 'examples/openobserve-aiops/verify-postgresql-tls.sh'
       - 'examples/openobserve-aiops/verify-redis-tls.sh'
+      - 'examples/openobserve-aiops/verify-image-publish-workflow.rb'
       - 'examples/openobserve-aiops/POSTGRESQL-OPERATIONS.md'
       - '.github/workflows/develop-me-aiops.yml'
       - '.github/workflows/publish-aiops-images.yml'
@@ -45,6 +46,8 @@ jobs:
         run: pip install 'poetry==1.8.5'
       - name: Install HolmesGPT dependencies
         run: poetry install --with dev --no-interaction
+      - name: Verify protected image publishing environment
+        run: ruby examples/openobserve-aiops/verify-image-publish-workflow.rb
       - name: Run mocked OpenObserve tests
         run: poetry run pytest -q --no-cov tests/plugins/toolsets/openobserve tests/toolsets/test_openobserve_toolset.py
       - name: Generate ephemeral local Compose credentials
