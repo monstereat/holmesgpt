@@ -7,6 +7,7 @@ import pytest
 from psycopg.types.json import Jsonb
 from fastapi.testclient import TestClient
 
+from action_client import ActionServiceError
 from app import _reconcile_action_executions_once, app
 from auth import hash_password
 from migration_runner import apply_migrations
@@ -107,6 +108,27 @@ def test_approval_permissions_execution_verification_and_rollback(monkeypatch):
             assert client.post(f"/api/approvals/{approval_id}/decision", headers=operator, json={"decision": "approve"}).status_code == 404
             assert client.post(f"/api/approvals/{approval_id}/execute", headers=operator).status_code == 409
             assert client.post(f"/api/approvals/{approval_id}/decision", headers=reviewer, json={"decision": "approve"}).json()["status"] == "approved"
+
+            class UnavailableOwner(FakeOwner):
+                def operation_result(self, _idempotency_key, _enabled):
+                    raise ActionServiceError("action_service_unavailable")
+
+            unavailable_owner = UnavailableOwner()
+            monkeypatch.setattr("app._order_action_client", lambda: unavailable_owner)
+            unavailable = client.post(f"/api/approvals/{approval_id}/execute", headers=operator)
+            assert unavailable.status_code == 503
+            with psycopg.connect(database_url) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT status, error_code FROM action_executions WHERE approval_id = %s",
+                        (approval_id,),
+                    )
+                    assert cursor.fetchone() == ("dispatching", "action_service_unavailable")
+                    cursor.execute(
+                        "SELECT details->>'error_code' FROM audit_events WHERE incident_id = %s AND event_type = 'action.execution_unknown'",
+                        (incidents[0][1]["incident_id"],),
+                    )
+                    assert cursor.fetchone() == ("action_service_unavailable",)
 
             owner = FakeOwner()
             monkeypatch.setattr("app._order_action_client", lambda: owner)

@@ -8,6 +8,8 @@
 
 **本轮本机交付（2026-09-29）：**实现本机 demo-only 周期 action reconciler，order-service 暴露 token-protected 的 operation journal 只读查询；reconciler 在 owner-resource 与 user-lifecycle session advisory lock 下，每轮最多读取并处理一条最早的 pending action，以限制单次锁占用。`dispatching` 必须匹配原动作 journal 与当前 owner 状态；`rollback_pending` 还必须同时匹配原批准动作 journal、补偿 journal 和保存的执行前状态。未知或不一致状态保留给操作员，后台绝不发起动作。更新了隔离恢复用例，覆盖缺少原动作 journal 时仍挂起的回滚及 journal 补齐后恢复；未运行测试，按用户要求暂停。Python 源码 AST 与 `git diff --check` 通过；既有 Compose config、Docker 构建与 10 服务 readiness 证据只证明启动配置，不证明本次 reconciler 逻辑功能验收。
 
+**本轮故障审计补充（2026-09-29，未验证）：**静态审查发现 action owner journal/调用抛出 `ActionServiceError` 时执行仍停在 `dispatching`，但既有控制流会在写错误码与 `action.execution_unknown` 审计前直接返回 503。现将 pending 执行错误码与操作者审计写入同一事务，并在审批/执行记录仍匹配时才追加审计；扩展了审批隔离回归用例，断言 owner 故障后保持待恢复状态且审计可查。按用户要求未运行测试，仅待静态检查；不将其视为功能已验收。
+
 **本轮平台无关安全补充（2026-09-29）：**OpenObserve 与 Alertmanager webhook 分别新增一个 `*_PREVIOUS` token overlap slot；生产配置校验对 active/previous 所有已配置值按 UTF-8 byte 数要求至少 32 bytes，认证对 active 与 previous 分别执行 constant-time digest compare，不输出密钥。Alertmanager 的 active token 未设置时即使 previous slot 存在仍返回 disabled。Compose、README 与 `PRODUCTION-READINESS.md` 补充两阶段无停机轮换顺序。新增路由及配置核心测试但按暂停测试要求未运行；本轮只做源码/文档审阅和 diff 静态检查。
 
 **本轮 Collector 配置增量（2026-09-29，未验证）：**生产 Collector 的 OTLP HTTP receiver 与无认证 `/metrics` listener 均要求部署者显式提供 `OTEL_RECEIVER_BIND_ADDRESS` / `OTEL_METRICS_BIND_ADDRESS`；配置 verifier 调用示例为两者提供 `127.0.0.1`，未运行 verifier。监听地址只决定 Collector 容器内绑定，不构成访问控制；仍必须用目标平台网络策略/ACL 限定 OTLP writer 和 scraper，并在 staging 验证允许/拒绝路径。Collector 模板校验和 staging 门禁待恢复验证后完成。

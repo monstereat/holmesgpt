@@ -2136,10 +2136,27 @@ def _execute_approval(
                 execution_error = "owner_operation_state_mismatch"
         except ActionServiceError as exc:
             execution_error = exc.code
-            # A lookup failure cannot establish whether the owner committed the
-            # operation. Keep it pending; do not infer success from resource
-            # state or issue another request while the journal is unavailable.
-            raise HTTPException(status_code=503, detail="Action owner journal is unavailable; execution remains pending") from exc
+            # An owner error cannot establish whether the operation committed.
+            # Keep it pending and rely on the journal before any retry.
+            with connect_database(_database_url()) as conn:
+                with conn.transaction():
+                    with conn.cursor() as cursor:
+                        principal = _load_principal(
+                            authorization,
+                            request.cookies.get(SESSION_COOKIE_NAME),
+                            cursor=cursor,
+                            authorization_locks_held=authorization_locks_held,
+                        )
+                        cursor.execute(
+                            "UPDATE action_executions SET error_code = %s, updated_at = now() WHERE approval_id = %s AND status = 'dispatching'",
+                            (execution_error, approval_uuid),
+                        )
+                        if cursor.rowcount == 1:
+                            cursor.execute(
+                                "INSERT INTO audit_events (incident_id, actor_id, event_type, details) VALUES (%s, %s, 'action.execution_unknown', %s)",
+                                (incident_id, principal.user_id, Jsonb({"approval_id": approval_uuid, "error_code": execution_error})),
+                            )
+            raise HTTPException(status_code=503, detail="Action owner could not confirm the operation; execution remains pending") from exc
         if verified:
             with connect_database(_database_url()) as conn:
                 with conn.transaction():
@@ -2164,20 +2181,6 @@ def _execute_approval(
                             (incident_id, principal.user_id, Jsonb({"approval_id": approval_uuid, "resource": "order-service", "action": action_id, "before_chaos_mode": before["chaos_mode"], "chaos_mode": desired})),
                         )
             return {"approval_id": approval_uuid, "status": "executed", "verified": True, "chaos_mode": desired}
-        if execution_error:
-            with connect_database(_database_url()) as conn:
-                with conn.transaction():
-                    with conn.cursor() as cursor:
-                        principal = _load_principal(authorization, request.cookies.get(SESSION_COOKIE_NAME), cursor=cursor, authorization_locks_held=authorization_locks_held)
-                        cursor.execute(
-                            "UPDATE action_executions SET error_code = %s, updated_at = now() WHERE approval_id = %s AND status = 'dispatching'",
-                            (execution_error, approval_uuid),
-                        )
-                        cursor.execute(
-                            "INSERT INTO audit_events (incident_id, actor_id, event_type, details) VALUES (%s, %s, 'action.execution_unknown', %s)",
-                            (incident_id, principal.user_id, Jsonb({"approval_id": approval_uuid, "error_code": execution_error})),
-                        )
-            raise HTTPException(status_code=502, detail="Demo action owner could not confirm execution")
         with connect_database(_database_url()) as conn:
             with conn.transaction():
                 with conn.cursor() as cursor:
