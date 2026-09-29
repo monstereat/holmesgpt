@@ -23,6 +23,7 @@ docker run --rm --network none \
     --mount "type=bind,src=$temp_dir,dst=/run/otel-secrets,readonly" \
     --mount "type=bind,src=$temp_dir/queue,dst=/var/lib/otel-queue" \
     -e OTEL_RECEIVER_TOKEN_FILE=/run/otel-secrets/receiver.token \
+    -e OTEL_RECEIVER_BIND_ADDRESS=127.0.0.1 \
     -e OTEL_RECEIVER_CERT_FILE=/run/otel-secrets/receiver.crt \
     -e OTEL_RECEIVER_KEY_FILE=/run/otel-secrets/receiver.key \
     -e OPENOBSERVE_WRITER_USERNAME_FILE=/run/otel-secrets/writer.username \
