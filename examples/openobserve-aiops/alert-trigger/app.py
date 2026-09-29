@@ -39,7 +39,7 @@ PUBLIC_PATH = Path(__file__).parent / "public"
 MIGRATIONS_PATH = Path(__file__).parent / "migrations"
 REQUIRED_MIGRATIONS = frozenset(path.stem for path in MIGRATIONS_PATH.glob("*.sql"))
 SESSION_COOKIE_NAME = "aiops_session"
-OIDC_STATE_COOKIE_NAME = "aiops_oidc_state"
+OIDC_STATE_COOKIE_PREFIX = "aiops_oidc_state_"
 OIDC_SESSION_TTL_SECONDS = 900
 OIDC_LOGIN_ADMISSION_LOCK = 82476219
 USER_LIFECYCLE_LOCK = 731905241
@@ -65,6 +65,11 @@ def _oidc_settings() -> OIDCSettings:
         return load_oidc_settings(dict(os.environ))
     except ValueError as exc:
         raise RuntimeError(str(exc)) from None
+
+
+def _oidc_state_cookie_name(state: str) -> str:
+    state_hash = hashlib.sha256(state.encode()).hexdigest()
+    return f"{OIDC_STATE_COOKIE_PREFIX}{state_hash[:32]}"
 
 
 def _oidc_client(settings: OIDCSettings | None = None):
@@ -992,7 +997,7 @@ async def oidc_login(request: Request):
         raise HTTPException(status_code=503, detail="OIDC login provider is temporarily unavailable") from None
     response = RedirectResponse(authorization["url"], status_code=302)
     response.set_cookie(
-        OIDC_STATE_COOKIE_NAME,
+        _oidc_state_cookie_name(state),
         state,
         httponly=True,
         secure=os.getenv("SESSION_COOKIE_SECURE", "true" if os.getenv("AIOPS_ENV", "production") != "local" else "false").lower() == "true",
@@ -1010,7 +1015,7 @@ async def oidc_callback(request: Request):
     settings = _oidc_settings()
     state = request.query_params.get("state", "")
     code = request.query_params.get("code", "")
-    state_cookie = request.cookies.get(OIDC_STATE_COOKIE_NAME, "")
+    state_cookie = request.cookies.get(_oidc_state_cookie_name(state), "") if state else ""
     if not state or not code or len(state) > 256 or not hmac.compare_digest(state, state_cookie):
         raise HTTPException(status_code=401, detail="OIDC sign-in failed")
     state_hash = hashlib.sha256(state.encode()).hexdigest()
@@ -1136,7 +1141,7 @@ async def oidc_callback(request: Request):
         path="/",
     )
     response.delete_cookie(
-        OIDC_STATE_COOKIE_NAME,
+        _oidc_state_cookie_name(state),
         httponly=True,
         secure=os.getenv("SESSION_COOKIE_SECURE", "true" if os.getenv("AIOPS_ENV", "production") != "local" else "false").lower() == "true",
         samesite="lax",

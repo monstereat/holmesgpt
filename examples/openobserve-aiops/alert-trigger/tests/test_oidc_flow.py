@@ -137,13 +137,14 @@ def test_oidc_authorization_and_callback_use_bound_state_pkce_and_http_only_sess
     with TestClient(app_module.app) as client:
         login = client.get("/auth/login", follow_redirects=False)
         assert login.status_code == 302
-        assert "aiops_oidc_state=" in login.headers["set-cookie"]
+        state = fake.authorization_params["state"]
+        state_cookie_name = app_module._oidc_state_cookie_name(state)
+        assert f"{state_cookie_name}=" in login.headers["set-cookie"]
         assert "httponly" in login.headers["set-cookie"].lower()
         assert "samesite=lax" in login.headers["set-cookie"].lower()
         assert fake.authorization_params["code_challenge_method"] == "S256"
         assert fake.authorization_params["scope"] == "openid profile email"
-        state = fake.authorization_params["state"]
-        assert client.cookies.get(app_module.OIDC_STATE_COOKIE_NAME) == state
+        assert client.cookies.get(state_cookie_name) == state
 
         callback = client.get(
             "/auth/oidc/callback",
@@ -164,6 +165,43 @@ def test_oidc_authorization_and_callback_use_bound_state_pkce_and_http_only_sess
         assert any("DELETE FROM revoked_sessions" in statement for statement in statements)
         assert any("INSERT INTO revoked_sessions" in statement for statement in statements)
         assert len(connect.call_args_list) == 4
+
+
+def test_parallel_oidc_logins_keep_independent_state_cookies(monkeypatch):
+    configure_oidc(monkeypatch)
+    fake = FakeOIDCClient("https://id.example.com/tenant")
+    monkeypatch.setattr(app_module, "_oidc_client", lambda _settings: fake)
+    connections = [
+        FakeConnection((0, 1)),
+        FakeConnection((0, 1)),
+        FakeConnection(("code-verifier", "saved-nonce")),
+        FakeConnection(("00000000-0000-0000-0000-000000000007", "ops-user", "operator", ["order-service"], True, 0, None)),
+    ]
+    monkeypatch.setattr(app_module.psycopg, "connect", MagicMock(side_effect=connections))
+    async def exchange(_settings, _metadata, _code, _verifier):
+        return {"id_token": "signed-id-token"}
+    monkeypatch.setattr(app_module, "_exchange_oidc_code", exchange)
+    monkeypatch.setattr(app_module, "start_outbox_dispatcher", lambda *_args: type("NoopDispatcher", (), {"stop": lambda self: None})())
+
+    with TestClient(app_module.app) as client:
+        first_login = client.get("/auth/login", follow_redirects=False)
+        first_state = parse_qs(urlsplit(first_login.headers["location"]).query)["state"][0]
+        second_login = client.get("/auth/login", follow_redirects=False)
+        second_state = parse_qs(urlsplit(second_login.headers["location"]).query)["state"][0]
+        first_cookie = app_module._oidc_state_cookie_name(first_state)
+        second_cookie = app_module._oidc_state_cookie_name(second_state)
+
+        assert first_state != second_state
+        assert first_cookie != second_cookie
+        assert client.cookies.get(first_cookie) == first_state
+        assert client.cookies.get(second_cookie) == second_state
+
+        callback = client.get(
+            "/auth/oidc/callback",
+            params={"code": "first-authorization-code", "state": first_state},
+            follow_redirects=False,
+        )
+        assert callback.status_code == 303
 
 
 def test_inactive_oidc_user_requests_reactivation_once_without_receiving_a_session(monkeypatch):
@@ -324,7 +362,7 @@ def test_oidc_callback_verifies_signed_id_token_against_discovered_jwks(monkeypa
         with TestClient(app_module.app) as client:
             login = client.get("/auth/login", follow_redirects=False)
             assert login.status_code == 302
-            state = client.cookies.get(app_module.OIDC_STATE_COOKIE_NAME)
+            state = client.cookies.get(app_module._oidc_state_cookie_name(fake.authorization_params["state"]))
             assert state
             authorization_params = parse_qs(urlsplit(login.headers["location"]).query)
             transaction_params = connections[0].cursor_instance.statements[-1][1]
@@ -498,7 +536,7 @@ def test_oidc_claims_sync_waits_for_disable_and_does_not_reactivate_user(monkeyp
         request = request_for(
             "/auth/oidc/callback",
             urlencode({"code": "authorization-code", "state": callback_state}),
-            cookie_name=app_module.OIDC_STATE_COOKIE_NAME,
+            cookie_name=app_module._oidc_state_cookie_name(callback_state),
             token=callback_state,
         )
         return asyncio.run(app_module.oidc_callback(request))
