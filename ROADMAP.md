@@ -14,6 +14,10 @@
 
 **本轮本机部署（2026-09-29）：**Incident API 镜像基于当前工作树构建并替换；容器状态 `running/healthy`，本机 ingress 的 `/readyz` 返回 `{"status":"ready"}`。未运行测试套件或调用数据库 migration；服务健康不证明上述 OIDC 并发修复已通过功能验证。
 
+**本轮 Docker 演练（2026-09-29）：**`verify-local-service-readiness.sh` 在 Incident API 替换后检查通过：10 个必需服务运行状态满足要求，Holmes 与 Incident API ready、OpenObserve 健康、订单页 HTTP 200、worker 的认证 OpenObserve toolset gate enabled。该脚本只做 readiness/GET 与只读 toolset 检查，没有调用模型或写入业务数据；不等同于核心业务链路回归测试。
+
+**本轮多 Agent 静态审查（2026-09-29）：**认证/授权审查覆盖会话、CSRF、事故、任务、审批和用户管理接口，未发现新的证据明确且修复方向无歧义的问题；Compose/备份审查覆盖本机栈及备份恢复脚本，确认当前没有从私有 PostgreSQL 容器直接生成本机备份文件的入口，正补齐该本机运维能力。审查未运行测试或 verifier。
+
 **本轮故障审计补充（2026-09-29，未验证）：**静态审查发现 action owner journal/调用抛出 `ActionServiceError` 时执行仍停在 `dispatching`，但既有控制流会在写错误码与 `action.execution_unknown` 审计前直接返回 503。现将 pending 执行错误码与操作者审计写入同一事务，并在审批/执行记录仍匹配时才追加审计；扩展了审批隔离回归用例，断言 owner 故障后保持待恢复状态且审计可查。按用户要求未运行测试，仅待静态检查；不将其视为功能已验收。
 
 **本轮平台无关安全补充（2026-09-29）：**OpenObserve 与 Alertmanager webhook 分别新增一个 `*_PREVIOUS` token overlap slot；生产配置校验对 active/previous 所有已配置值按 UTF-8 byte 数要求至少 32 bytes，认证对 active 与 previous 分别执行 constant-time digest compare，不输出密钥。Alertmanager 的 active token 未设置时即使 previous slot 存在仍返回 disabled。Compose、README 与 `PRODUCTION-READINESS.md` 补充两阶段无停机轮换顺序。新增路由及配置核心测试但按暂停测试要求未运行；本轮只做源码/文档审阅和 diff 静态检查。

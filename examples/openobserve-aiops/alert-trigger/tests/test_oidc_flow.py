@@ -204,6 +204,16 @@ def test_parallel_oidc_logins_keep_independent_state_cookies(monkeypatch):
         assert callback.status_code == 303
 
 
+def test_oidc_callback_rejects_oversized_state_before_cookie_lookup(monkeypatch):
+    configure_oidc(monkeypatch)
+    with TestClient(app_module.app) as client:
+        response = client.get(
+            "/auth/oidc/callback",
+            params={"code": "authorization-code", "state": "x" * 257},
+        )
+    assert response.status_code == 401
+
+
 def test_inactive_oidc_user_requests_reactivation_once_without_receiving_a_session(monkeypatch):
     configure_oidc(monkeypatch)
     fake = FakeOIDCClient("https://id.example.com/tenant")

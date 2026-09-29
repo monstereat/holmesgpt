@@ -1015,7 +1015,7 @@ async def oidc_callback(request: Request):
     settings = _oidc_settings()
     state = request.query_params.get("state", "")
     code = request.query_params.get("code", "")
-    state_cookie = request.cookies.get(_oidc_state_cookie_name(state), "") if state else ""
+    state_cookie = request.cookies.get(_oidc_state_cookie_name(state), "") if state and len(state) <= 256 else ""
     if not state or not code or len(state) > 256 or not hmac.compare_digest(state, state_cookie):
         raise HTTPException(status_code=401, detail="OIDC sign-in failed")
     state_hash = hashlib.sha256(state.encode()).hexdigest()
