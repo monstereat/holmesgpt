@@ -12,11 +12,11 @@
 
 **本轮本机可靠性修复（2026-09-29，未验证）：**OIDC state cookie 改为按 state 哈希命名，避免同一浏览器并行登录互相覆盖；新增并发登录回归用例，但按要求未运行测试。身份审查还指出浏览器 cookie 总量仍受客户端限制，登录 admission 上限不是浏览器容量。Outbox 语义和简历/README 说明更正为至少一次投递：发送调用阻塞超过重试间隔时另一 dispatcher 可能重复发布；数据库 task claim 防重复执行，但不保证 broker 恰好一次投递。未修改 outbox 数据模型或投递机制，核心验证仍暂停。
 
-**本轮本机部署（2026-09-29）：**Incident API 镜像基于当前工作树构建并替换；容器状态 `running/healthy`，本机 ingress 的 `/readyz` 返回 `{"status":"ready"}`。未运行测试套件或调用数据库 migration；服务健康不证明上述 OIDC 并发修复已通过功能验证。
+**本轮本机部署（2026-09-29）：**Incident API 与 worker 镜像基于当前工作树构建并替换；worker 替换前确认无 active/reserved Celery 任务及 queued/running/retrying 数据库任务。两个容器状态 `running/healthy`，本机 ingress 的 Incident API `/readyz` 返回 `{"status":"ready"}`。未运行测试套件或调用数据库 migration；服务健康不证明 OIDC cookie 与任务错误码逻辑已通过功能验证。
 
 **本轮 Docker 演练（2026-09-29）：**`verify-local-service-readiness.sh` 在 Incident API 替换后检查通过：10 个必需服务运行状态满足要求，Holmes 与 Incident API ready、OpenObserve 健康、订单页 HTTP 200、worker 的认证 OpenObserve toolset gate enabled。该脚本只做 readiness/GET 与只读 toolset 检查，没有调用模型或写入业务数据；不等同于核心业务链路回归测试。
 
-**本轮多 Agent 静态审查（2026-09-29）：**认证/授权审查覆盖会话、CSRF、事故、任务、审批和用户管理接口，未发现新的证据明确且修复方向无歧义的问题；Compose/备份审查覆盖本机栈及备份恢复脚本，确认当前没有从私有 PostgreSQL 容器直接生成本机备份文件的入口，正补齐该本机运维能力。审查未运行测试或 verifier。
+**本轮多 Agent 静态审查（2026-09-29）：**认证/授权审查覆盖会话、CSRF、事故、任务、审批和用户管理接口，未发现新的证据明确且修复方向无歧义的问题；Compose/备份审查发现并补齐从私有 PostgreSQL 容器直接生成本机备份文件的入口。审查未运行测试或 verifier。
 
 **本轮本地备份资产（2026-09-29，未运行）：**新增 `backup-local-postgres.sh`，从私有 Compose PostgreSQL 容器导出 `aiops` 自定义格式归档，临时文件使用 mode `0600`，容器 `pg_restore --list` 校验后原子发布且拒绝覆盖；README 与 PostgreSQL 运维手册列明其不含数据库外角色、OpenObserve、Redis、订单动作卷及私密配置。`bash -n` 和 `git diff --check` 通过；未实际运行备份或恢复，所以内容完整性/可恢复性仍待本地演练。
 
