@@ -206,6 +206,11 @@ def test_parallel_oidc_logins_keep_independent_state_cookies(monkeypatch):
 
 def test_oidc_callback_rejects_oversized_state_before_cookie_lookup(monkeypatch):
     configure_oidc(monkeypatch)
+    monkeypatch.setattr(
+        app_module,
+        "_oidc_client",
+        lambda _settings: FakeOIDCClient("https://id.example.com/tenant"),
+    )
     with TestClient(app_module.app) as client:
         response = client.get(
             "/auth/oidc/callback",

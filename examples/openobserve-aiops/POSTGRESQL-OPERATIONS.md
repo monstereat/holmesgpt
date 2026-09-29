@@ -244,6 +244,16 @@ does not provide volume backups, off-host retention, or PITR. Restore only into
 a separate local test database/instance using the reviewed restore procedure;
 do not overwrite the active Compose database.
 
+On 2026-09-29 the helper produced an 82,192-byte mode-`0600` archive from the
+local database and restored it into an isolated PostgreSQL 16.6 container with
+no network and a temporary data filesystem. The restored `schema_migrations`
+set matched all 21 source migrations; row counts were 13 incidents, 13 tasks,
+55 audit events and 13 outbox events, and all core tables including
+`action_executions` existed. The source had no action-execution rows. Restore
+used `--no-owner --no-acl`, so this drill does not verify role or ACL recovery.
+The temporary archive and container were removed; the active Compose database
+was only read by `pg_dump`.
+
 For a database session configured through libpq environment or service-file
 credentials, create a new archive path with:
 

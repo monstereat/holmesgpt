@@ -8,19 +8,19 @@
 
 **最新增量验收（2026-09-29）：**隔离 `aiops_test` 中处置执行期间并发禁用账户的 session/lifecycle lock 测试 **1 passed**；outbox broker 异常退避与双 dispatcher 去重 **2 passed**。Authenticated metrics endpoint 核心用例同步 mock 和断言后 **1 passed**。Metrics outbox 查询加入 `OFFSET 0` 保留多事件语义并阻止 decorrelation；隔离 PostgreSQL 16.6、10k tasks/10k outbox、200 条 eligible 合成数据的 EXPLAIN ANALYZE 从全量扫描+排序 **10.547 ms / 289 buffers** 改为参数化索引查询 **0.923 ms / 695 buffers**，结果均为 100 条未发布、200 条匹配事件。该数据量是查询计划证据，不是生产容量承诺。浏览器本机 operator 登录成功，工作台显示 `order-service` 范围；只读打开一条已有事故并查看告警元信息、已验证 Trace 证据、任务、审批区、复盘表单和审计时间线，未提交变更。Compose 增加 `ALERTMANAGER_WEBHOOK_TOKEN` 可选透传，默认不设置时路由关闭；临时 token 下验证无凭证 401、resolved-only v4 通知 202 且忽略 1 条、不写入事故/任务，随后恢复默认关闭并 readiness 通过；后续另以真实 Alertmanager firing 验证 API 202 和持久化，详见下方记录。`aiops_test` 中 `investigate:%` outbox 测试记录在隔离测试清理时被清空，主业务库未触及。Incident API 重建首轮因 Docker Desktop 内部盘只剩 140 MB、PostgreSQL finalize 写 catalog 失败；清理了 1.653 GB 可重建 build cache 后，bootstrap/migration/finalize 成功，Incident API 已重建，10 服务 readiness gate 复验通过。RCA 项目 #7 按用户要求跳过，仍为 `not_scored`。仍未运行完整套件、LLM 诊断评分或 lint/type check。
 
-**本轮本机交付（2026-09-29）：**实现本机 demo-only 周期 action reconciler，order-service 暴露 token-protected 的 operation journal 只读查询；reconciler 在 owner-resource 与 user-lifecycle session advisory lock 下，每轮最多读取并处理一条最早的 pending action，以限制单次锁占用。`dispatching` 必须匹配原动作 journal 与当前 owner 状态；`rollback_pending` 还必须同时匹配原批准动作 journal、补偿 journal 和保存的执行前状态。未知或不一致状态保留给操作员，后台绝不发起动作。更新了隔离恢复用例，覆盖缺少原动作 journal 时仍挂起的回滚及 journal 补齐后恢复；未运行测试，按用户要求暂停。Python 源码 AST 与 `git diff --check` 通过；既有 Compose config、Docker 构建与 10 服务 readiness 证据只证明启动配置，不证明本次 reconciler 逻辑功能验收。
+**本轮本机交付（2026-09-29）：**实现本机 demo-only 周期 action reconciler，order-service 暴露 token-protected 的 operation journal 只读查询；reconciler 在 owner-resource 与 user-lifecycle session advisory lock 下，每轮最多读取并处理一条最早的 pending action，以限制单次锁占用。`dispatching` 必须匹配原动作 journal 与当前 owner 状态；`rollback_pending` 还必须同时匹配原批准动作 journal、补偿 journal 和保存的执行前状态。未知或不一致状态保留给操作员，后台绝不发起动作。2026-09-29 在独立 Compose 项目和临时 PostgreSQL 中运行定向恢复用例 **1 passed**；使用 fake owner，无真实订单处置。Python 源码 AST 与 `git diff --check` 通过；demo owner 仍是单实例文件 journal，没有 revision CAS/fencing，不是生产安全的处置实现。
 
-**本轮本机可靠性修复（2026-09-29，未验证）：**OIDC state cookie 改为按 state 哈希命名，避免同一浏览器并行登录互相覆盖；新增并发登录回归用例，但按要求未运行测试。身份审查还指出浏览器 cookie 总量仍受客户端限制，登录 admission 上限不是浏览器容量。Outbox 语义和简历/README 说明更正为至少一次投递：发送调用阻塞超过重试间隔时另一 dispatcher 可能重复发布；数据库 task claim 防重复执行，但不保证 broker 恰好一次投递。未修改 outbox 数据模型或投递机制，核心验证仍暂停。
+**本轮本机可靠性修复（2026-09-29）：**OIDC state cookie 改为按 state 哈希命名，避免同一浏览器并行登录互相覆盖；隔离 Compose 中 OIDC 成功回调、并行登录、超大 state 拒绝及任务失败→重试→成功清除旧错误码共 **4 项通过**。其中超大 state 用例固定 OIDC discovery client，避免测试启动时访问外部 IdP。身份审查还指出浏览器 cookie 总量仍受客户端限制，登录 admission 上限不是浏览器容量。Outbox 语义和简历/README 说明更正为至少一次投递：发送调用阻塞超过重试间隔时另一 dispatcher 可能重复发布；数据库 task claim 防重复执行，但不保证 broker 恰好一次投递。
 
-**本轮本机部署（2026-09-29）：**Incident API 与 worker 镜像基于当前工作树构建并替换；worker 替换前确认无 active/reserved Celery 任务及 queued/running/retrying 数据库任务。两个容器状态 `running/healthy`，本机 ingress 的 Incident API `/readyz` 返回 `{"status":"ready"}`。未运行测试套件或调用数据库 migration；服务健康不证明 OIDC cookie 与任务错误码逻辑已通过功能验证。
+**本轮本机部署（2026-09-29）：**Incident API 与 worker 镜像基于当前工作树构建并替换；worker 替换前确认无 active/reserved Celery 任务及 queued/running/retrying 数据库任务。两个容器状态 `running/healthy`，本机 ingress 的 Incident API `/readyz` 返回 `{"status":"ready"}`。服务健康证据与上方定向回归结果分别记录。
 
 **本轮 Docker 演练（2026-09-29）：**`verify-local-service-readiness.sh` 在 Incident API 替换后检查通过：10 个必需服务运行状态满足要求，Holmes 与 Incident API ready、OpenObserve 健康、订单页 HTTP 200、worker 的认证 OpenObserve toolset gate enabled。该脚本只做 readiness/GET 与只读 toolset 检查，没有调用模型或写入业务数据；不等同于核心业务链路回归测试。
 
 **本轮多 Agent 静态审查（2026-09-29）：**认证/授权审查覆盖会话、CSRF、事故、任务、审批和用户管理接口，未发现新的证据明确且修复方向无歧义的问题；Compose/备份审查发现并补齐从私有 PostgreSQL 容器直接生成本机备份文件的入口。审查未运行测试或 verifier。
 
-**本轮本地备份资产（2026-09-29，未运行）：**新增 `backup-local-postgres.sh`，从私有 Compose PostgreSQL 容器导出 `aiops` 自定义格式归档，临时文件使用 mode `0600`，容器 `pg_restore --list` 校验后原子发布且拒绝覆盖；README 与 PostgreSQL 运维手册列明其不含数据库外角色、OpenObserve、Redis、订单动作卷及私密配置。`bash -n` 和 `git diff --check` 通过；未实际运行备份或恢复，所以内容完整性/可恢复性仍待本地演练。
+**本轮本地备份资产与恢复演练（2026-09-29）：**新增 `backup-local-postgres.sh`，从私有 Compose PostgreSQL 容器导出 `aiops` 自定义格式归档，临时文件使用 mode `0600`，容器 `pg_restore --list` 校验后原子发布且拒绝覆盖；README 与 PostgreSQL 运维手册列明其不含数据库外角色、OpenObserve、Redis、订单动作卷及私密配置。实际生成 82,192-byte mode-`0600` 归档，并在无网络、临时文件系统的独立 PostgreSQL 16.6 容器恢复成功；恢复库 21 个 migration 版本集合与源库一致，incidents/tasks/audit/outbox 行数为 13/13/55/13，核心表均存在。主库只由 `pg_dump` 读取，演练资源已清理。该次恢复使用 `--no-owner --no-acl`，未验收角色/ACL；源库 `action_executions` 为空，且这不是异地备份/PITR 演练。
 
-**本轮任务状态修复（2026-09-29，逻辑未验证）：**重试任务领取时清除旧 `error_code`，成功完成时再次清除，避免失败后重试成功的任务仍显示旧错误；新增本地 PostgreSQL 回归用例，但未运行。检查到 worker 无 active/reserved 任务且 PostgreSQL 没有 queued/running/retrying 任务后，已重建并替换本机 worker。Readiness 首次检查时 worker 正在启动，待变为 healthy 后再次通过 10 服务 gate；这证明镜像启动，不证明错误字段状态转换正确。
+**本轮任务状态修复（2026-09-29）：**重试任务领取时清除旧 `error_code`，成功完成时再次清除，避免失败后重试成功的任务仍显示旧错误；隔离本地 PostgreSQL 失败→重试→成功回归已通过。检查到 worker 无 active/reserved 任务且 PostgreSQL 没有 queued/running/retrying 任务后，已重建并替换本机 worker。Readiness 通过 10 服务 gate。
 
 **本轮故障审计补充（2026-09-29，未验证）：**静态审查发现 action owner journal/调用抛出 `ActionServiceError` 时执行仍停在 `dispatching`，但既有控制流会在写错误码与 `action.execution_unknown` 审计前直接返回 503。现将 pending 执行错误码与操作者审计写入同一事务，并在审批/执行记录仍匹配时才追加审计；扩展了审批隔离回归用例，断言 owner 故障后保持待恢复状态且审计可查。按用户要求未运行测试，仅待静态检查；不将其视为功能已验收。
 
@@ -35,6 +35,8 @@
 - 2026-09-29 同步简历证据文档：`RESUME-CLAIMS.md` 更新本机 Alertmanager firing 持久化证据，并标明 webhook token 轮换、action reconciler、Collector bind-address 与发布重放边界的当前验证状态；未运行测试。
 
 **本轮补充（2026-09-29）：**OIDC 身份流程与登录定向测试在隔离 `incident-test` / tmpfs `postgres-test` 中 **9 passed**；测试 fake 已同步当前数据库 admission 查询，未改业务身份逻辑。Alertmanager webhook receiver 定向契约测试 **4 passed**，同样在隔离测试数据库运行。发布关联 runbook/skill 明确 `release_deployed` 是 `app_logs.event_type` 值，保留 run/case 与时间窗约束且未扩大 stream/字段权限；`git diff --check` 通过，未做 live LLM 验证。真实 Alertmanager firing 端到端此前待完成，现已在下方补充记录本机验收结果。
+
+- 2026-09-29 本轮三项核心验收：OIDC 并行登录、超大 state、回调成功与 retry 清旧错误 **4 passed**；action reconciler `dispatching` / `rollback_pending` 恢复用例 **1 passed**；本地 PostgreSQL 自定义格式备份恢复演练通过，细节与边界见“本轮本地备份资产与恢复演练”。均在隔离测试环境执行，未跑全量套件、CI、lint 或 LLM 评测。
 
 - 2026-09-29 Prometheus 告警 fixture 覆盖补齐：新增 policy proxy 并发容量拒绝和 5xx firing；新增 outbox 投递年龄 SLO（有未发布积压时 firing、无积压时不 firing）、dead-letter（有记录时 firing、计数为零时不 firing）及 action execution recovery SLO firing；Collector enqueue-failure 的 spans、log-records、metric-points 三个 OR 分支分别有独立 firing fixture，并覆盖三者均为零时不 firing。固定 `prom/prometheus:v3.14.0` 执行 `verify-aiops-alerts.sh` 成功（AIOps 14 条、Collector 3 条规则检查及两份 rule fixtures 全部通过）；同版本 `promtool check config` 对 `prometheus-scrape.yml.example` 成功，凭据/CA 使用自动清理的临时空文件，仅做离线解析。此证据只覆盖规则表达式与配置语法，不代表运行时采集或 Alertmanager 通知交付。
 
