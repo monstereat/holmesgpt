@@ -52,7 +52,7 @@ def claim_task(conn: Any, task_id: str) -> ClaimedTask | None:
                 """UPDATE tasks
                    SET status = 'running', attempt = attempt + 1,
                        started_at = now(), lease_expires_at = now() + (%s * interval '1 second'),
-                       result = NULL, updated_at = now()
+                       result = NULL, error_code = NULL, updated_at = now()
                    WHERE id = %s AND attempt < max_attempts AND available_at <= now()
                      AND status IN ('queued', 'retrying')
                    RETURNING id, incident_id, attempt, max_attempts""",
@@ -85,7 +85,7 @@ def complete_task(conn: Any, task: ClaimedTask, result: dict[str, Any]) -> bool:
     with conn.transaction():
         with conn.cursor() as cursor:
             cursor.execute(
-                """UPDATE tasks SET status = 'completed', result = %s,
+                """UPDATE tasks SET status = 'completed', result = %s, error_code = NULL,
                    completed_at = now(), lease_expires_at = NULL, updated_at = now()
                    WHERE id = %s AND status = 'running' AND attempt = %s
                      AND lease_expires_at > now()""",

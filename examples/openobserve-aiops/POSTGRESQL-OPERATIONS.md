@@ -215,6 +215,35 @@ disk remained at 96% usage afterward.
 
 ## Backup and restore evidence
 
+### Local Compose test database
+
+The Compose PostgreSQL service has no published host port. To create a protected
+custom-format archive of its `aiops` database, use the local helper:
+
+```bash
+bash examples/openobserve-aiops/backup-local-postgres.sh \
+  "$HOME/secure-backups/aiops-$(date -u +%Y%m%dT%H%M%SZ).dump"
+```
+
+It runs `pg_dump` inside the PostgreSQL container through
+[`compose-local.sh`](compose-local.sh), streams the archive to a mode-`0600`
+temporary file beside the requested destination, validates it with the
+container's `pg_restore`, then publishes it atomically without overwriting an
+existing path. A failure removes the temporary file. No PostgreSQL port is
+exposed and the script does not print a connection string or password.
+
+The archive covers only the `aiops` database: schema, migration ledger, and
+database rows (including local account hashes, incidents, tasks, approvals,
+audit history, and outbox records). It excludes cluster-level roles and all
+other Compose state, including OpenObserve telemetry (`oo-data`), Redis AOF
+(`aiops-redis-data`), the order-service action journal (`order-action-data`),
+and local credentials/API keys stored under
+`${XDG_CONFIG_HOME:-$HOME/.config}/holmesgpt-aiops`. Store
+the archive on protected storage. This helper does not encrypt or upload it and
+does not provide volume backups, off-host retention, or PITR. Restore only into
+a separate local test database/instance using the reviewed restore procedure;
+do not overwrite the active Compose database.
+
 For a database session configured through libpq environment or service-file
 credentials, create a new archive path with:
 

@@ -76,6 +76,46 @@ def test_task_attempts_and_permanent_failure_on_local_postgres():
             cursor.execute("DELETE FROM incidents WHERE id = %s", (result["incident_id"],))
 
 
+def test_successful_retry_clears_previous_attempt_error_on_local_postgres():
+    database_url = os.getenv("AIOPS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("AIOPS_TEST_DATABASE_URL is not set")
+    if urlparse(database_url).hostname not in {"postgres", "host.docker.internal", "127.0.0.1", "localhost"}:
+        pytest.fail("integration tests only permit local Docker PostgreSQL hosts")
+    apply_migrations(database_url)
+    fingerprint = stable_fingerprint(IncidentInput("0" * 64, "integration-retry-clears-error"))
+    with psycopg.connect(database_url) as conn:
+        incident = create_incident(conn, IncidentInput(fingerprint, "integration-retry-clears-error"))
+    try:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("UPDATE tasks SET max_attempts = 2 WHERE id = %s", (incident["task_id"],))
+            first_attempt = claim_task(conn, incident["task_id"])
+            assert first_attempt is not None and first_attempt.attempt == 1
+            assert fail_task(conn, first_attempt, "upstream_unavailable", retryable=True) == "retrying"
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE tasks SET available_at = now() - interval '1 second' WHERE id = %s",
+                    (incident["task_id"],),
+                )
+            retry = claim_task(conn, incident["task_id"])
+            assert retry is not None and retry.attempt == 2
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT error_code FROM tasks WHERE id = %s", (incident["task_id"],))
+                assert cursor.fetchone() == (None,)
+            assert complete_task(conn, retry, {"analysis": "recovered"}) is True
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT status, error_code FROM tasks WHERE id = %s", (incident["task_id"],))
+                assert cursor.fetchone() == ("completed", None)
+    finally:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("DELETE FROM audit_events WHERE task_id = %s", (incident["task_id"],))
+                cursor.execute("DELETE FROM outbox_events WHERE idempotency_key = %s", (f"investigate:{fingerprint}",))
+                cursor.execute("DELETE FROM tasks WHERE id = %s", (incident["task_id"],))
+                cursor.execute("DELETE FROM incidents WHERE id = %s", (incident["incident_id"],))
+
+
 def test_expired_worker_cannot_persist_late_outcome_on_local_postgres():
     database_url = os.getenv("AIOPS_TEST_DATABASE_URL")
     if not database_url:
